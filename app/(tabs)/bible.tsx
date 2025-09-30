@@ -1,11 +1,11 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-export default function Index() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Collections screen</Text>
-    </View>
-  );
+export default function BibleScreen() {
+    return (
+        <View style={styles.container}>
+            <Text style={styles.text}>Bible screen</Text>
+        </View>
+    )
 }
 
 const styles = StyleSheet.create({
@@ -32,4 +32,4 @@ const styles = StyleSheet.create({
     color: '#EAE9FC',
     fontSize: 16,
   }
-});
+})
