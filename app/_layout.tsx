@@ -3,9 +3,21 @@ import { Stack } from 'expo-router';
 export default function RootLayout() {
   return (
     <Stack>
-      <Stack.Screen name="(app)" options={{ headerShown: false }} />
+      {/* 1. Define the Login page as a screen */}
+      <Stack.Screen 
+        name="login" // This maps to your app/login.js file
+        options={{ headerShown: false }} 
+      />
+      
+      {/* 2. Define the protected (app) group */}
+      <Stack.Screen 
+        name="(app)" // This maps to your app/(app)/_layout.js file
+        options={{ headerShown: false }} 
+      />
+      
+      {/* Add any other necessary screens like modal, etc. */}
     </Stack>
-  );
+  )
 }
 
 // export default function RootLayout() {
