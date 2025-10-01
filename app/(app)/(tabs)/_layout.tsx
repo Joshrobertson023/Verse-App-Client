@@ -1,20 +1,21 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
-
 import { Platform, View } from 'react-native';
+
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#ffd33d',
+        tabBarActiveTintColor: '#cfcfd0ff',
+        tabBarInactiveTintColor: '#cfcfd0ff',
         headerStyle: {
-          backgroundColor: '#25292e',
+          backgroundColor: '#000000ff',
         },
         headerShadowVisible: false,
         headerTintColor: '#fff',
         tabBarStyle: {
-          backgroundColor: '#25292e',
+          backgroundColor: '#000000ff',
         },
       }}>
           <Tabs.Screen 
@@ -36,24 +37,32 @@ export default function TabLayout() {
         }}
       />
           <Tabs.Screen 
-        name="search" 
-        options={{
-          tabBarLabel: '', // hide label
-          tabBarIcon: ({ color, focused }) => (
-            <View
-              style={{
-                width: 60,
-                height: 60,
-                borderRadius: 30,
-                backgroundColor: '#ffd33d',
-                justifyContent: 'center',
-                alignItems: 'center',
-                marginBottom: Platform.OS === 'ios' ? -10 : -5, // lift above tab bar
-              }}
-            >
+            name="search" 
+            options={{
+              tabBarLabel: '', // hide label
+              tabBarIcon: ({ color, focused }) => (
+                <View
+                  style={focused ? {
+                    width: 50,
+                    height: 45,
+                    borderRadius: 10,
+                    backgroundColor: '#3b3b3bff',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginBottom: Platform.OS === 'ios' ? 10 : -35, // lift above tab bar
+                  } : {
+                    width: 50,
+                    height: 45,
+                    borderRadius: 10,
+                    backgroundColor: '#232323ff',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    marginBottom: Platform.OS === 'ios' ? 10 : -35, // lift above tab bar
+                  }}
+                >
               <Ionicons
-                name={focused ? 'search' : 'search-outline'}
-                color="#25292e"
+                name={'search-outline'}
+                color="#cfcfd0ff"
                 size={36} // bigger icon
               />
             </View>
