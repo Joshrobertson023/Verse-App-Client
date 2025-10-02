@@ -1,58 +1,90 @@
 import { Stack } from 'expo-router';
+import { StyleSheet } from 'react-native';
+import { PaperProvider } from 'react-native-paper';
 import { AuthProvider } from '../context/AuthContext';
 
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <Stack>
-        <Stack.Screen 
-          name="login"
-          options={{ headerShown: false }} 
-        />
-        <Stack.Screen 
-          name="(app)"
-          options={{ headerShown: false }} 
-        />
-      </Stack>
+      <PaperProvider>
+        <Stack>
+          <Stack.Screen 
+            name="login"
+            options={{ headerShown: false }} 
+          />
+          <Stack.Screen 
+            name="createaccount"
+            options={{ headerShown: false }} 
+          />
+          <Stack.Screen 
+            name="forgot"
+            options={{ headerShown: false }} 
+          />
+          <Stack.Screen 
+            name="(app)"
+            options={{ headerShown: false }} 
+          />
+        </Stack>
+      </PaperProvider>
     </AuthProvider>
   )
 }
 
-    <Stack>
-      {/* 1. Define the Login page as a screen */}
-      <Stack.Screen 
-        name="login" // This maps to your app/login.js file
-        options={{ headerShown: false }} 
-      />
-      
-      {/* 2. Define the protected (app) group */}
-      <Stack.Screen 
-        name="(app)" // This maps to your app/(app)/_layout.js file
-        options={{ headerShown: false }} 
-      />
-      
-      {/* Add any other necessary screens like modal, etc. */}
-    </Stack>
-
-
-
-
-// export default function RootLayout() {
-//   return (
-//     // 1. Wrap the entire application in the AuthProvider
-//     <AuthProvider>
-//       <Stack>
-//         {/* 2. Public Route: The signin screen. 
-//           This route is accessible to everyone, including unauthenticated users.
-//         */}
-//         <Stack.Screen name="signin" options={{ headerShown: false }} />
-        
-//         {/* 3. Protected Group: The (app) folder. 
-//           Any navigation to a screen inside (app) will first load (app)/_layout.tsx, 
-//           which runs the authentication check and redirects if the user is not signed in.
-//         */}
-//         <Stack.Screen name="(app)" options={{ headerShown: false }} />
-//       </Stack>
-//     </AuthProvider>
-//   );
-// }
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#33302F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  text: {
+    color: '#EAE9FC',
+    fontSize: 22,
+    marginBottom: 16,
+  },
+  headline: {
+    color: '#EAE9FC',
+    fontSize: 42,
+    top: -96,
+  },
+  input: {
+    width: '100%',
+    backgroundColor: '#444',
+    color: '#fff',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  button_outlined: {
+    backgroundColor: 'transparent',
+    borderColor: '#EAE9FC',
+    borderWidth: 2,
+    borderRadius: 20,
+    height: 40,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  button_filled: {
+    backgroundColor: '#EAE9FC',
+    borderColor: '#EAE9FC',
+    borderWidth: 2,
+    borderRadius: 20,
+    height: 40,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  buttonText_filled: {
+    color: '#161616ff',
+    fontSize: 16,
+  },
+  buttonText_outlined: {
+    color: '#EAE9FC',
+    fontSize: 16,
+  },
+  signinButton: {
+    marginBottom: 10,
+  },
+});

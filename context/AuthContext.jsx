@@ -1,30 +1,60 @@
-import { createContext, useState } from 'react'
-import { Text } from 'react-native'
+import { createContext, useContext, useEffect, useState } from 'react';
+import { ActivityIndicator, Text, View } from 'react-native';
 
 const AuthContext = createContext()
 
-const AuthProvider = ({children}) => {
+export const AuthProvider = ({children}) => {
     const [loading, setLoading] = useState(true)
-    const [session, setSession] = useState(false)
-    const [user, setUser] = userState(false)
+    const [session, setSession] = useState(null)
+    const [user, setUser] = useState(null)
 
-    const signin = async () => {}
-    const signout = async () => {}
+      useEffect(() => {
+        const checkSession = async () => {
+        // Pretend we check AsyncStorage or API here
+        await new Promise((r) => setTimeout(r, 1000));
+        // Example: no user found
+        setSession(false);
+        setLoading(false);
+        };
 
-    const contextData = {session, user, signin, signout}
+        checkSession();
+    }, []);
+
+    const signin = async (username, password) => {
+        setLoading(true);
+        // Example sign-in logic
+        await new Promise((r) => setTimeout(r, 1000));
+        setUser({ username });
+        setSession(true);
+        setLoading(false);
+    };
+
+    const signout = async () => {
+        setLoading(true);
+        await new Promise((r) => setTimeout(r, 500));
+        setUser(null);
+        setSession(false);
+        setLoading(false);
+    };
+
+      const value = {
+    session,
+    user,
+    loading,
+    signin,
+    signout,
+  };
+
+  if (loading) {
     return (
-        <AuthContext.Provider value={contextData}>
-            {loading ? (
-                <SafeAreaView>
-                    <Text>Loading...</Text>
-                </SafeAreaView>
-            ) : (
-                children
-            )}
-        </AuthContext.Provider>
-    )
-}
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" />
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
 
-const userAuth = () => {return useContext(AuthContext)}
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
 
-export { AuthContext, AuthProvider, useAuth }
+export const useAuth = () => useContext(AuthContext);
