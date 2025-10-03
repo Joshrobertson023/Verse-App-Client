@@ -43,17 +43,17 @@ export default function TabLayout() {
               tabBarIcon: ({ color, focused }) => (
                 <View
                   style={focused ? {
-                    width: 50,
+                    width: 45,
                     height: 45,
-                    borderRadius: 10,
+                    borderRadius: 50,
                     backgroundColor: '#3b3b3bff',
                     justifyContent: 'center',
                     alignItems: 'center',
                     marginBottom: Platform.OS === 'ios' ? 10 : -35, // lift above tab bar
                   } : {
-                    width: 50,
+                    width: 45,
                     height: 45,
-                    borderRadius: 10,
+                    borderRadius: 50,
                     backgroundColor: '#232323ff',
                     justifyContent: 'center',
                     alignItems: 'center',
@@ -63,7 +63,7 @@ export default function TabLayout() {
               <Ionicons
                 name={'search-outline'}
                 color="#cfcfd0ff"
-                size={36} // bigger icon
+                size={30} // bigger icon
               />
             </View>
           ),

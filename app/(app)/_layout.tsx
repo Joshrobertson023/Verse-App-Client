@@ -9,7 +9,8 @@ export default function AppLayout() {
     // While loading
     if (loading) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ 
+                backgroundColor: '#33302F', flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                 <ActivityIndicator size="large" />
             </View>
         )

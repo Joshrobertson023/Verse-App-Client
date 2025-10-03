@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import colors from '../app/colors';
+import styles from '../app/styles';
 
 const AuthContext = createContext()
 
@@ -47,9 +49,8 @@ export const AuthProvider = ({children}) => {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-        <Text>Loading...</Text>
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={colors.primaryWhite} />
       </View>
     );
   }

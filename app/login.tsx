@@ -1,21 +1,40 @@
 import { useAuth } from '@/context/AuthContext';
 import { Redirect, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { TextInput } from 'react-native-paper';
+import colors from './colors';
+import styles from './styles';
+
 
 export default function Login() {
   const { signin, session, loading } = useAuth();
   const router = useRouter();
 
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [blank, setBlank] = useState(false);
+  const [error, setError] = useState('');
 
   if(session) return <Redirect href="/"/>
 
-    const handleSignIn = async () => {
-    await signin(username, password);
-    // No need to manually navigate — once `session` changes, useEffect redirects automatically
+  const handleSignIn = async () => {
+    if (email.trim() === '' || password.trim() === '') {
+      setBlank(true);
+      setError('Please fill in all fields.');
+      return;
+    }
+    
+    await signin(email, password);
   };
+
+  const clickCreateAccount = () => {
+    router.push('/createaccount');
+  }
+
+  const clickForgot = () => {
+    router.push('/forgot');
+  }
 
     if (loading) {
     return (
@@ -28,65 +47,63 @@ export default function Login() {
 
  return (
     <View style={styles.container}>
-      <Text style={styles.text}>Login</Text>
+      <Text style={styles.headline}>VerseApp</Text>
 
       <TextInput
+        placeholder="Email"
+        label="Email"
+        value={email}
         style={styles.input}
-        placeholder="Username"
-        placeholderTextColor="#aaa"
-        value={username}
-        onChangeText={setUsername}
+        placeholderTextColor={colors.primaryWhite}
+        activeOutlineColor={colors.primaryWhite}
+        textColor={colors.primaryWhite}
+        mode="outlined"
+        theme={{ 
+          colors: {
+            onSurfaceVariant: colors.primaryWhite, 
+          } 
+        }}
+        onChangeText={(text) => {
+          setEmail(text);
+          if (blank && text.trim() !== '') {
+            setBlank(false);
+          }
+        }}
       />
 
       <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#aaa"
-        secureTextEntry
         value={password}
-        onChangeText={setPassword}
+        placeholder="Password"
+        label="Password"
+        style={styles.input}
+        placeholderTextColor={colors.primaryWhite}
+        activeOutlineColor={colors.primaryWhite}
+        textColor={colors.primaryWhite}
+        mode="outlined"
+        theme={{ 
+          colors: {
+            onSurfaceVariant: colors.primaryWhite, 
+          } 
+        }}
+        onChangeText={(text) => {
+          setPassword(text);
+          if (blank && text.trim() !== '') {
+            setBlank(false);
+          }
+        }}
       />
 
-      <TouchableOpacity style={styles.button} onPress={handleSignIn}>
-        <Text style={styles.buttonText}>Sign In</Text>
+      {error ? <Text style={styles.errorMessage}>{error}</Text> : null}
+
+      <TouchableOpacity onPress={handleSignIn} style={[styles.button_filled, styles.signinButton]}>
+        <Text style={styles.buttonText_filled}>Sign In</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.button_outlined} onPress={clickCreateAccount}>
+        <Text style={styles.buttonText_outlined}>Create Account</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={clickForgot} style={styles.button_text}>
+        <Text style={styles.buttonText_outlined}>Forgot Username/Password</Text>
       </TouchableOpacity>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#33302F',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  text: {
-    color: '#EAE9FC',
-    fontSize: 22,
-    marginBottom: 16,
-  },
-  input: {
-    width: '100%',
-    backgroundColor: '#444',
-    color: '#fff',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-  },
-  button: {
-    backgroundColor: 'transparent',
-    borderColor: '#EAE9FC',
-    borderWidth: 2,
-    borderRadius: 20,
-    height: 40,
-    width: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#EAE9FC',
-    fontSize: 16,
-  },
-});
