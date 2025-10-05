@@ -1,18 +1,23 @@
 import React from 'react';
 import { Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '../store';
-import styles from '../styles';
-
-
+import getStyles from '../styles';
 
 export default function Index() {
+  const styles = getStyles();
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const addCollection = useAppStore((state) => state.addCollection);
 
   return (
-    <View style={styles.container}>
-        <Text style={styles.headline}>Add New Collection</Text>
+    <SafeAreaView style={styles.container}>
+    <View style={styles.collectionsContainer}>
+
+      <Text style={styles.text}>This area is currently under construction.</Text>
+
+
     </View>
+    </SafeAreaView>
   );
 }

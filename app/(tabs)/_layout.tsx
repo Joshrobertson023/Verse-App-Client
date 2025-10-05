@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Text } from 'react-native';
+import { Text, TouchableOpacity } from 'react-native';
 import useAppTheme from '../theme';
 
 export default function TabLayout() {
@@ -11,11 +11,15 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.onBackground,
+        headerShown: true,
         headerStyle: {
           backgroundColor: theme.colors.background,
+          borderBottomColor: theme.colors.outline,
+          borderBottomWidth: 1,
         },
-        headerShadowVisible: false,
-        headerTintColor: theme.colors.onBackground,
+        headerTitleStyle: {
+          color: theme.colors.onBackground,
+        },
         tabBarStyle: {
           backgroundColor: theme.colors.background,
           height: 120,
@@ -26,10 +30,16 @@ export default function TabLayout() {
           borderTopColor: theme.colors.outline,
         },
       }}>
-          <Tabs.Screen 
+        <Tabs.Screen 
         name="index" 
         options={{
           title: 'Collections',
+          headerRight: () => (
+            <TouchableOpacity onPress={() => console.log('Profile')}>
+              <Ionicons name="person-circle-outline" size={36} color={theme.colors.onBackground} />
+
+            </TouchableOpacity>
+          ),
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'file-tray-full' : 'file-tray-full-outline'} color={theme.colors.onSurfaceVariant} size={28} />
           ),

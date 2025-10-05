@@ -1,35 +1,17 @@
-import { StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { Text, View } from 'react-native';
+import { useAppStore } from '../store';
+import getStyles from '../styles';
 
 export default function BibleScreen() {
+  const styles = getStyles();
+  const user = useAppStore((state) => state.user);
+  const collections = useAppStore((state) => state.collections);
+  const addCollection = useAppStore((state) => state.addCollection);
+
     return (
         <View style={styles.container}>
-            <Text style={styles.text}>Bible screen</Text>
+            <Text style={styles.text}>This area is currently under construction.</Text>
         </View>
     )
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#33302F',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: {
-    color: '#EAE9FC',
-  },
-  button: {
-    backgroundColor: 'transparent',
-    borderColor: '#EAE9FC',
-    borderWidth: 2,
-    borderRadius: 20,
-    height: 35,
-    width: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#EAE9FC',
-    fontSize: 16,
-  }
-})

@@ -14,7 +14,15 @@ export default function RootLayout() {
           />
           <Stack.Screen 
             name="collections/addnew"
-            options={{ headerShown: false }} 
+            options={{ 
+              title: 'Collections',
+              headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+             }} 
           />
         </Stack>
       </PaperProvider>
