@@ -1,21 +1,29 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform, View } from 'react-native';
+import { Text } from 'react-native';
+import useAppTheme from '../theme';
 
 export default function TabLayout() {
+  const theme = useAppTheme();
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#cfcfd0ff',
-        tabBarInactiveTintColor: '#cfcfd0ff',
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.onBackground,
         headerStyle: {
-          backgroundColor: '#000000ff',
+          backgroundColor: theme.colors.background,
         },
         headerShadowVisible: false,
-        headerTintColor: '#fff',
+        headerTintColor: theme.colors.onBackground,
         tabBarStyle: {
-          backgroundColor: '#000000ff',
+          backgroundColor: theme.colors.background,
+          height: 120,
+          paddingBottom: 50,
+          paddingTop: 10,
+          paddingLeft: 5,
+          paddingRight: 5,
+          borderTopColor: theme.colors.outline,
         },
       }}>
           <Tabs.Screen 
@@ -23,7 +31,18 @@ export default function TabLayout() {
         options={{
           title: 'Collections',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'file-tray-full' : 'file-tray-full-outline'} color={color} size={24} />
+            <Ionicons name={focused ? 'file-tray-full' : 'file-tray-full-outline'} color={theme.colors.onSurfaceVariant} size={28} />
+          ),
+          tabBarLabel: ({ focused, color }) => (
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: focused ? '800' : '400',
+                color: color,
+                marginTop: 5,
+              }}
+            > Verses
+            </Text>
           ),
         }}
       />
@@ -31,45 +50,40 @@ export default function TabLayout() {
         name="practice" 
         options={{
           title: 'Practice',
+          headerTitle: 'Practice',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} color={color} size={24} />
+            <Ionicons name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} color={theme.colors.onSurfaceVariant} size={28} />
+          ),
+          tabBarLabel: ({ focused, color }) => (
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: focused ? '800' : '400',
+                color: color,
+                marginTop: 5,
+              }}
+            > Practice
+            </Text>
           ),
         }}
       />
           <Tabs.Screen 
             name="search" 
             options={{
-              tabBarLabel: '', // hide label
               tabBarIcon: ({ color, focused }) => (
-                <View
-                  style={focused ? {
-                    width: 45,
-                    height: 45,
-                    borderRadius: 50,
-                    backgroundColor: '#3b3b3bff',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginBottom: Platform.OS === 'ios' ? 10 : -35, // lift above tab bar
-                  } : {
-                    width: 45,
-                    height: 45,
-                    borderRadius: 50,
-                    backgroundColor: '#232323ff',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginBottom: Platform.OS === 'ios' ? 10 : -35, // lift above tab bar
+                <Ionicons name={focused ? 'search' : 'search-outline'} color={theme.colors.onSurfaceVariant} size={28} />
+              ),
+              tabBarLabel: ({ focused, color }) => (
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: focused ? '800' : '400',
+                    color: color,
+                    marginTop: 5,
                   }}
-                >
-              <Ionicons
-                name={'search-outline'}
-                color="#cfcfd0ff"
-                size={30} // bigger icon
-              />
-            </View>
-          ),
-          tabBarItemStyle: {
-            marginTop: -10, // adjust spacing for floating effect
-          },
+                > Search
+                </Text>
+              ),
         }}
       />
       <Tabs.Screen
@@ -77,7 +91,18 @@ export default function TabLayout() {
         options={{
           title: 'Bible',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'book-sharp' : 'book-outline'} color={color} size={24}/>
+            <Ionicons name={focused ? 'book-sharp' : 'book-outline'} color={color} size={28}/>
+          ),
+          tabBarLabel: ({ focused, color }) => (
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: focused ? '800' : '400',
+                color: color,
+                marginTop: 5,
+              }}
+            > Bible
+            </Text>
           ),
         }}
       />
@@ -86,7 +111,18 @@ export default function TabLayout() {
         options={{
           title: 'Explore',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'planet' : 'planet-outline'} color={color} size={24}/>
+              <Ionicons name={focused ? 'planet' : 'planet-outline'} color={color} size={28}/>
+          ),
+          tabBarLabel: ({ focused, color }) => (
+            <Text
+              style={{
+                fontSize: 14,
+                fontWeight: focused ? '800' : '400',
+                color: color,
+                marginTop: 5,
+              }}
+            > Explore
+            </Text>
           ),
         }}
       />
