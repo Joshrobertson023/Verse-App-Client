@@ -1,32 +1,22 @@
 import { Stack } from 'expo-router';
+import React from 'react';
 import { StyleSheet } from 'react-native';
 import { PaperProvider } from 'react-native-paper';
-import { AuthProvider } from '../context/AuthContext';
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
       <PaperProvider>
         <Stack>
           <Stack.Screen 
-            name="login"
+            name="(tabs)"
             options={{ headerShown: false }} 
           />
           <Stack.Screen 
-            name="createaccount"
-            options={{ headerShown: false }} 
-          />
-          <Stack.Screen 
-            name="forgot"
-            options={{ headerShown: false }} 
-          />
-          <Stack.Screen 
-            name="(app)"
+            name="collections/addnew"
             options={{ headerShown: false }} 
           />
         </Stack>
       </PaperProvider>
-    </AuthProvider>
   )
 }
 

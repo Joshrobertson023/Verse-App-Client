@@ -6,12 +6,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#33302F',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 20,
+  },
+  collectionsContainer: {
+    flex: 1,
+    width: '100%',
+  },
+  collectionItem: {
+    height: 100,
+    minHeight: 100,
+    marginTop: 25,
+    outlineColor: '#585858',
+    outlineWidth: 4,
+    borderRadius: 6,
+    display: 'flex',
+    paddingLeft: 15,
+    padding: 10,
+    justifyContent: 'flex-start',
+    width: '100%',
+    marginBottom: 10,
   },
   text: {
     color: colors.primaryWhite,
-    fontSize: 22,
+    fontSize: 20,
     marginBottom: 16,
   },
   inputText: {
@@ -86,6 +104,12 @@ const styles = StyleSheet.create({
   },
   signinButton: {
     marginBottom: 10,
+  },
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
   },
 });
 
