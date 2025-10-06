@@ -25,6 +25,32 @@ export default function RootLayout() {
               headerTintColor: theme.colors.primary,
              }} 
           />
+          <Stack.Screen
+            name="notifications"
+            options={{
+              title: 'Notifications',
+              headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.primary,
+            }}
+          />
+          <Stack.Screen 
+            name="collections/[id]"
+            options={{
+              title: '',
+              headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.primary,
+            }} 
+          />
         </Stack>
       </PaperProvider>
   )

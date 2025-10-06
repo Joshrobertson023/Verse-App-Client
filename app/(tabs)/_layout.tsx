@@ -1,11 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { router, Tabs } from 'expo-router';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
+import { Badge } from 'react-native-paper';
 import useAppTheme from '../theme';
 
 export default function TabLayout() {
   const theme = useAppTheme();
+  const notificationsCount = 3; // Replace with state value
+
   return (
     <Tabs
       screenOptions={{
@@ -33,11 +36,26 @@ export default function TabLayout() {
         <Tabs.Screen 
         name="index" 
         options={{
-          title: 'Home',
+          title: 'VerseApp',
           headerRight: () => (
             <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
-              <TouchableOpacity onPress={() => console.log('Notifications')}>
+              <TouchableOpacity onPress={() => router.push('.././notifications')}>
                 <Ionicons style={{marginTop: 4}} name="notifications-outline" size={32} color={theme.colors.onBackground} />
+                {notificationsCount > 0 && (
+                <Badge
+                  size={18}
+                  style={{
+                    position: 'absolute',
+                    top: -3,
+                    right: -3,
+                    backgroundColor: 'red',
+                    color: 'white',
+                    fontSize: 12,
+                  }}
+                >
+                  {notificationsCount}
+                </Badge>
+              )}
               </TouchableOpacity>
               <TouchableOpacity onPress={() => console.log('Profile')}>
                 <Ionicons name="person-circle-outline" size={36} color={theme.colors.onBackground} />

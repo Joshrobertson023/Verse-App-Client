@@ -41,7 +41,7 @@ export default function getStyles() {
       padding: 10,
       justifyContent: 'flex-start',
       width: '100%',
-      marginBottom: 10,
+      marginBottom: 0,
     },
     text: {
       color: theme.colors.onBackground,
@@ -123,12 +123,6 @@ export default function getStyles() {
     },
     signinButton: {
       marginBottom: 10,
-    },
-    fab: {
-      position: 'absolute',
-      margin: 16,
-      right: 0,
-      bottom: 0,
     },
   });
 

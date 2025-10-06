@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import React from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { FAB } from 'react-native-paper';
 import BoxedSection from '../components/boxedSection';
+import CollectionItem from '../components/collectionItem';
 import Streak from '../components/streak';
 import { useAppStore } from '../store';
 import getStyles from '../styles';
@@ -13,9 +14,11 @@ export default function Index() {
   const collections = useAppStore((state) => state.collections);
   const addCollection = useAppStore((state) => state.addCollection);
 
+
   return (
+    <View style={{flex: 1}}>
     <ScrollView
-        style={styles.scrollContainer} // only styling ScrollView itself
+        style={styles.scrollContainer}
         contentContainerStyle={{ 
           alignItems: 'center',
           justifyContent: 'center',
@@ -32,27 +35,25 @@ export default function Index() {
         <BoxedSection title="7 Verses Overdue" alert={true} />
       </View>
 
-      <Text style={styles.subheading}>My Verses</Text>
+      <Text style={{...styles.subheading, marginTop: 20}}>My Verses</Text>
     <View style={styles.collectionsContainer}>
 
-      {collections.map((c) => (
-        <TouchableOpacity
-          key={c.id}
-          onPress={() => alert('Pressed')}
-        >
-          <View style={styles.collectionItem}>
-            <Text style={styles.text} key={c.id}>{c.title}</Text>
-          </View>
-        </TouchableOpacity>
+      {collections.map((collection) => (
+        <CollectionItem key={collection.id} collection={collection} />
       ))}
 
-
     </View>
+    </ScrollView>
       <FAB
         icon="plus"
-        style={styles.fab}
+        style={{
+          position: 'absolute',
+          right: 20,
+          bottom: 20,
+          zIndex: 10,
+        }}
         onPress={() => router.push('../collections/addnew')}
       />
-    </ScrollView>
+      </View>
   );
 }
