@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { FAB } from 'react-native-paper';
+import { Divider, FAB } from 'react-native-paper';
 import BoxedSection from '../components/boxedSection';
 import CollectionItem from '../components/collectionItem';
 import Streak from '../components/streak';
@@ -31,8 +31,10 @@ export default function Index() {
       <View style={{height: 'auto', width: '100%'}}>
         <Streak/>
         <View style={{height: 20}} />
+        <Divider style={{ marginBottom: 10 }} />
         <BoxedSection title="42 Verses Memorized" />
         <BoxedSection title="7 Verses Overdue" alert={true} />
+        <BoxedSection title="2 Published Collections" />
       </View>
 
       <Text style={{...styles.subheading, marginTop: 20}}>My Verses</Text>

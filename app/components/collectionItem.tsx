@@ -45,10 +45,19 @@ export default function collectionItem({ collection }: CollectionItemProps) {
             <View>
               {/* menu */}
               <Menu
-                visible={menuVisible}
-                onDismiss={closeMenu}
-                anchor={<TouchableOpacity onPress={openMenu}><Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} /></TouchableOpacity>}
-              >
+      visible={menuVisible}
+      onDismiss={closeMenu}
+      anchor={
+        <TouchableOpacity 
+          onPress={(e) => {
+            e.stopPropagation();
+            openMenu();
+          }}
+        >
+          <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
+        </TouchableOpacity>
+      }
+    >
                 <Menu.Item onPress={() => {  }} title="Edit" />
                 <Menu.Item onPress={() => {  }} title="Publish" />
                 <Menu.Item onPress={() => {  }} title="Delete" />

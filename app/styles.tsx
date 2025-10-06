@@ -30,11 +30,11 @@ export default function getStyles() {
       width: '100%',
     },
     collectionItem: {
-      height: 100,
-      minHeight: 100,
+      height: 90,
+      minHeight: 50,
       marginTop: 25,
       outlineColor: theme.colors.outline,
-      outlineWidth: 4,
+      outlineWidth: 2,
       borderRadius: 6,
       display: 'flex',
       paddingLeft: 15,
@@ -65,7 +65,7 @@ export default function getStyles() {
     },
     subheading: {
       color: theme.colors.onBackground,
-      fontSize: 22,
+      fontSize: 26,
     },
     errorMessage: {
       color: colors.error,
