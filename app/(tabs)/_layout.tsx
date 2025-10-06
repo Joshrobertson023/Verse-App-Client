@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Text, TouchableOpacity } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import useAppTheme from '../theme';
 
 export default function TabLayout() {
@@ -33,15 +33,19 @@ export default function TabLayout() {
         <Tabs.Screen 
         name="index" 
         options={{
-          title: 'Collections',
+          title: 'Home',
           headerRight: () => (
-            <TouchableOpacity onPress={() => console.log('Profile')}>
-              <Ionicons name="person-circle-outline" size={36} color={theme.colors.onBackground} />
-
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
+              <TouchableOpacity onPress={() => console.log('Notifications')}>
+                <Ionicons style={{marginTop: 4}} name="notifications-outline" size={32} color={theme.colors.onBackground} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => console.log('Profile')}>
+                <Ionicons name="person-circle-outline" size={36} color={theme.colors.onBackground} />
+              </TouchableOpacity>
+            </View>
           ),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'file-tray-full' : 'file-tray-full-outline'} color={theme.colors.onSurfaceVariant} size={28} />
+            <Ionicons name={focused ? 'home' : 'home-outline'} color={theme.colors.onSurfaceVariant} size={28} />
           ),
           tabBarLabel: ({ focused, color }) => (
             <Text
@@ -51,7 +55,7 @@ export default function TabLayout() {
                 color: color,
                 marginTop: 5,
               }}
-            > Verses
+            > Home
             </Text>
           ),
         }}

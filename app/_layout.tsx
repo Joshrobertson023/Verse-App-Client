@@ -15,13 +15,14 @@ export default function RootLayout() {
           <Stack.Screen 
             name="collections/addnew"
             options={{ 
-              title: 'Collections',
+              title: 'New Collection',
               headerStyle: {
                 backgroundColor: theme.colors.background,
               },
               headerTitleStyle: {
                 color: theme.colors.onBackground,
               },
+              headerTintColor: theme.colors.primary,
              }} 
           />
         </Stack>

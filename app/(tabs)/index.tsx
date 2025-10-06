@@ -1,7 +1,9 @@
 import { router } from 'expo-router';
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { FAB } from 'react-native-paper';
+import BoxedSection from '../components/boxedSection';
+import Streak from '../components/streak';
 import { useAppStore } from '../store';
 import getStyles from '../styles';
 
@@ -12,7 +14,25 @@ export default function Index() {
   const addCollection = useAppStore((state) => state.addCollection);
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+        style={styles.scrollContainer} // only styling ScrollView itself
+        contentContainerStyle={{ 
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingBottom: 50, 
+          paddingHorizontal: 20, 
+          paddingTop: 20,
+          width: '100%'
+        }}
+      >
+      <View style={{height: 'auto', width: '100%'}}>
+        <Streak/>
+        <View style={{height: 20}} />
+        <BoxedSection title="42 Verses Memorized" />
+        <BoxedSection title="7 Verses Overdue" alert={true} />
+      </View>
+
+      <Text style={styles.subheading}>My Verses</Text>
     <View style={styles.collectionsContainer}>
 
       {collections.map((c) => (
@@ -33,6 +53,6 @@ export default function Index() {
         style={styles.fab}
         onPress={() => router.push('../collections/addnew')}
       />
-    </View>
+    </ScrollView>
   );
 }

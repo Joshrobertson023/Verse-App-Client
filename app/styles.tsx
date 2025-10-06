@@ -9,9 +9,21 @@ export default function getStyles() {
     container: {
       flex: 1,
       backgroundColor: theme.colors.background,
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'flex-start',
       paddingHorizontal: 20,
+      paddingTop: 20,
+    },
+    scrollContainer: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    centered: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
     },
     collectionsContainer: {
       flex: 1,
@@ -36,6 +48,10 @@ export default function getStyles() {
       fontSize: 20,
       marginBottom: 16,
     },
+    tinyText: {
+      color: theme.colors.onBackground,
+      fontSize: 16,
+    },
     inputText: {
       color: theme.colors.onBackground,
       fontSize: 16,
@@ -48,9 +64,8 @@ export default function getStyles() {
       top: -96,
     },
     subheading: {
-      color: colors.primaryWhite,
-      fontSize: 26,
-      top: -40,
+      color: theme.colors.onBackground,
+      fontSize: 22,
     },
     errorMessage: {
       color: colors.error,

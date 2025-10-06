@@ -11,7 +11,7 @@ export default function PracticeScreen() {
 
     return (
         <View style={styles.container}>
-                    <Text style={styles.text}>This area is currently under construction.</Text>s
+          <Text style={styles.text}>This area is currently under construction.</Text>
         </View>
     )
 }
