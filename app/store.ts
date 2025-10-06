@@ -46,6 +46,11 @@ import Status from './Enums';
         verses: Verse[];
     }
 
+    export interface Streak {
+        date: string;
+        count: number;
+    }
+
     export class Verse {
         id: number;
         reference: string;
@@ -67,6 +72,7 @@ import Status from './Enums';
     interface AppState {
     user: User | null;
     collections: Collection[];
+    streak: Streak[];
 
     setUser: (user: User | null) => void;
     addCollection: (collection: Collection) => void;
@@ -126,6 +132,24 @@ import Status from './Enums';
         (set, get) => ({
         user: null,
         collections: collections,
+        streak: [ 
+            {
+            date: '2025-10-02',
+            count: 0,
+            },
+            {
+            date: '2025-10-03',
+            count: 5,
+            },
+            {
+            date: '2025-10-04',
+            count: 5,
+            },
+            {
+            date: '2025-10-05',
+            count: 5,
+            },
+        ],
 
         setUser: (user) => set({ user }),
 

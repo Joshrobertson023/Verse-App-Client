@@ -1,16 +1,36 @@
 import React from 'react';
 import { View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
+import { MarkedDates } from 'react-native-calendars/src/types';
 import { Text } from 'react-native-paper';
+import { useAppStore } from '../store';
 import getStyles from '../styles';
 import useAppTheme from '../theme';
 
 const Streak = () => {
   const styles = getStyles();
   const theme = useAppTheme();
-  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const date = new Date();
-  const dayNumber = date.getDay();
+  const streak = useAppStore((state) => state.streak);
+
+  const markedDates = React.useMemo(() => {
+    const markings: MarkedDates = {};
+
+    streak.forEach((streakDay) => {
+        if (streakDay.count > 0) {
+            markings[streakDay.date] = {
+                selected: true,
+                selectedColor: 'green',
+            }
+        } else {
+            markings[streakDay.date] = {
+                selected: true,
+                selectedColor: 'red',
+            }
+        }
+    })
+    return markings;
+  }, [streak, theme.colors.primary]);
 
   return (    
     <View style={{flex: 1, justifyContent: 'center'}}>
@@ -41,18 +61,15 @@ const Streak = () => {
                 monthTextColor: theme.colors.onBackground,
                 indicatorColor: theme.colors.onBackground,
             }}
-        current={'2012-03-01'}
+        current={date.toISOString().split('T')[0]}
         onDayPress={day => {
             console.log('selected day', day);
         }}
-        markedDates={{
-            '2012-03-01': {selected: true, selectedColor: 'green'},
-            '2012-03-02': {selected: true, selectedColor: 'red'},
-            '2012-03-03': {selected: true, selectedColor: 'green'}
-        }}
+        markedDates={markedDates}
         />
 </View>
   )
 }
+
 
 export default Streak;
