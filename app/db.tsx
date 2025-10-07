@@ -1,15 +1,24 @@
-import { User } from "./store";
 
-const getUser = async (username: string): Promise<User | null> => {
+export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
-        const response = await fetch(``);
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
+        const response = await fetch(`http://10.172.8.121:5160/users/${username}`);
+        if (response.ok) {
+            return false;
         }
-        const data = await response.json();
-        return data as User;
+        return true;
     } catch (error) {
-        console.error('Failed to fetch user:', error);
-        return null;
+        throw error;
+    }
+}
+
+export async function checkEmailAvailable(email: string): Promise<boolean> {
+    try {
+        const response = await fetch(`http://10.172.8.121:5160/emails/${email}`);
+        if (response.ok) {
+            return false;
+        }
+        return true;
+    } catch (error) {
+        throw error;
     }
 }

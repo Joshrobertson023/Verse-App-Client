@@ -15,6 +15,10 @@ export default function RootLayout() {
         options={{ headerShown: false }} 
         />
         <Stack.Screen 
+        name="enterEmail"
+        options={{ headerShown: false }}
+        />
+        <Stack.Screen 
         name="login"
         options={{ headerShown: false }} 
         />

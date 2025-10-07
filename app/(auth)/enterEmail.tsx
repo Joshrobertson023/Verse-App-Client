@@ -1,50 +1,25 @@
-import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
-import checkUsernameAvailable from '../db';
+import checkEmailAvailable from '../db';
 import { useAppStore } from '../store';
 import getStyles from '../styles';
 import getAppTheme from '../theme';
 
-export default function CreateUsernameScreen() {
+export default function EnterEmailScreen() {
   const styles = getStyles();
   const loginInfo = useAppStore((state) => state.loginInfo);
-  const username = loginInfo?.username;
-  const firstName = loginInfo?.firstName;
-  const lastName = loginInfo?.lastName;
+  const email = loginInfo?.email;
   const setLoginInfo = useAppStore((state) => state.setLoginInfo);
   const [errorMessage, setErrorMessage] = useState('');
-  const [suggestedUsername, setSuggestedUsername] = useState('');
   const currentLoginInfo = useAppStore.getState().loginInfo;
   const [systemSetUsername, setSystemSetUsername] = useState(true);
   const [loading, setLoading] = useState(false);
   const theme = getAppTheme();
 
-  function suggestUsername() {
-    let username = '';
-    username = username + firstName.trim();
-    username = username + lastName.toLowerCase().trim();
-    username = username + ((Math.floor(Math.random() * (100 - 1) + 1)).toString());
-    return username;
-  }
-
-  useEffect(() => {
-      const newUsername = suggestUsername();
-      setSuggestedUsername(newUsername);
-      setSystemSetUsername(true);
-      setLoginInfo({...loginInfo, ['username']: newUsername});
-    }, []);
-
-const handleTextChange = (field: string, text: string) => {
-    if (systemSetUsername) {
-        setSystemSetUsername(false);
-        setSuggestedUsername('');
-    } else {
-        setSuggestedUsername(text);
-    }
+const handleTextChange = (field: string, text: string) => {    
     setLoginInfo({ ...loginInfo, [field]: text });
     
     if (errorMessage.includes('enter all fields')) setErrorMessage('');
@@ -53,24 +28,23 @@ const handleTextChange = (field: string, text: string) => {
   const nextClick = async () => {
     try {
         setLoading(true);
-        const username = currentLoginInfo?.username.trim();
+        const email = currentLoginInfo?.email.trim();
     
-        if (!username) {
+        if (!email) {
           setErrorMessage('Please enter all fields');
           return;
         }
-    
-        const usernameAvailable = await checkUsernameAvailable(username);
-        if (!usernameAvailable) {
-            alert('Username is already taken, please choose another one.');
+
+        const emailAvailable = await checkEmailAvailable(email);
+        if (!emailAvailable) {
+            alert('Email is already taken, please login or use a different email.');
             setLoading(false);
             return;
         }
         setLoading(false);
-        router.push('/enterEmail');
     } catch (error) {
         console.error(error);
-        alert('An error occurred while checking username availability. Please try again. | ' + error);
+        alert('An error occurred while checking email availability. Please try again. | ' + error);
         setLoading(false);
         return;
     }
@@ -81,8 +55,12 @@ const handleTextChange = (field: string, text: string) => {
         <SafeAreaView style={styles.container}>
                 <Logo />
             <View style={{...styles.centered, marginBottom: 40}}>
-                <Text style={{...styles.text, marginBottom: 20}}>Let's create a username:</Text>
-                <TextInput label="Username" mode="outlined" style={styles.input} value={suggestedUsername} onChangeText={(text) => handleTextChange('username', text)} />
+                <Text style={{...styles.text, marginBottom: 20}}>Enter your email:</Text>
+                <TextInput keyboardType="email-address"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            autoComplete="email"
+                            textContentType="emailAddress" label="Email" mode="outlined" style={styles.input} value={email} onChangeText={(text) => handleTextChange('email', text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_outlined, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
