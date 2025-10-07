@@ -16,7 +16,7 @@ const Streak = () => {
   const markedDates = React.useMemo(() => {
     const markings: MarkedDates = {};
 
-    streak.forEach((streakDay) => {
+    streak?.forEach((streakDay) => {
         if (streakDay.count > 0) {
             markings[streakDay.date] = {
                 selected: true,

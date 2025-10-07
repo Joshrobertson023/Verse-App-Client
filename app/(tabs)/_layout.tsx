@@ -3,11 +3,18 @@ import { router, Tabs } from 'expo-router';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Badge } from 'react-native-paper';
+import { useAppStore } from '../store';
 import useAppTheme from '../theme';
 
 export default function TabLayout() {
   const theme = useAppTheme();
   const notificationsCount = 3; // Replace with state value
+  const user = useAppStore((state) => state.user);
+
+  if (!user) {
+    router.replace('../(auth)/createName');
+    return null;
+  }
 
   return (
     <Tabs

@@ -5,9 +5,13 @@ import useAppTheme from './theme';
 
 export default function RootLayout() {
   const theme = useAppTheme();
-  return (
+  return ( 
       <PaperProvider theme={theme}>
         <Stack>
+          <Stack.Screen 
+            name="(auth)"
+            options={{ headerShown: false }} 
+          />
           <Stack.Screen 
             name="(tabs)"
             options={{ headerShown: false }} 

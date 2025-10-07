@@ -3,7 +3,7 @@ import colors from './colors';
 import useAppTheme from './theme';
 
 
-export default function getStyles() {  
+export default function useStyles() {  
   const theme = useAppTheme();
   return StyleSheet.create({
     container: {
@@ -114,11 +114,11 @@ export default function getStyles() {
       alignItems: 'center',
     },
     buttonText_filled: {
-      color: '#161616ff',
+      color: theme.colors.background,
       fontSize: 16,
     },
     buttonText_outlined: {
-      color: colors.primaryWhite,
+      color: theme.colors.onBackground,
       fontSize: 16,
     },
     signinButton: {
