@@ -1,6 +1,6 @@
 import { Link, router } from 'expo-router';
 import React, { useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
@@ -22,6 +22,7 @@ export default function CreateNameScreen() {
   }
 
   const nextClick = () => {
+    Keyboard.dismiss();
     const firstName = currentLoginInfo?.firstName.trim();
     const lastName = currentLoginInfo?.lastName.trim();
 

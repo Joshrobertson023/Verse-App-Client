@@ -18,6 +18,10 @@ export default function RootLayout() {
         name="enterEmail"
         options={{ headerShown: false }}
         />
+        <Stack.Screen
+        name="createPassword"
+        options={{ headerShown: false }}
+        />
         <Stack.Screen 
         name="login"
         options={{ headerShown: false }} 

@@ -1,54 +1,41 @@
-import React, { useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { router } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
-import checkEmailAvailable from '../db';
 import { useAppStore } from '../store';
 import getStyles from '../styles';
 import getAppTheme from '../theme';
 
 export default function EnterEmailScreen() {
-  const styles = getStyles();
-  const loginInfo = useAppStore((state) => state.loginInfo);
-  const email = loginInfo?.email;
-  const setLoginInfo = useAppStore((state) => state.setLoginInfo);
-  const [errorMessage, setErrorMessage] = useState('');
-  const currentLoginInfo = useAppStore.getState().loginInfo;
-  const [systemSetUsername, setSystemSetUsername] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const theme = getAppTheme();
-
-const handleTextChange = (field: string, text: string) => {    
-    setLoginInfo({ ...loginInfo, [field]: text });
+      const styles = getStyles();
+    const loginInfo = useAppStore((state) => state.loginInfo);
+const setLoginInfo = useAppStore((state) => state.setLoginInfo);
     
-    if (errorMessage.includes('enter all fields')) setErrorMessage('');
-}
+    // Destructure the values from loginInfo
+    const email = loginInfo?.email;
 
-  const nextClick = async () => {
-    try {
-        setLoading(true);
-        const email = currentLoginInfo?.email.trim();
-    
-        if (!email) {
-          setErrorMessage('Please enter all fields');
-          return;
-        }
+    const [errorMessage, setErrorMessage] = useState('');
+    const [loading, setLoading] = useState(false);
+    const theme = getAppTheme();
 
-        const emailAvailable = await checkEmailAvailable(email);
-        if (!emailAvailable) {
-            alert('Email is already taken, please login or use a different email.');
-            setLoading(false);
-            return;
-        }
-        setLoading(false);
-    } catch (error) {
-        console.error(error);
-        alert('An error occurred while checking email availability. Please try again. | ' + error);
-        setLoading(false);
-        return;
-    }
+const handleTextChange = useCallback((field: string, text: string) => {
+  setLoginInfo({ ...loginInfo, [field]: text });
+  if (errorMessage.includes('enter all fields')) setErrorMessage('');
+}, [loginInfo, errorMessage]);
+
+
+const nextClick = useCallback(async () => {
+  try {
+    Keyboard.dismiss();
+    router.push('/createPassword');
+  } catch (error) {
+    console.error(error);
+    alert('An error occurred while checking email availability. Please try again. | ' + error);
+    setLoading(false);
   }
+}, []);
 
 
     return (
