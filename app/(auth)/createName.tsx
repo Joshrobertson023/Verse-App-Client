@@ -25,14 +25,12 @@ export default function CreateNameScreen() {
     const firstName = currentLoginInfo?.firstName.trim();
     const lastName = currentLoginInfo?.lastName.trim();
 
-    // 
-
     if (!firstName || !lastName) {
       setErrorMessage('Please enter all fields');
       return;
     }
 
-    router.push('/(auth)/createUsername');
+    router.push('/createUsername');
   }
 
 
