@@ -44,3 +44,18 @@ export async function loginUser(user: User): Promise<User> {
         throw error;
     }
 }
+
+export async function getUserPasswordHash(username: string): Promise<string | null> {
+    try {
+        const response = await fetch(`http://10.172.8.121:5160/users/password/${username}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch password hash');
+        }
+    } catch (error) {
+        throw error;
+    }
+}

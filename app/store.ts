@@ -20,8 +20,8 @@ userVerses: UserVerse[];
 
 export interface User {
     username: string;
-    firstName: string;
-    lastName: string;
+    firstName?: string;
+    lastName?: string;
     email?: string;
     authToken?: string;
     collectionsSort?: number;

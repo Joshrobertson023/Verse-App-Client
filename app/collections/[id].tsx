@@ -13,7 +13,7 @@ export default function Index() {
   const params = useLocalSearchParams();
 
     const collection = useAppStore((state) =>
-        state.collections.find((c) => c.id.toString() === params.id)
+        state.collections.find((c) => c.id?.toString() === params.id)
   );
 
     const navigation = useNavigation();
