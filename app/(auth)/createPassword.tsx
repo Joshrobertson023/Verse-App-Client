@@ -1,9 +1,11 @@
+import { router } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
-import { useAppStore } from '../store';
+import { createUser, loginUser } from '../db';
+import { useAppStore, User } from '../store';
 import getStyles from '../styles';
 import getAppTheme from '../theme';
 
@@ -17,11 +19,12 @@ export default function CreatePasswordScreen() {
   const [loading, setLoading] = useState(false);
   const theme = getAppTheme();
   const currentLoginInfo = useAppStore.getState().loginInfo;
+  const user = useAppStore((state) => state.user);
+  const setUser = useAppStore((state) => state.setUser);
 
 const handleTextChange = useCallback((field: string, text: string) => {    
     setLoginInfo({ ...loginInfo, [field]: text });
     
-    // Note: setErrorMessage is used implicitly by checking errorMessage
     if (errorMessage.includes('enter all fields')) setErrorMessage('');
 }, [setLoginInfo, loginInfo, errorMessage, setErrorMessage]);
 
@@ -29,7 +32,6 @@ const nextClick = useCallback(async () => {
     try {
         Keyboard.dismiss();
 
-        // The currentLoginInfo variable is retrieved outside of the callback
         const password = currentLoginInfo?.password;
 
         setLoading(true);
@@ -46,7 +48,21 @@ const nextClick = useCallback(async () => {
             return;
         }
 
-        alert('Account data: ' + JSON.stringify(loginInfo));
+        const newUser: User = {
+            username: currentLoginInfo?.username || '',
+            email: currentLoginInfo?.email || '',
+            firstName: currentLoginInfo?.firstName || '',
+            lastName: currentLoginInfo?.lastName || '',
+            hashedPassword: password, // todo: hash password
+        }
+
+        await createUser(newUser);
+        const loggedInUser = await loginUser(newUser);
+        setUser(loggedInUser);
+        // Add auth token to local storage
+        // Create logic for logging user in with token on app start
+        setLoading(false);
+        router.push('/');
     } catch (error) {
         console.error(error);
         alert('An error occurred while checking email availability. Please try again. | ' + error);

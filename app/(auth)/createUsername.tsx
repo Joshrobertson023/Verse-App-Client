@@ -29,7 +29,6 @@ export default function CreateUsernameScreen() {
 
 const suggestUsername = useCallback(() => {
     let username = '';
-    // Use optional chaining just in case
     username = username + (firstName?.trim() || ''); 
     username = username + (lastName?.toLowerCase().trim() || '');
     username = username + ((Math.floor(Math.random() * (100 - 1) + 1)).toString());
@@ -37,10 +36,6 @@ const suggestUsername = useCallback(() => {
 }, [firstName, lastName]);
 
 useEffect(() => {
-    // Only run on mount, as desired by the original code, 
-    // but React requires including dependencies used in the effect.
-    // Since setLoginInfo and suggestUsername are defined in the component scope, 
-    // they must be included.
     const newUsername = suggestUsername();
     setSuggestedUsername(newUsername.trim());
     setSystemSetUsername(true);
@@ -63,16 +58,14 @@ const nextClick = useCallback(async () => {
     try {
         Keyboard.dismiss();
         setLoading(true);
-        // currentLoginInfo is from getState(), so it's a dependency
         const username = currentLoginInfo?.username.trim();
     
         if (!username) {
             setErrorMessage('Please enter all fields');
-            setLoading(false); // Make sure to turn off loading on error path
+            setLoading(false);
             return;
         }
     
-        // checkUsernameAvailable is an imported function, usually stable, but include it if you're not sure
         const usernameAvailable = await checkUsernameAvailable(username); 
         if (!usernameAvailable) {
             setDialogVisible(true);
@@ -80,7 +73,6 @@ const nextClick = useCallback(async () => {
             return;
         }
         setLoading(false);
-        // router.push is an imported function, usually stable, but include it if you're not sure
         router.push('/enterEmail');
     } catch (error) {
         console.error(error);

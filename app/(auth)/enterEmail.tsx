@@ -12,8 +12,6 @@ export default function EnterEmailScreen() {
       const styles = getStyles();
     const loginInfo = useAppStore((state) => state.loginInfo);
 const setLoginInfo = useAppStore((state) => state.setLoginInfo);
-    
-    // Destructure the values from loginInfo
     const email = loginInfo?.email;
 
     const [errorMessage, setErrorMessage] = useState('');
