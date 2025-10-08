@@ -1,34 +1,35 @@
 import { router } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BackButton from '../components/backButton';
 import checkUsernameAvailable, { getUserPasswordHash, loginUser } from '../db';
 import { useAppStore, User } from '../store';
-import getStyles from '../styles';
-import getAppTheme from '../theme';
+import useStyles from '../styles';
+import useAppTheme from '../theme';
 
 export default function LoginScreen() {
-  const styles = getStyles();
+  const styles = useStyles();
   const loginInfo = useAppStore((state) => state.loginInfo);
   const password = loginInfo?.password;
   const username = loginInfo?.username;
   const setLoginInfo = useAppStore((state) => state.setLoginInfo);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const theme = getAppTheme();
+  const theme = useAppTheme();
   const currentLoginInfo = useAppStore.getState().loginInfo;
-  const user = useAppStore((state) => state.user) ?? { username: '' };
-    const setUser = useAppStore((state) => state.setUser);
+  const user = useAppStore((state) => state.user);
+  const setUser = useAppStore((state) => state.setUser);
 
-const handleTextChange = useCallback((field: string, text: string) => {    
+const handleTextChange = (field: string, text: string) => {    
     setLoginInfo({ ...loginInfo, [field]: text });
     
     if (errorMessage.includes('enter all fields')) setErrorMessage('');
-}, [setLoginInfo, loginInfo, errorMessage, setErrorMessage]);
+};
 
-const nextClick = useCallback(async () => {
+const nextClick = async () => {
     try {
         Keyboard.dismiss();
 
@@ -64,8 +65,9 @@ const nextClick = useCallback(async () => {
 
         const loggedInUser = await loginUser(newUser);
         setUser(loggedInUser);
-        // Add auth token to local storage
-        // Create logic for logging user in with token on app start
+
+        await SecureStore.setItemAsync('userToken', loggedInUser.authToken || '');
+
         setLoading(false);
         router.push('/');
     } catch (error) {
@@ -74,7 +76,7 @@ const nextClick = useCallback(async () => {
         setLoading(false);
         return;
     }
-}, [currentLoginInfo, setLoading, setErrorMessage, loginInfo]);
+};
 
 
     return (

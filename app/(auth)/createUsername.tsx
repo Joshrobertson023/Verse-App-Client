@@ -1,65 +1,59 @@
 import { router } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Dialog, Portal, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
 import checkUsernameAvailable from '../db';
 import { useAppStore } from '../store';
-import getStyles from '../styles';
-import getAppTheme from '../theme';
+import useStyles from '../styles';
+import useAppTheme from '../theme';
 
 export default function CreateUsernameScreen() {
-  const styles = getStyles();
+  const styles = useStyles();
   const loginInfo = useAppStore((state) => state.loginInfo);
-  const username = loginInfo?.username;
   const firstName = loginInfo?.firstName;
   const lastName = loginInfo?.lastName;
   const setLoginInfo = useAppStore((state) => state.setLoginInfo);
   const [errorMessage, setErrorMessage] = useState('');
-  const [suggestedUsername, setSuggestedUsername] = useState('');
-  const currentLoginInfo = useAppStore.getState().loginInfo;
+  const [username, setUsername] = useState('');
   const [systemSetUsername, setSystemSetUsername] = useState(true);
   const [loading, setLoading] = useState(false);
-  const theme = getAppTheme();
+  const theme = useAppTheme();
   const [dialogVisible, setDialogVisible] = useState(false);
 
   
-  const hideDialog = useCallback(() => setDialogVisible(false), [setDialogVisible]);
+  const hideDialog = () => setDialogVisible(false);
 
-const suggestUsername = useCallback(() => {
+const suggestUsername = () => {
     let username = '';
     username = username + (firstName?.trim() || ''); 
     username = username + (lastName?.toLowerCase().trim() || '');
     username = username + ((Math.floor(Math.random() * (100 - 1) + 1)).toString());
     return username;
-}, [firstName, lastName]);
+};
 
 useEffect(() => {
     const newUsername = suggestUsername();
-    setSuggestedUsername(newUsername.trim());
+    setUsername(newUsername.trim());
     setSystemSetUsername(true);
-    setLoginInfo({...loginInfo, ['username']: newUsername.trim()});
-}, [suggestUsername, setLoginInfo]);
+}, []);
 
-const handleTextChange = useCallback((field: string, text: string) => {
+const handleTextChange = (field: string, text: string) => {
     if (systemSetUsername) {
         setSystemSetUsername(false);
-        setSuggestedUsername('');
+        setUsername('');
     } else {
-        setSuggestedUsername(text);
+        setUsername(text);
     }
-    setLoginInfo({ ...loginInfo, [field]: text.trim() });
-    
     if (errorMessage.includes('enter all fields')) setErrorMessage('');
-}, [systemSetUsername, setSystemSetUsername, setSuggestedUsername, setLoginInfo, loginInfo, errorMessage, setErrorMessage]);
+};
 
-const nextClick = useCallback(async () => {
+const nextClick = async () => {
     try {
         Keyboard.dismiss();
         setLoading(true);
-        const username = currentLoginInfo?.username.trim();
-    
+
         if (!username) {
             setErrorMessage('Please enter all fields');
             setLoading(false);
@@ -73,6 +67,8 @@ const nextClick = useCallback(async () => {
             return;
         }
         setLoading(false);
+        
+        setLoginInfo({ ...loginInfo, ['username']: username.trim() });
         router.push('/enterEmail');
     } catch (error) {
         console.error(error);
@@ -80,7 +76,7 @@ const nextClick = useCallback(async () => {
         setLoading(false);
         return;
     }
-}, [currentLoginInfo, setLoading, setErrorMessage, setDialogVisible, router.push]);
+};
 
 
     return (
@@ -100,7 +96,7 @@ const nextClick = useCallback(async () => {
                 </Dialog>
                 </Portal>
                 <Text style={{...styles.text, marginBottom: 20}}>Let's create a username:</Text>
-                <TextInput label="Username" mode="outlined" style={styles.input} value={suggestedUsername} onChangeText={(text) => handleTextChange('username', text)} />
+                <TextInput label="Username" mode="outlined" style={styles.input} value={username} onChangeText={(text) => handleTextChange('username', text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_outlined, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (

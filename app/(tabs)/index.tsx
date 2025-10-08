@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { Divider, FAB } from 'react-native-paper';
 import BoxedSection from '../components/boxedSection';
@@ -13,6 +13,11 @@ export default function Index() {
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const addCollection = useAppStore((state) => state.addCollection);
+  const homePageStats = useAppStore((state) => state.homePageStats);
+
+  useEffect(() => { // This runs even if the user is not logged in
+    alert('Running use effect');
+  }, []);
 
 
   return (
@@ -32,9 +37,9 @@ export default function Index() {
         <Streak/>
         <View style={{height: 20}} />
         <Divider style={{ marginBottom: 10 }} />
-        <BoxedSection title="42 Verses Memorized" />
-        <BoxedSection title="7 Verses Overdue" alert={true} />
-        <BoxedSection title="2 Published Collections" />
+        <BoxedSection title={`${homePageStats.totalMemorized} Verses Memorized`} />
+        <BoxedSection title={`${homePageStats.overdue} Verses Overdue`} alert={true} />
+        <BoxedSection title={`${homePageStats.published} Published Collections`} />
       </View>
 
       <Text style={{...styles.subheading, marginTop: 20}}>My Verses</Text>

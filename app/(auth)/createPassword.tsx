@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import * as SecureStore from 'expo-secure-store';
+import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,28 +12,17 @@ import getAppTheme from '../theme';
 
 export default function CreatePasswordScreen() {
   const styles = getStyles();
-  const loginInfo = useAppStore((state) => state.loginInfo);
-  const password = loginInfo?.password;
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const setLoginInfo = useAppStore((state) => state.setLoginInfo);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const theme = getAppTheme();
-  const currentLoginInfo = useAppStore.getState().loginInfo;
-  const user = useAppStore((state) => state.user);
+  const loginInfo = useAppStore.getState().loginInfo;
   const setUser = useAppStore((state) => state.setUser);
 
-const handleTextChange = useCallback((field: string, text: string) => {    
-    setLoginInfo({ ...loginInfo, [field]: text });
-    
-    if (errorMessage.includes('enter all fields')) setErrorMessage('');
-}, [setLoginInfo, loginInfo, errorMessage, setErrorMessage]);
-
-const nextClick = useCallback(async () => {
+const nextClick = async () => {
     try {
         Keyboard.dismiss();
-
-        const password = currentLoginInfo?.password;
 
         setLoading(true);
 
@@ -49,18 +39,17 @@ const nextClick = useCallback(async () => {
         }
 
         const newUser: User = {
-            username: currentLoginInfo?.username || '',
-            email: currentLoginInfo?.email || '',
-            firstName: currentLoginInfo?.firstName || '',
-            lastName: currentLoginInfo?.lastName || '',
+            username: loginInfo?.username || '',
+            email: loginInfo?.email || '',
+            firstName: loginInfo?.firstName || '',
+            lastName: loginInfo?.lastName || '',
             hashedPassword: password, // todo: hash password
         }
 
         await createUser(newUser);
         const loggedInUser = await loginUser(newUser);
         setUser(loggedInUser);
-        // Add auth token to local storage
-        // Create logic for logging user in with token on app start
+        await SecureStore.setItemAsync('userToken', loggedInUser.authToken || '');
         setLoading(false);
         router.push('/');
     } catch (error) {
@@ -69,7 +58,7 @@ const nextClick = useCallback(async () => {
         setLoading(false);
         return;
     }
-}, [currentLoginInfo, confirmPassword, setLoading, setErrorMessage, loginInfo]);
+};
 
 
     return (
@@ -82,7 +71,7 @@ const nextClick = useCallback(async () => {
                             autoCorrect={false}
                             autoComplete="password"
                             textContentType="password" label="Password" mode="outlined" style={styles.input} value={password}
-                            onChangeText={(text) => handleTextChange('password', text)} />
+                            onChangeText={(text) => setPassword(text)} />
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
                             autoCorrect={false}

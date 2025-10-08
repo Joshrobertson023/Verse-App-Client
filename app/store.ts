@@ -7,7 +7,7 @@ export interface ErrorMessage {
 }
 
 export interface Collection {
-id?: number;
+id: number;
 title: string;
 author?: string;
 visibility?: string;
@@ -72,16 +72,10 @@ export interface loginInfo {
     email: string;
 }
 
-interface AppState {
-    user: User | null;
-    collections: Collection[];
-    streak: Streak[] | null;
-    loginInfo: loginInfo;
-
-    setLoginInfo: (info: loginInfo) => void;
-    setUser: (user: User | null) => void;
-    addCollection: (newCollection: Collection) => Promise<void>;
-    removeCollection: (id: number) => void;
+export interface homePageStats {
+    totalMemorized: number;
+    overdue: number;
+    published: number;
 }
 
 const defaultCollection: Collection = {
@@ -89,6 +83,7 @@ const defaultCollection: Collection = {
     visibility: 'private',
     userVerses: [],
     dateCreated: new Date(),
+    id: 0,
 };
 
 const emptyLoginInfo: loginInfo = {
@@ -100,46 +95,43 @@ const emptyLoginInfo: loginInfo = {
     confirmPassword: '',
 };
 
-export const useAppStore = create<AppState>()((set, get) => ({
-    user: null,
+export const loggedOutUser: User = {
+    username: '',
+}
+
+interface AppState {
+  user: User;
+  collections: Collection[];
+  streak: Streak[];
+  loginInfo: loginInfo;
+  homePageStats: homePageStats;
+
+    getHomePageStats: (user: User) => void;
+  setUser: (user: User) => void;
+  addCollection: (newCollection: Collection) => void;
+  removeCollection: (id: number) => void;
+  updateCollection: (updated: Collection) => void;
+  setLoginInfo: (info: loginInfo) => void;
+  setStreak: (streak: Streak[]) => void;
+}
+
+export const useAppStore = create<AppState>((set) => ({
+    user: loggedOutUser,
     collections: [defaultCollection],
-    streak: null,
+    streak: [],
     loginInfo: emptyLoginInfo,
+    homePageStats: { totalMemorized: 0, overdue: 0, published: 0 },
 
-    setLoginInfo: (info) => set({ loginInfo: info }),
-
-    setUser: (user) => set({ user }),
-
-    addCollection: async (newCollectiondata) => {
-        const state = get();
-        const author = state.user?.username || 'You';
-        const currentDate = new Date();
-        const newCollection: Collection = {
-            title: newCollectiondata.title,
-            author: author,
-            dateCreated: currentDate,
-            userVerses: [],
-            visibility: newCollectiondata.visibility || 'private',
-        };
-
-        try {
-            const dateString = currentDate.toISOString();
-
-            await 
-
-            set((state) => ({
-                collections: [...(state.collections || []), newCollection],
-            }));
-        }
-        catch (error) {
-            console.error(error);
-            throw error;
-        }
+    getHomePageStats: async (user: User) => {
+        // Get from API verses memorized, overdue, and published
     },
-
-    removeCollection: (id) =>
-        set({
-            collections: get().collections?.filter((c) => c.id !== id) || null,
-        }),
-    }),
-);
+    setUser: (user: User) => set({ user }),
+    addCollection: (newCollection: Collection) => set((state: { collections: Collection[] }) => ({collections: [...state.collections, newCollection]})),
+    removeCollection: (id: number) => set((state: { collections: Collection[] }) => ({collections: state.collections.filter((c) => c.id !== id)})),
+    updateCollection: (updated: Collection) => set((state: { collections: Collection[] }) => ({
+    collections: state.collections.map((c) =>
+        c.id === updated.id ? updated : c
+    ),})), // const updateCollection = useAppStore((s) => s.updateCollection);
+    setLoginInfo: (info: loginInfo) => set({ loginInfo: info }),
+    setStreak: (streak: Streak[]) => set({ streak }),
+}))

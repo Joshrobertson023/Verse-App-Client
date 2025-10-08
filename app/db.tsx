@@ -45,6 +45,21 @@ export async function loginUser(user: User): Promise<User> {
     }
 }
 
+export async function loginUserWithToken(token: string): Promise<User> {
+    try {
+        const response = await fetch(`http://10.172.8.121:5160/users/token/${token}`);
+        if (response.ok) {
+            const loggedInUser: User = await response.json();
+            return loggedInUser;
+        } else {
+            const responseText = await response.text();
+            throw new Error('Login with token failed' + responseText);
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
 export async function getUserPasswordHash(username: string): Promise<string | null> {
     try {
         const response = await fetch(`http://10.172.8.121:5160/users/password/${username}`);

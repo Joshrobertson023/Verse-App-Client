@@ -5,34 +5,28 @@ import { TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
 import { useAppStore } from '../store';
-import getStyles from '../styles';
+import useStyles from '../styles';
 
 export default function CreateNameScreen() {
-  const styles = getStyles();
+  const styles = useStyles();
   const loginInfo = useAppStore((state) => state.loginInfo);
-  const firstName = loginInfo?.firstName;
-  const lastName = loginInfo?.lastName;
   const setLoginInfo = useAppStore((state) => state.setLoginInfo);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const currentLoginInfo = useAppStore.getState().loginInfo;
-
-  const handleTextChange = (field: string, text: string) => {
-    setLoginInfo({ ...loginInfo, [field]: text });
-    if (errorMessage.includes('enter all fields')) setErrorMessage('');
-  }
 
   const nextClick = () => {
     Keyboard.dismiss();
-    const firstName = currentLoginInfo?.firstName.trim();
-    const lastName = currentLoginInfo?.lastName.trim();
 
-    if (!firstName || !lastName) {
+    if (!firstName.trim() || !lastName.trim()) {
       setErrorMessage('Please enter all fields');
       return;
     }
 
+    setLoginInfo({ ...loginInfo, firstName: firstName.trim(), lastName: lastName.trim() });
+
     router.push('/createUsername');
-  }
+  };
 
 
     return (
@@ -40,14 +34,23 @@ export default function CreateNameScreen() {
                 <Logo />
             <View style={{...styles.centered, marginBottom: 40}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Welcome! What's your name?</Text>
-                <TextInput label="First Name" mode="outlined" style={styles.input} value={firstName} onChangeText={(text) => handleTextChange('firstName', text)} />
-                <TextInput label="Last Name" mode="outlined" style={styles.input} value={lastName} onChangeText={(text) => handleTextChange('lastName', text)}/>
+                <TextInput label="First Name" mode="outlined" style={styles.input} value={firstName} 
+                    onChangeText={(text) => { 
+                        setFirstName(text); 
+                        if (errorMessage.includes('enter all fields')) setErrorMessage(''); 
+                    }} />
+                <TextInput label="Last Name" mode="outlined" style={styles.input} value={lastName} 
+                    onChangeText={(text) => { 
+                        setLastName(text); 
+                        if (errorMessage.includes('enter all fields')) setErrorMessage(''); 
+                    }} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_outlined, marginTop: 12}} onPress={() => {nextClick()}}>
                     <Text style={styles.buttonText_outlined}>Next</Text>
                 </TouchableOpacity>
-                <Link href="/(auth)/login" style={{marginTop: 20}}>
-                    <Text style={styles.tinyText}>Already have an account?</Text>
+                <Text style={{...styles.tinyText, marginTop: 20}}>Already have an account?</Text>
+                <Link href="/(auth)/login" style={{marginTop: 0, paddingVertical: 10}}>
+                    <Text style={{...styles.tinyText, color: '#648dffff'}}>Sign In</Text>
                 </Link>
             </View>
         </SafeAreaView>

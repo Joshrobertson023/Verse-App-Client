@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, Tabs } from 'expo-router';
+import { router, Tabs, useRootNavigationState } from 'expo-router';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Badge } from 'react-native-paper';
@@ -10,11 +10,14 @@ export default function TabLayout() {
   const theme = useAppTheme();
   const notificationsCount = 3; // Replace with state value
   const user = useAppStore((state) => state.user);
+  const rootNavigationState = useRootNavigationState();
 
-  if (!user) {
+React.useEffect(() => {
+  if (!rootNavigationState?.key) return; // ✅ Wait until ready
+  if (user && user.username === '') {
     router.replace('../(auth)/createName');
-    return null;
   }
+}, [rootNavigationState?.key, user]);
 
   return (
     <Tabs
@@ -64,7 +67,7 @@ export default function TabLayout() {
                 </Badge>
               )}
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => console.log('Profile')}>
+              <TouchableOpacity onPress={() => router.push('../user/profile')}>
                 <Ionicons name="person-circle-outline" size={36} color={theme.colors.onBackground} />
               </TouchableOpacity>
             </View>

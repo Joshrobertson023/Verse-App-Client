@@ -1,39 +1,36 @@
 import { router } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
 import { useAppStore } from '../store';
-import getStyles from '../styles';
-import getAppTheme from '../theme';
+import useStyles from '../styles';
+import useAppTheme from '../theme';
 
 export default function EnterEmailScreen() {
-      const styles = getStyles();
+    const styles = useStyles();
     const loginInfo = useAppStore((state) => state.loginInfo);
-const setLoginInfo = useAppStore((state) => state.setLoginInfo);
+    const setLoginInfo = useAppStore((state) => state.setLoginInfo);
     const email = loginInfo?.email;
-
+    const [localEmail, setLocalEmail] = useState(email);
     const [errorMessage, setErrorMessage] = useState('');
     const [loading, setLoading] = useState(false);
-    const theme = getAppTheme();
-
-const handleTextChange = useCallback((field: string, text: string) => {
-  setLoginInfo({ ...loginInfo, [field]: text });
-  if (errorMessage.includes('enter all fields')) setErrorMessage('');
-}, [loginInfo, errorMessage]);
+    const theme = useAppTheme();
 
 
-const nextClick = useCallback(async () => {
+const nextClick = async () => {
   try {
     Keyboard.dismiss();
+    if (errorMessage.includes('enter all fields')) setErrorMessage('');
+    setLoginInfo({ ...loginInfo, ['email']: localEmail.trim() });
     router.push('/createPassword');
   } catch (error) {
     console.error(error);
     alert('An error occurred while checking email availability. Please try again. | ' + error);
     setLoading(false);
   }
-}, []);
+};
 
 
     return (
@@ -45,7 +42,7 @@ const nextClick = useCallback(async () => {
                             autoCapitalize="none"
                             autoCorrect={false}
                             autoComplete="email"
-                            textContentType="emailAddress" label="Email" mode="outlined" style={styles.input} value={email} onChangeText={(text) => handleTextChange('email', text)} />
+                            textContentType="emailAddress" label="Email" mode="outlined" style={styles.input} value={localEmail} onChangeText={(text) => setLocalEmail(text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_outlined, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
