@@ -22,7 +22,7 @@ React.useEffect(() => {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: theme.colors.primary,
+        tabBarActiveTintColor: theme.colors.onBackground,
         tabBarInactiveTintColor: theme.colors.onBackground,
         headerShown: true,
         headerStyle: {
@@ -30,9 +30,11 @@ React.useEffect(() => {
           borderBottomColor: theme.colors.outline,
           borderBottomWidth: 1,
         },
+        headerShadowVisible: false,
         headerTitleStyle: {
           color: theme.colors.onBackground,
         },
+        headerTintColor: theme.colors.onBackground,
         tabBarStyle: {
           backgroundColor: theme.colors.background,
           height: 120,
@@ -73,7 +75,7 @@ React.useEffect(() => {
             </View>
           ),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} color={theme.colors.onSurfaceVariant} size={28} />
+            <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={28} />
           ),
           tabBarLabel: ({ focused, color }) => (
             <Text
@@ -94,7 +96,7 @@ React.useEffect(() => {
           title: 'Practice',
           headerTitle: 'Practice',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} color={theme.colors.onSurfaceVariant} size={28} />
+            <Ionicons name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} color={color} size={28} />
           ),
           tabBarLabel: ({ focused, color }) => (
             <Text
@@ -113,7 +115,7 @@ React.useEffect(() => {
             name="search" 
             options={{
               tabBarIcon: ({ color, focused }) => (
-                <Ionicons name={focused ? 'search' : 'search-outline'} color={theme.colors.onSurfaceVariant} size={28} />
+                <Ionicons name={focused ? 'search' : 'search-outline'} color={color} size={28} />
               ),
               tabBarLabel: ({ focused, color }) => (
                 <Text

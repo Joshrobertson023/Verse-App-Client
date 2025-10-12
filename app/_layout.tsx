@@ -3,6 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import React from 'react';
 import { Text, View } from 'react-native';
+import 'react-native-gesture-handler'; // must be at the top
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 import { loginUserWithToken } from './db';
 import { useAppStore } from './store';
@@ -73,69 +75,75 @@ React.useEffect(() => {
 
 
   return ( 
-      <PaperProvider theme={theme}>
-        <Stack>
-          <Stack.Screen 
-            name="(tabs)"
-            options={{ headerShown: false }} 
-          />
-          <Stack.Screen 
-            name="(auth)"
-            options={{ headerShown: false }} 
-          />
-          <Stack.Screen 
-            name="collections/addnew"
-            options={{ 
-              title: 'New Collection',
-              headerStyle: {
-                backgroundColor: theme.colors.background,
-              },
-              headerTitleStyle: {
-                color: theme.colors.onBackground,
-              },
-              headerTintColor: theme.colors.primary,
-             }} 
-          />
+    <GestureHandlerRootView style={{flex: 1}}>
+        <PaperProvider theme={theme}>
+          <Stack>
+            <Stack.Screen 
+              name="(tabs)"
+              options={{ headerShown: false }} 
+            />
+            <Stack.Screen 
+              name="(auth)"
+              options={{ headerShown: false }} 
+            />
+            <Stack.Screen 
+              name="collections/addnew"
+              options={{ 
+                title: 'New Collection',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }} 
+            />
+            <Stack.Screen
+              name="notifications"
+              options={{
+                title: 'Notifications',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }}
+            />
+            <Stack.Screen 
+              name="collections/[id]"
+              options={{
+                title: '',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }} 
+            />
           <Stack.Screen
-            name="notifications"
-            options={{
-              title: 'Notifications',
-              headerStyle: {
-                backgroundColor: theme.colors.background,
-              },
-              headerTitleStyle: {
-                color: theme.colors.onBackground,
-              },
-              headerTintColor: theme.colors.primary,
-            }}
-          />
-          <Stack.Screen 
-            name="collections/[id]"
-            options={{
-              title: '',
-              headerStyle: {
-                backgroundColor: theme.colors.background,
-              },
-              headerTitleStyle: {
-                color: theme.colors.onBackground,
-              },
-              headerTintColor: theme.colors.primary,
-            }} 
-          />
-        <Stack.Screen
-        name="user/profile"
-        options={{
-          title: 'Profile',
-              headerStyle: {
-                backgroundColor: theme.colors.background,
-              },
-              headerTitleStyle: {
-                color: theme.colors.onBackground,
-              },
-              headerTintColor: theme.colors.primary,
-            }} 
-          />
-      </Stack>
-    </PaperProvider>
+          name="user/profile"
+          options={{
+            title: 'Profile',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }} 
+            />
+        </Stack>
+      </PaperProvider>
+    </GestureHandlerRootView>
   )
 }

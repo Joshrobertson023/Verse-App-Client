@@ -83,7 +83,7 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={{...styles.centered, marginBottom: 40}}>
+            <View style={{...styles.centered, marginBottom: 150}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Login to Your Account:</Text>
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
@@ -97,13 +97,13 @@ const nextClick = async () => {
                             textContentType="password" label="Password" mode="outlined" style={styles.input} value={password} 
                             onChangeText={(text) => handleTextChange('password', text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
-                <TouchableOpacity style={{...styles.button_outlined, marginTop: 12}} onPress={() => {nextClick()}}>
+                <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
-                        <Text style={styles.buttonText_outlined}>
-                            <ActivityIndicator animating={true} color={theme.colors.onBackground} />
+                        <Text style={styles.buttonText_filled}>
+                            <ActivityIndicator animating={true} color={theme.colors.background} />
                         </Text> 
                     ) : (
-                        <Text style={styles.buttonText_outlined}>Login</Text>
+                        <Text style={styles.buttonText_filled}>Login</Text>
                     )}
                 </TouchableOpacity>
             </View>

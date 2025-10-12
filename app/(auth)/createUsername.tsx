@@ -80,7 +80,7 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={{...styles.centered, marginBottom: 40}}>
+            <View style={{...styles.centered, marginBottom: 150}}>
                 <Portal>
                 <Dialog style={{backgroundColor: theme.colors.background, outlineWidth: 2, outlineColor: theme.colors.onBackground, zIndex: 10}} visible={dialogVisible} onDismiss={hideDialog}>
                     <Dialog.Content>
@@ -96,13 +96,13 @@ const nextClick = async () => {
                 <Text style={{...styles.text, marginBottom: 20}}>Let's create a username:</Text>
                 <TextInput label="Username" mode="outlined" style={styles.input} value={username} onChangeText={(text) => handleTextChange('username', text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
-                <TouchableOpacity style={{...styles.button_outlined, marginTop: 12}} onPress={() => {nextClick()}}>
+                <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
-                        <Text style={styles.buttonText_outlined}>
-                            <ActivityIndicator animating={true} color={theme.colors.onBackground} />
+                        <Text style={styles.buttonText_filled}>
+                            <ActivityIndicator animating={true} color={theme.colors.background} />
                         </Text> 
                     ) : (
-                        <Text style={styles.buttonText_outlined}>Next</Text>
+                        <Text style={styles.buttonText_filled}>Next</Text>
                     )}
                 </TouchableOpacity>
             </View>

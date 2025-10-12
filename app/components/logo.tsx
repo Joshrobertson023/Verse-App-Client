@@ -7,7 +7,7 @@ const Logo = () => {
 
     return (
         <Text style={{ fontSize: 32, fontWeight: 'bold', color: theme.colors.onBackground,
-            textAlign: 'center', marginBottom: 0, width: '100%', top: 130, position: 'relative', zIndex: 1
+            textAlign: 'center', marginBottom: 0, width: '100%', top: 50, position: 'relative', zIndex: 1
          }}>Logo Goes Here</Text>
     )
 }

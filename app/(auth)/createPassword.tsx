@@ -6,16 +6,16 @@ import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createUser, loginUser } from '../db';
 import { useAppStore, User } from '../store';
-import getStyles from '../styles';
-import getAppTheme from '../theme';
+import useStyles from '../styles';
+import useAppTheme from '../theme';
 
 export default function CreatePasswordScreen() {
-  const styles = getStyles();
+  const styles = useStyles();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const theme = getAppTheme();
+  const theme = useAppTheme();
   const loginInfo = useAppStore.getState().loginInfo;
   const setUser = useAppStore((state) => state.setUser);
 
@@ -65,7 +65,7 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={{...styles.centered, marginBottom: 40}}>
+            <View style={{...styles.centered, marginBottom: 150}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Create a Password:</Text>
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
@@ -80,13 +80,13 @@ const nextClick = async () => {
                             textContentType="password" label="Confirm Password" mode="outlined" style={styles.input} value={confirmPassword} 
                             onChangeText={(text) => setConfirmPassword(text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
-                <TouchableOpacity style={{...styles.button_outlined, marginTop: 12}} onPress={() => {nextClick()}}>
+                <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
-                        <Text style={styles.buttonText_outlined}>
-                            <ActivityIndicator animating={true} color={theme.colors.onBackground} />
+                        <Text style={styles.buttonText_filled}>
+                            <ActivityIndicator animating={true} color={theme.colors.background} />
                         </Text> 
                     ) : (
-                        <Text style={styles.buttonText_outlined}>Create Account</Text>
+                        <Text style={styles.buttonText_filled}>Create Account</Text>
                     )}
                 </TouchableOpacity>
             </View>

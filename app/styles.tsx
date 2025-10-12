@@ -33,8 +33,6 @@ export default function useStyles() {
       height: 90,
       minHeight: 50,
       marginTop: 25,
-      outlineColor: theme.colors.outline,
-      outlineWidth: 2,
       borderRadius: 6,
       display: 'flex',
       paddingLeft: 15,
@@ -42,6 +40,8 @@ export default function useStyles() {
       justifyContent: 'flex-start',
       width: '100%',
       marginBottom: 0,
+      boxShadow: '2px 2px 5px rgba(0, 0, 0, 0.2)',
+      backgroundColor: theme.colors.surface,
     },
     text: {
       color: theme.colors.onBackground,
@@ -74,8 +74,8 @@ export default function useStyles() {
     },
     input: {
       width: '100%',
-      backgroundColor: '#444',
-      color: colors.primaryWhite,
+      backgroundColor: theme.colors.background,
+      color: theme.colors.onBackground,
       borderRadius: 8,
       padding: 12,
       marginBottom: 12,
@@ -87,7 +87,7 @@ export default function useStyles() {
     },
     button_outlined: {
       backgroundColor: 'transparent',
-      borderColor: colors.primaryWhite,
+      borderColor: theme.colors.primary,
       borderWidth: 2,
       borderRadius: 20,
       height: 40,
@@ -96,8 +96,8 @@ export default function useStyles() {
       alignItems: 'center',
     },
     button_filled: {
-      backgroundColor: colors.primaryWhite,
-      borderColor: colors.primaryWhite,
+      backgroundColor: theme.colors.primary,
+      borderColor: theme.colors.primary,
       borderWidth: 2,
       borderRadius: 20,
       height: 40,
@@ -118,8 +118,9 @@ export default function useStyles() {
       fontSize: 16,
     },
     buttonText_outlined: {
-      color: theme.colors.onBackground,
+      color: theme.colors.primary,
       fontSize: 16,
+      fontWeight: 600,
     },
     signinButton: {
       marginBottom: 10,

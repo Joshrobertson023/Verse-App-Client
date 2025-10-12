@@ -1,22 +1,24 @@
 import { router } from 'expo-router';
-import React, { useEffect } from 'react';
+import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { FAB } from 'react-native-paper';
 import BoxedSection from '../components/boxedSection';
 import CollectionItem from '../components/collectionItem';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
+import useAppTheme from '../theme';
 
 export default function Index() {
   const styles = useStyles();
+  const theme = useAppTheme();
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const addCollection = useAppStore((state) => state.addCollection);
   const homePageStats = useAppStore((state) => state.homePageStats);
 
-  useEffect(() => { // Apparently this runs even if the user is not logged in
-    alert('Running index.tsx use effect');
-  }, []);
+  // useEffect(() => { // Apparently this runs even if the user is not logged in
+  //   alert('Running index.tsx use effect');
+  // }, []);
 
 
   return (
@@ -55,6 +57,7 @@ export default function Index() {
           right: 20,
           bottom: 20,
           zIndex: 10,
+          backgroundColor: theme.colors.secondary,
         }}
         onPress={() => router.push('../collections/addnew')}
       />

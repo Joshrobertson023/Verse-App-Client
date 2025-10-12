@@ -8,7 +8,8 @@ export default function RootLayout() {
     <Stack>
         <Stack.Screen 
         name="createName"
-        options={{ headerShown: false }} 
+        options={{ headerShown: false,
+              headerShadowVisible: false, }} 
         />
         <Stack.Screen 
         name="createUsername"
@@ -19,7 +20,8 @@ export default function RootLayout() {
               headerTitleStyle: {
                 color: theme.colors.onBackground,
               },
-              headerTintColor: theme.colors.primary,
+              headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false,
              }} 
         />
         <Stack.Screen 
@@ -31,7 +33,8 @@ export default function RootLayout() {
               headerTitleStyle: {
                 color: theme.colors.onBackground,
               },
-              headerTintColor: theme.colors.primary,
+              headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false,
              }} 
         />
         <Stack.Screen
@@ -43,7 +46,8 @@ export default function RootLayout() {
               headerTitleStyle: {
                 color: theme.colors.onBackground,
               },
-              headerTintColor: theme.colors.primary,
+              headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false,
              }} 
         />
         <Stack.Screen 
@@ -55,7 +59,8 @@ export default function RootLayout() {
               headerTitleStyle: {
                 color: theme.colors.onBackground,
               },
-              headerTintColor: theme.colors.primary,
+              headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false,
              }} 
         />
     </Stack>
