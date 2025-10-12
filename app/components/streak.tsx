@@ -11,23 +11,44 @@ import useAppTheme from '../theme';
 const Streak = () => {
   const styles = useStyles();
   const theme = useAppTheme();
+  const user = useAppStore((state) => state.user);
   const date = new Date();
-  const streak = useAppStore((state) => state.streak);
+  const streak = useAppStore((state) => state.user.streak);
   const [streakLength, setStreakLength] = React.useState(0);
   const [streakMessage, setStreakMessage] = React.useState('');
 
   const streakMessages = [ // Increments every three days 
       "Keep up the good work!", // days 1-2
-      "Awesome! Let's keep the momentum going!", // days 3-5 
+      "Awesome! Let's keep the momentum going!", // days 3-5
+      "Fantastic! You're on a roll!", // days 6-8
       "Fantastic! You're on a roll!", // days 6-8
       "Incredible! Your dedication is inspiring!",
-      "Phenomenal! You're setting a great example!",
-      "Unstoppable! Nothing can break your streak now!",
-      "Legendary! You're a memorization master!",
-        "Mythical! Your streak is the stuff of legends!",
-        "Immortal! Your dedication knows no bounds!",
-        "Eternal! Your streak will be remembered forever!",
-        "A month?! Keep it going!",
+      "Incredible! Your dedication is inspiring!",
+      "Keep up the good work!", // days 1-2
+      "Awesome! Let's keep the momentum going!", // days 3-5 
+        "Amazing! By now you must have memorized half the Bible!",
+        "A month?! Keep it up!", // Should always stay at index 10 (#11)
+        "Amazing! By now you must have memorized half the Bible!",
+        "Amazing! By now you must have memorized half the Bible!",
+        "Amazing! By now you must have memorized half the Bible!",
+      "Incredible! Your dedication is inspiring!",
+      "Incredible! Your dedication is inspiring!",
+      "Incredible! Your dedication is inspiring!",
+      "Incredible! Your dedication is inspiring!",
+      "Incredible! Your dedication is inspiring!",
+      "Incredible! Your dedication is inspiring!",
+      "Must be nice to be able to recite Psalms from memory!",
+      "Must be nice to be able to recite Psalms from memory!",
+      "Must be nice to be able to recite Psalms from memory!",
+      "Must be nice to be able to recite Psalms from memory!",
+      "Must be nice to be able to recite Psalms from memory!",
+      "Must be nice to be able to recite Psalms from memory!",
+      "Do you have the whole Bible memorized now?",
+      "Do you have the whole Bible memorized now?",
+      "Do you have the whole Bible memorized now?",
+      "Do you have the whole Bible memorized now?",
+      "Do you have the whole Bible memorized now?",
+      "Do you have the whole Bible memorized now?",
 ]
 
   const markedDates = React.useMemo(() => {
@@ -48,21 +69,17 @@ const Streak = () => {
     })
     return markings;
   }, [streak, theme.colors.primary]);
-  
-  const currentStreakLength = React.useMemo(() => {
-    return 0;
-  }, [streak]);
 
   React.useEffect(() => {
-    setStreakLength(currentStreakLength);
+    setStreakLength(user.streakLength || 0);
     // Assign streak message based on streak length
-    if (currentStreakLength === 0) {
+    if ((user.streakLength || 0) === 0) {
         setStreakMessage("No current streak. Let's start one today!");
         return;
     } else {
-        setStreakMessage(streakMessages[Math.floor(currentStreakLength / 3)]);
+        setStreakMessage(streakMessages[Math.floor((user.streakLength || 0) / 3)]);
     }
-  }, [currentStreakLength]);
+  }, [user.streakLength]);
 
   return (    
     <View style={{flex: 1, justifyContent: 'center'}}>
@@ -85,7 +102,7 @@ const Streak = () => {
                 textSectionTitleColor: theme.colors.onBackground,
                 selectedDayBackgroundColor: theme.colors.onBackground,
                 selectedDayTextColor: theme.colors.onBackground,
-                todayTextColor: theme.colors.background,
+                todayTextColor: theme.colors.tertiary,
                 dayTextColor: theme.colors.onBackground,
                 textDisabledColor: theme.colors.secondary,
                 dotColor: theme.colors.primary,

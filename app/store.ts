@@ -34,6 +34,8 @@ export interface User {
     description?: string;
     profileVisibility?: number;
     subscribedVerseOfDay?: boolean;
+    streakLength?: number;
+    streak: Streak[];
 }
 
 export interface UserVerse {
@@ -46,7 +48,7 @@ export interface UserVerse {
     dateAdded?: Date;
     progressPercent?: number;
     timesMemorized?: number;
-    verses: Verse[];
+    verses?: Verse[];
 }
 
 export interface Streak {
@@ -97,30 +99,37 @@ const emptyLoginInfo: loginInfo = {
 
 export const loggedOutUser: User = {
     username: '',
+    streak: [],
 }
 
 interface AppState {
   user: User;
   collections: Collection[];
-  streak: Streak[];
   loginInfo: loginInfo;
   homePageStats: homePageStats;
+  showStreakOnHomepage: boolean;
+  sendStreakNotifications: boolean;
+  sendVerseOfDayNotifications: boolean;
 
-    getHomePageStats: (user: User) => void;
+  getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
   addCollection: (newCollection: Collection) => void;
   removeCollection: (id: number) => void;
   updateCollection: (updated: Collection) => void;
   setLoginInfo: (info: loginInfo) => void;
-  setStreak: (streak: Streak[]) => void;
+  setShowStreakOnHomepage?: (show: boolean) => void;
+    setSendStreakNotifications?: (send: boolean) => void;
+    setSendVerseOfDayNotifications?: (send: boolean) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
     user: loggedOutUser,
     collections: [defaultCollection],
-    streak: [],
     loginInfo: emptyLoginInfo,
     homePageStats: { totalMemorized: 0, overdue: 0, published: 0 },
+    showStreakOnHomepage: true,
+    sendStreakNotifications: true,
+    sendVerseOfDayNotifications: true,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -133,5 +142,9 @@ export const useAppStore = create<AppState>((set) => ({
         c.id === updated.id ? updated : c
     ),})), // const updateCollection = useAppStore((s) => s.updateCollection);
     setLoginInfo: (info: loginInfo) => set({ loginInfo: info }),
-    setStreak: (streak: Streak[]) => set({ streak }),
+    setStreak: (streak: Streak[]) => set((state) => ({ user: { ...state.user, streak } })),
+    setStreakLength: (length: number) => set((state) => ({ user: { ...state.user, streakLength: length }})),
+    setSendStreakNotifications: (send: boolean) => set({ sendStreakNotifications: send }),
+    setShowStreakOnHomepage: (show: boolean) => set({ showStreakOnHomepage: show }),
+    setSendVerseOfDayNotifications: (send: boolean) => set({ sendVerseOfDayNotifications: send }),
 }))

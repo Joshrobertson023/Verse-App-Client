@@ -1,10 +1,9 @@
 import { router } from 'expo-router';
 import React, { useEffect } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Divider, FAB } from 'react-native-paper';
+import { FAB } from 'react-native-paper';
 import BoxedSection from '../components/boxedSection';
 import CollectionItem from '../components/collectionItem';
-import Streak from '../components/streak';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
 
@@ -16,7 +15,7 @@ export default function Index() {
   const homePageStats = useAppStore((state) => state.homePageStats);
 
   useEffect(() => { // This runs even if the user is not logged in
-    alert('Running use effect');
+    alert('Running index.tsx use effect');
   }, []);
 
 
@@ -34,9 +33,7 @@ export default function Index() {
         }}
       >
       <View style={{height: 'auto', width: '100%'}}>
-        <Streak/>
-        <View style={{height: 20}} />
-        <Divider style={{ marginBottom: 10 }} />
+        <BoxedSection title={`${user.streakLength || 0} Day Streak`} />
         <BoxedSection title={`${homePageStats.totalMemorized} Verses Memorized`} />
         <BoxedSection title={`${homePageStats.overdue} Verses Overdue`} alert={true} />
         <BoxedSection title={`${homePageStats.published} Published Collections`} />

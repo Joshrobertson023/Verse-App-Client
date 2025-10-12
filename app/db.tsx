@@ -2,7 +2,7 @@ import { User } from "./store";
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
-        const response = await fetch(`http://10.172.8.121:5160/users/${username}`);
+        const response = await fetch(`http://10.125.244.121:5160/users/${username}`);
         if (response.ok) {
             return false;
         }
@@ -14,7 +14,8 @@ export default async function checkUsernameAvailable(username: string): Promise<
 
 export async function createUser(newUser: User): Promise<void> {
     try {
-        const response = await fetch(`http://10.172.8.121:5160/users`, {
+        console.log('Creating user:', newUser);
+        const response = await fetch(`http://10.125.244.121:5160/users`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
