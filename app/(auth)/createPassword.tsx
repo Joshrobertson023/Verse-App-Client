@@ -44,12 +44,15 @@ const nextClick = async () => {
             firstName: loginInfo?.firstName || '',
             lastName: loginInfo?.lastName || '',
             hashedPassword: password, // todo: hash password
+            streak: [],
         }
 
         await createUser(newUser);
         const loggedInUser = await loginUser(newUser);
         setUser(loggedInUser);
         await SecureStore.setItemAsync('userToken', loggedInUser.authToken || '');
+        console.log(loggedInUser);
+        console.log('set user token: ' + loggedInUser.authToken || '');
         setLoading(false);
         router.push('/');
     } catch (error) {

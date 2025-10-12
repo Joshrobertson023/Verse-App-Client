@@ -35,8 +35,11 @@ React.useEffect(() => {
         (async () => {
           const token = await SecureStore.getItemAsync('userToken');
 
+          console.log('logging in with token:');
+          console.log(token);
+          console.log(user);
           if (token) {
-            if (!user || user.username === '') {
+            if (user.username === '') {
               const fetchedUser = await loginUserWithToken(token);
               setUser(fetchedUser);
             }
@@ -59,7 +62,7 @@ React.useEffect(() => {
 
   if (!appIsReady) {
     return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' }}>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background, padding: 30 }}>
       <Text style={styles.headline}>Logo goes here</Text>
       <Text style={styles.subheading}>Let the word of Christ dwell in you richly in all wisdom...</Text>
       <Text style={styles.tinyText}>Colossians 3:16</Text>

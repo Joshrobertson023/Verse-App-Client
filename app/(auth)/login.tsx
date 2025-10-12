@@ -65,6 +65,8 @@ const nextClick = async () => {
 
         const loggedInUser = await loginUser(newUser);
         setUser(loggedInUser);
+        console.log(loggedInUser);
+        console.log('set user token: ' + loggedInUser.authToken || '');
 
         await SecureStore.setItemAsync('userToken', loggedInUser.authToken || '');
 

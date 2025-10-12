@@ -14,7 +14,7 @@ export default function Index() {
   const addCollection = useAppStore((state) => state.addCollection);
   const homePageStats = useAppStore((state) => state.homePageStats);
 
-  useEffect(() => { // This runs even if the user is not logged in
+  useEffect(() => { // Apparently this runs even if the user is not logged in
     alert('Running index.tsx use effect');
   }, []);
 
