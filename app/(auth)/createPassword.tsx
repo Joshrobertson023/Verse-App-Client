@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Logo from '../components/logo';
 import { createUser, loginUser } from '../db';
 import { useAppStore, User } from '../store';
 import getStyles from '../styles';
@@ -66,7 +65,6 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-                <Logo />
             <View style={{...styles.centered, marginBottom: 40}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Create a Password:</Text>
                 <TextInput keyboardType="default"

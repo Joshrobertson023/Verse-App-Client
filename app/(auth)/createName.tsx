@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Logo from '../components/logo';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
 
@@ -31,7 +30,6 @@ export default function CreateNameScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-                <Logo />
             <View style={{...styles.centered, marginBottom: 40}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Welcome! What's your name?</Text>
                 <TextInput label="First Name" mode="outlined" style={styles.input} value={firstName} 

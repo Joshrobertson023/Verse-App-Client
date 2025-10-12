@@ -35,7 +35,7 @@ export interface User {
     profileVisibility?: number;
     subscribedVerseOfDay?: boolean;
     streakLength?: number;
-    streak: Streak[];
+    streak?: Streak[];
 }
 
 export interface UserVerse {

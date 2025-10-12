@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Dialog, Portal, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Logo from '../components/logo';
 import checkUsernameAvailable from '../db';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
@@ -81,7 +80,6 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-                <Logo />
             <View style={{...styles.centered, marginBottom: 40}}>
                 <Portal>
                 <Dialog style={{backgroundColor: theme.colors.background, outlineWidth: 2, outlineColor: theme.colors.onBackground, zIndex: 10}} visible={dialogVisible} onDismiss={hideDialog}>

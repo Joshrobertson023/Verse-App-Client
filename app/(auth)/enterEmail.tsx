@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Logo from '../components/logo';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -35,7 +34,6 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-                <Logo />
             <View style={{...styles.centered, marginBottom: 40}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Enter your email:</Text>
                 <TextInput keyboardType="email-address"

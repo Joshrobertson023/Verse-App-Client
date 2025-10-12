@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import BackButton from '../components/backButton';
 import checkUsernameAvailable, { getUserPasswordHash, loginUser } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
@@ -46,6 +45,7 @@ const nextClick = async () => {
         const newUser: User = {
             username: currentLoginInfo?.username || '',
             hashedPassword: password.trim(), // todo: hash password
+            streak: [],
         }
 
         
@@ -83,7 +83,6 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <BackButton title="VerseVault" />
             <View style={{...styles.centered, marginBottom: 40}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Login to Your Account:</Text>
                 <TextInput keyboardType="default"

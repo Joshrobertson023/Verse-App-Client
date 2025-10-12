@@ -12,19 +12,51 @@ export default function RootLayout() {
         />
         <Stack.Screen 
         name="createUsername"
-        options={{ headerShown: false }} 
+        options={{ headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitle: "Create Username",
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.primary,
+             }} 
         />
         <Stack.Screen 
         name="enterEmail"
-        options={{ headerShown: false }}
+        options={{ headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitle: "Enter Email",
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.primary,
+             }} 
         />
         <Stack.Screen
         name="createPassword"
-        options={{ headerShown: false }}
+        options={{ headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitle: "Create Password",
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.primary,
+             }} 
         />
         <Stack.Screen 
         name="login"
-        options={{ headerShown: false }} 
+        options={{ headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitle: "Login",
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.primary,
+             }} 
         />
     </Stack>
   )
