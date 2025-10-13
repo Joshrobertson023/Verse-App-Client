@@ -89,7 +89,7 @@ import useAppTheme from '../theme';
                                 }, animatedStyle]}>
             <GestureDetector gesture={panGesture}>
               <View style={{padding: 20, marginTop: -20}}>
-                <View style={{width: 70, height: 2, borderRadius: 20, borderWidth: 2, alignSelf: 'center'}}></View>
+                <View style={{width: 70, height: 2, borderRadius: 20, borderWidth: 2, alignSelf: 'center', borderColor: theme.colors.onBackground}}></View>
               </View>
           </GestureDetector>
               <AddPassage />

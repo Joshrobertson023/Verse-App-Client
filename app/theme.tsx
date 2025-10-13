@@ -9,9 +9,11 @@ export default function useAppTheme() {
         colors: {
           ...MD3DarkTheme.colors,
           primary: '#3091ffff',
+          secondary: '#3f8ee8ff',
           background: '#111',
-          surface: '#222',
+          surface: '#424242ff',
           onBackground: colors.primaryWhite,
+          backdrop: '#6a6a6aff'
         }
     } : {
         ...MD3LightTheme,
@@ -22,6 +24,7 @@ export default function useAppTheme() {
           background: '#fff',
           surface: '#f5f5f5',
           onBackground: '#000',
+          backdrop: '#f5f5f5'
           // add more overrides as needed
         }
     };

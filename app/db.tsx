@@ -1,4 +1,4 @@
-import { User } from "./store";
+import { User, Verse } from "./store";
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
@@ -72,6 +72,22 @@ export async function getUserPasswordHash(username: string): Promise<string | nu
             throw new Error(responseText || 'Failed to fetch password hash');
         }
     } catch (error) {
+        throw error;
+    }
+}
+
+export async function getVerseSearchResult(search: string): Promise<Verse[]> {
+    try {
+        const response = await fetch(`http://10.125.244.121:5160/verses/search/${search}`);
+        if (response.ok) {
+            const data: Verse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch search results');
+        }
+    } catch (error) {
+        console.error(error);
         throw error;
     }
 }

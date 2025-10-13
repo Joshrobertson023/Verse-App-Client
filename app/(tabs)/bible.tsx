@@ -1,10 +1,10 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { useAppStore } from '../store';
-import getStyles from '../styles';
+import useStyles from '../styles';
 
 export default function BibleScreen() {
-  const styles = getStyles();
+  const styles = useStyles();
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const addCollection = useAppStore((state) => state.addCollection);

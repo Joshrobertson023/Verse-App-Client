@@ -87,7 +87,7 @@ export default function useStyles() {
     },
     button_outlined: {
       backgroundColor: 'transparent',
-      borderColor: theme.colors.primary,
+      borderColor: theme.colors.secondary,
       borderWidth: 2,
       borderRadius: 20,
       height: 40,
