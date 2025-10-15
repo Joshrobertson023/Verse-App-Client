@@ -16,12 +16,13 @@ numSaves?: number;
 dateCreated?: Date;
 verseOrder?: string;
 userVerses: UserVerse[];
+favorites: boolean;
 }
 
 export interface User {
     username: string;
-    firstName?: string;
-    lastName?: string;
+    firstName: string;
+    lastName: string;
     email?: string;
     authToken?: string;
     collectionsSort?: number;
@@ -34,21 +35,24 @@ export interface User {
     description?: string;
     profileVisibility?: number;
     subscribedVerseOfDay?: boolean;
-    streakLength?: number;
     streak?: Streak[];
+    streakLength: number;
+    versesMemorized: number;
+    versesOverdue: number;
+    numberPublishedCollections: number;
 }
 
 export interface UserVerse {
-    id: number;
+    id?: number;
     username: string;
-    collectionId: number;
+    collectionId?: number;
     readableReference: string;
     lastPracticed?: Date;
     dateMemorized?: Date;
     dateAdded?: Date;
     progressPercent?: number;
     timesMemorized?: number;
-    verses?: Verse[];
+    verses: Verse[];
 }
 
 export interface Streak {
@@ -58,10 +62,10 @@ export interface Streak {
 
 export interface Verse {
     id: number;
-    reference: string;
+    verse_reference: string;
     text: string;
-    usersSaved?: number;
-    usersMemorized?: number;
+    users_Saved_Verse?: number;
+    users_Memorized?: number;
     verseNumber?: number;
 }
 
@@ -80,13 +84,67 @@ export interface homePageStats {
     published: number;
 }
 
+export interface SearchData {
+    searched_By_Passage: boolean;
+    readable_Reference: string;
+    verses: Verse[];
+}
+
 const defaultCollection: Collection = {
     title: 'Favorites',
-    visibility: 'private',
+    visibility: 'Private',
     userVerses: [],
     dateCreated: new Date(),
     id: 0,
+    favorites: true,
 };
+
+const defaultNewUserVerse: UserVerse = {
+    username: '',
+    readableReference: '',
+    verses: [],
+}
+
+const defaultCollections: Collection[] = [
+    {
+        title: 'Favorites',
+        visibility: 'Private',
+        userVerses: [],
+        dateCreated: new Date(),
+        id: 0,
+        favorites: true,
+    },
+    {
+        
+        title: 'God is Good',
+        visibility: 'Public',
+        userVerses: [],
+        dateCreated: new Date(),
+        id: 1,
+        favorites: false,
+        author: 'JoshRobertson023'
+    },
+    {
+        
+        title: 'Hard Work',
+        visibility: 'Private',
+        userVerses: [],
+        dateCreated: new Date(),
+        id: 2,
+        favorites: false,
+        author: 'JoshRobertson023'
+    },
+    {
+        
+        title: 'Peace Through Christ',
+        visibility: 'Public',
+        userVerses: [],
+        dateCreated: new Date(),
+        id: 3,
+        favorites: false,
+        author: 'OtherUser22'
+    },
+]
 
 const emptyLoginInfo: loginInfo = {
     firstName: '',
@@ -97,9 +155,22 @@ const emptyLoginInfo: loginInfo = {
     confirmPassword: '',
 };
 
+const emptyNewCollection: Collection = {
+    title: '',
+    userVerses: [],
+    id: 0,
+    favorites: false,
+}
+
 export const loggedOutUser: User = {
-    username: '',
+    username: 'Default User',
+    firstName: 'L',
+    lastName: 'O',
     streak: [],
+    versesMemorized: 0,
+    versesOverdue: 0,
+    numberPublishedCollections: 0,
+    streakLength: 0,
 }
 
 interface AppState {
@@ -110,6 +181,7 @@ interface AppState {
   showStreakOnHomepage: boolean;
   sendStreakNotifications: boolean;
   sendVerseOfDayNotifications: boolean;
+  newCollection?: Collection;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -120,16 +192,19 @@ interface AppState {
   setShowStreakOnHomepage?: (show: boolean) => void;
     setSendStreakNotifications?: (send: boolean) => void;
     setSendVerseOfDayNotifications?: (send: boolean) => void;
+    setNewCollection: (collection: Collection) => void;
+    addUserVerseToCollection: (userVerse: UserVerse) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
     user: loggedOutUser,
-    collections: [defaultCollection],
+    collections: defaultCollections,
     loginInfo: emptyLoginInfo,
     homePageStats: { totalMemorized: 0, overdue: 0, published: 0 },
     showStreakOnHomepage: true,
     sendStreakNotifications: true,
     sendVerseOfDayNotifications: true,
+    newCollection: emptyNewCollection,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -147,4 +222,13 @@ export const useAppStore = create<AppState>((set) => ({
     setSendStreakNotifications: (send: boolean) => set({ sendStreakNotifications: send }),
     setShowStreakOnHomepage: (show: boolean) => set({ showStreakOnHomepage: show }),
     setSendVerseOfDayNotifications: (send: boolean) => set({ sendVerseOfDayNotifications: send }),
+    setNewCollection: (collection: Collection) => set({newCollection: collection}),
+    addUserVerseToCollection: (userVerse: UserVerse) =>
+    set((state) => ({
+        newCollection: {
+            ...state.newCollection!,
+            userVerses: [...(state.newCollection?.userVerses || []), userVerse],
+        },
+    })),
+
 }))

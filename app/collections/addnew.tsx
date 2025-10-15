@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TextInput } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
+import { useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -14,6 +15,7 @@ import useAppTheme from '../theme';
     const theme = useAppTheme();
     const [title, setTitle] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const newCollection = useAppStore((state) => state.newCollection);
 
    const sheetHeight = height * .96;
    const closedPosition = height;
@@ -55,13 +57,20 @@ import useAppTheme from '../theme';
 
     return (
       <View style={styles.container}>
-        <TextInput label="Collection Title" value={title} onChangeText={setTitle} style={styles.input} />
+        <TextInput label="Collection Title" value={title} onChangeText={setTitle} style={styles.input} mode='outlined' />
 
         <TouchableOpacity style={{...styles.button_outlined}} onPress={openSheet}>
           <Text style={{...styles.buttonText_outlined}}>Add Passage</Text>
         </TouchableOpacity>
 
         { errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null }
+
+        {newCollection?.userVerses.map((userVerse, i) => (
+          <Text style={{color: theme.colors.onBackground}} key={i}>{userVerse.readableReference}</Text>
+        ))}
+
+
+
           <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 80, zIndex: 10, alignSelf: 'center'}} onPress={() => {
             if (title.trim() === '') {
               setErrorMessage('Title cannot be empty.')
@@ -84,6 +93,7 @@ import useAppTheme from '../theme';
                                   borderTopLeftRadius: 16,
                                   borderTopRightRadius: 16,
                                   padding: 20,
+                                  paddingBottom: 80,
                                   zIndex: 10,
                                   boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
                                 }, animatedStyle]}>

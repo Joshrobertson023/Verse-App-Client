@@ -30,7 +30,7 @@ export default function useStyles() {
       width: '100%',
     },
     collectionItem: {
-      height: 90,
+      height: 100,
       minHeight: 50,
       marginTop: 25,
       borderRadius: 6,
@@ -40,37 +40,42 @@ export default function useStyles() {
       justifyContent: 'flex-start',
       width: '100%',
       marginBottom: 0,
-      boxShadow: '2px 2px 5px rgba(0, 0, 0, 0.2)',
       backgroundColor: theme.colors.surface,
     },
     text: {
       color: theme.colors.onBackground,
       fontSize: 20,
       marginBottom: 16,
+      fontFamily: 'Inter',
     },
     tinyText: {
       color: theme.colors.onBackground,
       fontSize: 16,
+      fontFamily: 'Inter',
     },
     inputText: {
       color: theme.colors.onBackground,
       fontSize: 16,
       marginTop: 5,
       backgroundColor: colors.primaryWhite,
+      fontFamily: 'Inter',
     },
     headline: {
       color: colors.primaryWhite,
       fontSize: 42,
       top: -96,
+      fontFamily: 'Inter',
     },
     subheading: {
       color: theme.colors.onBackground,
       fontSize: 26,
+      fontFamily: 'Inter',
     },
     errorMessage: {
       color: colors.error,
       fontSize: 18,
       marginBottom: 10,
+      fontFamily: 'Inter',
     },
     input: {
       width: '100%',
@@ -87,8 +92,8 @@ export default function useStyles() {
     },
     button_outlined: {
       backgroundColor: 'transparent',
-      borderColor: theme.colors.secondary,
-      borderWidth: 2,
+      borderColor: colors.primaryWhite,
+      borderWidth: 1,
       borderRadius: 20,
       height: 40,
       width: '100%',
@@ -112,15 +117,18 @@ export default function useStyles() {
       width: '100%',
       justifyContent: 'center',
       alignItems: 'center',
+      fontFamily: 'Inter',
     },
     buttonText_filled: {
       color: theme.colors.background,
       fontSize: 16,
+      fontFamily: 'Inter',
     },
     buttonText_outlined: {
-      color: theme.colors.primary,
+      color: colors.primaryWhite,
       fontSize: 16,
       fontWeight: 600,
+      fontFamily: 'Inter',
     },
     signinButton: {
       marginBottom: 10,

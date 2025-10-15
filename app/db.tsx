@@ -1,4 +1,4 @@
-import { User, Verse } from "./store";
+import { SearchData, User } from "./store";
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
@@ -76,11 +76,11 @@ export async function getUserPasswordHash(username: string): Promise<string | nu
     }
 }
 
-export async function getVerseSearchResult(search: string): Promise<Verse[]> {
+export async function getVerseSearchResult(search: string): Promise<SearchData> {
     try {
         const response = await fetch(`http://10.125.244.121:5160/verses/search/${search}`);
         if (response.ok) {
-            const data: Verse[] = await response.json();
+            const data: SearchData = await response.json();
             return data;
         } else {
             const responseText = await response.text();

@@ -17,7 +17,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.button_text} onPress={logoutClick}>
+      <TouchableOpacity style={styles.button_outlined} onPress={logoutClick}>
         <Text style={styles.buttonText_outlined}>Logout</Text>
       </TouchableOpacity>
     </View>

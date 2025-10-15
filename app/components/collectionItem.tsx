@@ -27,45 +27,75 @@ export default function collectionItem({ collection }: CollectionItemProps) {
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
           <View style={{justifyContent: 'space-between', height: '100%'}}>
             <View style={{justifyContent: 'flex-start'}}>
+
+              {/* title */}
+              {collection.favorites ? 
+              <View style={{}}>
+                <Text style={{...styles.text, marginBottom: 0, fontWeight: 900}} key={collection.id}>{collection.title}</Text>
+                <Ionicons name="star" size={25} color={theme.colors.onBackground} />
+              </View> 
+              : 
               <View>
-                {/* title */}
-                <Text style={{...styles.text, marginBottom: 0}} key={collection.id}>{collection.title}</Text>
-              </View>
+                <Text style={{...styles.text, marginBottom: 0, fontWeight: 900}} key={collection.id}>{collection.title}</Text>
+              </View>}
               <View>
+
                 {/* number of verses */}
                 <Text style={styles.tinyText}>{collection.userVerses.length} verses</Text>
               </View>
             </View>
             <View>
+
               {/* visibility */}
               <Text style={styles.tinyText}>{collection.visibility}</Text>
             </View>
           </View>
           <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'flex-end'}}>
+
+          {/* menu */}
+            {collection.favorites ? 
             <View>
-              {/* menu */}
               <Menu
-      visible={menuVisible}
-      onDismiss={closeMenu}
-      anchor={
-        <TouchableOpacity 
-          onPress={(e) => {
-            e.stopPropagation();
-            openMenu();
-          }}
-        >
-          <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
-        </TouchableOpacity>
-      }
-    >
-                <Menu.Item onPress={() => {  }} title="Edit" />
-                <Menu.Item onPress={() => {  }} title="Publish" />
-                <Menu.Item onPress={() => {  }} title="Delete" />
-              </Menu>
-            </View>
+                visible={menuVisible}
+                onDismiss={closeMenu}
+                anchor={
+                  <TouchableOpacity 
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      openMenu();
+                    }}>
+                    <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
+                  </TouchableOpacity>
+                }>
+                  <Menu.Item onPress={() => {  }} title="Create Copy" />
+                  <Menu.Item onPress={() => {  }} title="Clear" />
+                </Menu>
+              </View>
+            : 
             <View>
+              <Menu
+                visible={menuVisible}
+                onDismiss={closeMenu}
+                anchor={
+                  <TouchableOpacity 
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      openMenu();
+                    }}>
+                    <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
+                  </TouchableOpacity>
+                }>
+                  <Menu.Item onPress={() => {  }} title="Edit" />
+                  <Menu.Item onPress={() => {  }} title="Create Copy" />
+                  <Menu.Item onPress={() => {  }} title={collection.visibility === 'Public' ? "Make Private" : "Make Public"} />
+                  <Menu.Item onPress={() => {  }} title="Publish" />
+                  <Menu.Item onPress={() => {  }} title="Delete" />
+                </Menu>
+              </View>}
+            <View>
+
               {/* author */}
-              <Text style={styles.tinyText}>{collection.author ? collection.author : 'Unknown'}</Text>
+              <Text style={styles.tinyText}>{collection.author ? collection.author : ''}</Text>
             </View>
           </View>
           

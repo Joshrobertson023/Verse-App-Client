@@ -35,10 +35,10 @@ export default function Index() {
         }}
       >
       <View style={{height: 'auto', width: '100%'}}>
-        <BoxedSection title={`${user.streakLength || 0} Day Streak`} />
-        <BoxedSection title={`${homePageStats.totalMemorized} Verses Memorized`} />
-        <BoxedSection title={`${homePageStats.overdue} Verses Overdue`} alert={true} />
-        <BoxedSection title={`${homePageStats.published} Published Collections`} />
+        <BoxedSection numericStat={user.streakLength} title={"Day Streak"} />
+        <BoxedSection numericStat={user.versesMemorized} title={"Verses Memorized"} />
+        <BoxedSection numericStat={user.versesOverdue} title={"Verses Overdue"} alert={user.versesOverdue > 0 ? true : false} />
+        <BoxedSection numericStat={user.numberPublishedCollections} title={"Published Collections"} />
       </View>
 
       <Text style={{...styles.subheading, marginTop: 20}}>My Verses</Text>

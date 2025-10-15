@@ -1,3 +1,4 @@
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
@@ -15,6 +16,12 @@ import useAppTheme from './theme';
 SplashScreen.hideAsync();
 
 export default function RootLayout() {
+  const [loaded, error] = useFonts({
+    'Noto Serif': require('../assets/fonts/Noto_Serif/NotoSerif-VariableFont_wdth,wght.ttf'),
+    'Noto Serif bold': require('../assets/fonts/Noto_Serif/static/NotoSerif-Bold.ttf'),
+    'Inter': require('../assets/fonts/Inter/Inter-VariableFont_opsz,wght.ttf'),
+  });
+
   const theme = useAppTheme();
 
   const [appIsReady, setAppIsReady] = React.useState(false);
@@ -41,7 +48,7 @@ React.useEffect(() => {
           console.log(token);
           console.log(user);
           if (token) {
-            if (user.username === '') {
+            if (user.username === 'Default User') {
               const fetchedUser = await loginUserWithToken(token);
               setUser(fetchedUser);
             }
@@ -52,22 +59,24 @@ React.useEffect(() => {
     } catch (e) {
       console.warn('Login error:', e);
     } finally {
-      await SplashScreen.hideAsync();
-      setAppIsReady(true);
+      if (loaded || error)
+        setAppIsReady(true);
       getHomePageStats(user);
     }
   };
 
   login();
-}, []);
+}, [loaded, error]);
 
 
   if (!appIsReady) {
     return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background, padding: 30 }}>
-      <Text style={styles.headline}>Logo goes here</Text>
-      <Text style={styles.subheading}>Let the word of Christ dwell in you richly in all wisdom...</Text>
-      <Text style={styles.tinyText}>Colossians 3:16</Text>
+      <Text style={{fontSize: 36, color: theme.colors.onBackground, position: 'absolute', top: 200}}>Logo goes here</Text>
+      <View style={{padding: 20}}>
+        <Text style={{fontSize: 20, fontWeight: 900, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}} >Let the word of Christ dwell in you richly in all wisdom...</Text>
+        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>Colossians 3:16</Text>
+      </View>
     </View>
     )
   }

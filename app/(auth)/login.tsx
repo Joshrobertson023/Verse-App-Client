@@ -46,6 +46,12 @@ const nextClick = async () => {
             username: currentLoginInfo?.username || '',
             hashedPassword: password.trim(), // todo: hash password
             streak: [],
+            firstName: '',
+            lastName: '',
+            streakLength: 0,
+            versesMemorized: 0,
+            versesOverdue: 0,
+            numberPublishedCollections: 0,
         }
 
         

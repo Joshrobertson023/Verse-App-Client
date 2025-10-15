@@ -70,7 +70,11 @@ React.useEffect(() => {
               )}
               </TouchableOpacity>
               <TouchableOpacity onPress={() => router.push('../user/profile')}>
-                <Ionicons name="person-circle-outline" size={36} color={theme.colors.onBackground} />
+                <View style={{borderRadius: 50, borderWidth: 1, borderColor: theme.colors.onBackground, width: 38, height: 38, flex: 1, justifyContent: 'center', alignItems: 'center', padding: 5, marginRight: 5}}>
+                  <Text style={{color: theme.colors.onBackground, fontSize: 20}}>
+                    {(user.firstName.at(0) || 'D').toUpperCase() + (user.lastName.at(0) || 'U').toUpperCase()}
+                  </Text>
+                </View>
               </TouchableOpacity>
             </View>
           ),
