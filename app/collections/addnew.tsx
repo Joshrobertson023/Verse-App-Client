@@ -1,9 +1,10 @@
   import React, { useState } from 'react';
-import { Dimensions, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TextInput } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
+import UserVerseCard from '../components/userVerse';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -65,9 +66,11 @@ import useAppTheme from '../theme';
 
         { errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null }
 
-        {newCollection?.userVerses.map((userVerse, i) => (
-          <Text style={{color: theme.colors.onBackground}} key={i}>{userVerse.readableReference}</Text>
-        ))}
+        <ScrollView style={{marginTop: 20}}>
+          {newCollection?.userVerses.map((userVerse, i) => (
+            <UserVerseCard key={i} userVerse={userVerse}/>
+          ))}
+        </ScrollView>
 
 
 

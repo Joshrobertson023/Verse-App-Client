@@ -50,9 +50,10 @@ export default function AddPassage() {
     }
     
     const handleAddPassage = () => {
+        if (passageSearchResults === undefined) return;
         const userVerse: UserVerse = {
             username: user.username,
-            readableReference: passageSearchResults ? passageSearchResults.readable_Reference : '',
+            readableReference: passageSearchResults ? passageSearchResults.readable_Reference : 'Undefined',
             verses: passageSearchResults ? passageSearchResults.verses : [],
         }
         addUserVerseToCollection(userVerse);

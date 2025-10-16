@@ -110,7 +110,27 @@ const defaultCollections: Collection[] = [
         title: 'Favorites',
         visibility: 'Private',
         userVerses: [
-            {readableReference: 'Psalms 119:2', username: 'You', verses: []}
+            {
+                readableReference: 'Psalms 119:2-3', 
+                username: 'You', 
+                verses: [
+                {
+                    verse_reference: 'Psalms 119:2',
+                    verseNumber: 2,
+                    id: 582,
+                    text: 'verse text',
+                    users_Saved_Verse: 18,
+                    users_Memorized: 0,
+                },
+                {
+                    verse_reference: 'Psalms 119:3',
+                    verseNumber: 3,
+                    id: 899,
+                    text: 'text',
+                    users_Memorized: 0,
+                    users_Saved_Verse: 2,
+                }
+            ]}
         ],
         dateCreated: new Date(),
         id: 0,
@@ -184,6 +204,7 @@ interface AppState {
   sendStreakNotifications: boolean;
   sendVerseOfDayNotifications: boolean;
   newCollection?: Collection;
+  numNotifications: number;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -207,6 +228,7 @@ export const useAppStore = create<AppState>((set) => ({
     sendStreakNotifications: true,
     sendVerseOfDayNotifications: true,
     newCollection: emptyNewCollection,
+    numNotifications: 0,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published

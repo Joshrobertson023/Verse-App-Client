@@ -8,8 +8,8 @@ import useAppTheme from '../theme';
 
 export default function TabLayout() {
   const theme = useAppTheme();
-  const notificationsCount = 3; // Replace with state value
   const user = useAppStore((state) => state.user);
+  const numNotifications = useAppStore((state) => state.numNotifications);
   const rootNavigationState = useRootNavigationState();
 
 React.useEffect(() => {
@@ -54,7 +54,7 @@ React.useEffect(() => {
             <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
               <TouchableOpacity onPress={() => router.push('.././notifications')}>
                 <Ionicons style={{marginTop: 4}} name="notifications-outline" size={32} color={theme.colors.onBackground} />
-                {notificationsCount > 0 && (
+                {numNotifications > 0 && (
                 <Badge
                   size={18}
                   style={{
@@ -66,7 +66,7 @@ React.useEffect(() => {
                     fontSize: 12,
                   }}
                 >
-                  {notificationsCount}
+                  {numNotifications}
                 </Badge>
               )}
               </TouchableOpacity>
