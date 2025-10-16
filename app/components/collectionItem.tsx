@@ -19,7 +19,8 @@ export default function collectionItem({ collection }: CollectionItemProps) {
   const closeMenu = () => setMenuVisible(false);
 
   return (
-    <TouchableOpacity
+    collection.favorites ? 
+      <TouchableOpacity
       key={collection.id}
       onPress={() => router.push(`../collections/${collection.id}`)}
     >
@@ -27,17 +28,66 @@ export default function collectionItem({ collection }: CollectionItemProps) {
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
           <View style={{justifyContent: 'space-between', height: '100%'}}>
             <View style={{justifyContent: 'flex-start'}}>
-
               {/* title */}
-              {collection.favorites ? 
-              <View style={{}}>
-                <Text style={{...styles.text, marginBottom: 0, fontWeight: 900}} key={collection.id}>{collection.title}</Text>
-                <Ionicons name="star" size={25} color={theme.colors.onBackground} />
-              </View> 
-              : 
+              <View style={{}} key={collection.id}>
+                <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}}>{collection.title} <Ionicons name="star" size={18} color={theme.colors.onBackground} /></Text>
+              </View>
               <View>
-                <Text style={{...styles.text, marginBottom: 0, fontWeight: 900}} key={collection.id}>{collection.title}</Text>
-              </View>}
+
+                {/* number of verses */}
+                <Text style={styles.tinyText}>{collection.userVerses.length} {collection.userVerses.length === 1 ? 'verse' : 'verses'}</Text>
+              </View>
+            </View>
+            <View>
+
+              {/* visibility */}
+              <Text style={styles.tinyText}>{collection.visibility}</Text>
+            </View>
+          </View>
+          <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'flex-end'}}>
+
+          {/* menu */}
+            <View>
+              <Menu
+                visible={menuVisible}
+                onDismiss={closeMenu}
+                anchor={
+                  <TouchableOpacity 
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      openMenu();
+                    }}>
+                    <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
+                  </TouchableOpacity>
+                }>
+                  <Menu.Item onPress={() => {  }} title="Edit" />
+                  <Menu.Item onPress={() => {  }} title="Create Copy" />
+                  <Menu.Item onPress={() => {  }} title="Clear Verses" />
+                </Menu>
+              </View>
+            <View>
+
+              {/* author */}
+              <Text style={styles.tinyText}>{collection.author ? collection.author : ''}</Text>
+            </View>
+          </View>
+          
+        </View>
+      </View>
+    </TouchableOpacity>
+      : 
+          <TouchableOpacity
+      key={collection.id}
+      onPress={() => router.push(`../collections/${collection.id}`)}
+    >
+      <View style={styles.collectionItem}>
+        <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
+          <View style={{justifyContent: 'space-between', height: '100%'}}>
+            <View style={{justifyContent: 'flex-start'}}>
+              {/* title */}
+              <View>
+                <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}} key={collection.id}>{collection.title}</Text>
+              </View>
               <View>
 
                 {/* number of verses */}
@@ -53,25 +103,6 @@ export default function collectionItem({ collection }: CollectionItemProps) {
           <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'flex-end'}}>
 
           {/* menu */}
-            {collection.favorites ? 
-            <View>
-              <Menu
-                visible={menuVisible}
-                onDismiss={closeMenu}
-                anchor={
-                  <TouchableOpacity 
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      openMenu();
-                    }}>
-                    <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
-                  </TouchableOpacity>
-                }>
-                  <Menu.Item onPress={() => {  }} title="Create Copy" />
-                  <Menu.Item onPress={() => {  }} title="Clear" />
-                </Menu>
-              </View>
-            : 
             <View>
               <Menu
                 visible={menuVisible}
@@ -91,7 +122,7 @@ export default function collectionItem({ collection }: CollectionItemProps) {
                   <Menu.Item onPress={() => {  }} title="Publish" />
                   <Menu.Item onPress={() => {  }} title="Delete" />
                 </Menu>
-              </View>}
+              </View>
             <View>
 
               {/* author */}

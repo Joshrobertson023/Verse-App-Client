@@ -28,7 +28,9 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>This area is currently under construction.</Text>
+      {collection?.userVerses.map((userVerse) => (
+              <Text style={styles.text} key={collection.id}>{userVerse.readableReference}</Text>
+            ))}
     </View>
   );
 }

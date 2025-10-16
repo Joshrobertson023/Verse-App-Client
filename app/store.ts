@@ -7,16 +7,16 @@ export interface ErrorMessage {
 }
 
 export interface Collection {
-id: number;
-title: string;
-author?: string;
-visibility?: string;
-isPublished?: boolean;
-numSaves?: number;
-dateCreated?: Date;
-verseOrder?: string;
-userVerses: UserVerse[];
-favorites: boolean;
+    id: number;
+    title: string;
+    author?: string;
+    visibility?: string;
+    isPublished?: boolean;
+    numSaves?: number;
+    dateCreated?: Date;
+    verseOrder?: string;
+    userVerses: UserVerse[];
+    favorites: boolean;
 }
 
 export interface User {
@@ -109,7 +109,9 @@ const defaultCollections: Collection[] = [
     {
         title: 'Favorites',
         visibility: 'Private',
-        userVerses: [],
+        userVerses: [
+            {readableReference: 'Psalms 119:2', username: 'You', verses: []}
+        ],
         dateCreated: new Date(),
         id: 0,
         favorites: true,
@@ -157,7 +159,7 @@ const emptyLoginInfo: loginInfo = {
 
 const emptyNewCollection: Collection = {
     title: '',
-    userVerses: [],
+    userVerses: [defaultNewUserVerse],
     id: 0,
     favorites: false,
 }

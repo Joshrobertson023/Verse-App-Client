@@ -14,7 +14,8 @@ export default function TabLayout() {
 
 React.useEffect(() => {
   if (!rootNavigationState?.key) return; // ✅ Wait until ready
-  if (user && user.username === '') {
+  console.log('user.username: ' + user.username);
+  if (user.username === 'Default User') {
     router.replace('../(auth)/createName');
   }
 }, [rootNavigationState?.key, user]);

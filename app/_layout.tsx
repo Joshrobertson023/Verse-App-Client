@@ -2,7 +2,8 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
-import React from 'react';
+import * as SystemUI from 'expo-system-ui';
+import React, { useState } from 'react';
 import { Text, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -31,6 +32,10 @@ export default function RootLayout() {
   const user = useAppStore((state) => state.user);
   const homePageStats = useAppStore((state) => state.homePageStats);
   const getHomePageStats = useAppStore((state) => state.getHomePageStats);
+  const [errorLogginIn, setErrorLoggingIn] = useState(false);
+
+  
+SystemUI.setBackgroundColorAsync(theme.colors.background);
 
 React.useEffect(() => {
   const login = async () => {
@@ -42,26 +47,33 @@ React.useEffect(() => {
     try {
       await Promise.race([
         (async () => {
-          const token = await SecureStore.getItemAsync('userToken');
-
-          console.log('logging in with token:');
-          console.log(token);
-          console.log(user);
-          if (token) {
-            if (user.username === 'Default User') {
-              const fetchedUser = await loginUserWithToken(token);
-              setUser(fetchedUser);
+          if (!errorLogginIn) {
+            const token = await SecureStore.getItemAsync('userToken');
+  
+            console.log('logging in with token:');
+            console.log(token);
+            console.log(user);
+            if (token) {
+              if (user.username === 'Default User') {
+                const fetchedUser = await loginUserWithToken(token);
+                fetchedUser.streakLength = 0; // Change to functions in store that do it automatically on user set
+                fetchedUser.versesMemorized = 0;
+                fetchedUser.versesOverdue = 0;
+                fetchedUser.numberPublishedCollections = 0;
+                setUser(fetchedUser);
+              }
             }
+            setAppIsReady(true);
+            getHomePageStats(user);
           }
         })(),
         timeoutPromise,
       ]);
     } catch (e) {
       console.warn('Login error:', e);
+      setErrorLoggingIn(true);
     } finally {
-      if (loaded || error)
-        setAppIsReady(true);
-      getHomePageStats(user);
+      setAppIsReady(true);
     }
   };
 
@@ -74,14 +86,13 @@ React.useEffect(() => {
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background, padding: 30 }}>
       <Text style={{fontSize: 36, color: theme.colors.onBackground, position: 'absolute', top: 200}}>Logo goes here</Text>
       <View style={{padding: 20}}>
-        <Text style={{fontSize: 20, fontWeight: 900, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}} >Let the word of Christ dwell in you richly in all wisdom...</Text>
-        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>Colossians 3:16</Text>
+        <Text style={{fontSize: 20, fontWeight: 900, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}} >Let the word of Christ dwell in you richly in all wisdom.</Text>
+        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>- Colossians 3:16</Text>
+        <Text style={{marginTop: 50, fontSize: 20, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>Starting Up...</Text>
       </View>
     </View>
     )
   }
-
-
 
   return ( 
     <GestureHandlerRootView style={{flex: 1}}>

@@ -32,7 +32,6 @@ export default function AddPassage() {
         
         const results = await getVerseSearchResult(searchQuery);
         setPassageSearchResults(results); 
-        alert(results?.searched_By_Passage); 
         
         if (results?.searched_By_Passage === true) {
             setShowAddPassage(true);
@@ -57,7 +56,6 @@ export default function AddPassage() {
             verses: passageSearchResults ? passageSearchResults.verses : [],
         }
         addUserVerseToCollection(userVerse);
-        alert(newCollection?.userVerses[0].readableReference);
     }
 
     return (
@@ -76,8 +74,8 @@ export default function AddPassage() {
                 />
 
             {showAddPassage ? 
-            <TouchableOpacity style={styles.button_outlined} onPress={handleAddPassage}>
-                <Text>Add {passageSearchResults?.readable_Reference}</Text>
+            <TouchableOpacity style={styles.button_filled} onPress={handleAddPassage}>
+                <Text style={{...styles.buttonText_filled, fontWeight: 900}}>Add {passageSearchResults?.readable_Reference}</Text>
             </TouchableOpacity>
             :
             <TouchableOpacity style={styles.button_outlined} onPress={() => {

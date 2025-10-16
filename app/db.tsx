@@ -1,8 +1,10 @@
 import { SearchData, User } from "./store";
 
+const baseUrl = 'http://10.87.110.121:5160'
+
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
-        const response = await fetch(`http://10.125.244.121:5160/users/${username}`);
+        const response = await fetch(`${baseUrl}/users/${username}`);
         if (response.ok) {
             return false;
         }
@@ -15,7 +17,7 @@ export default async function checkUsernameAvailable(username: string): Promise<
 export async function createUser(newUser: User): Promise<void> {
     try {
         console.log('Creating user:', newUser);
-        const response = await fetch(`http://10.125.244.121:5160/users`, {
+        const response = await fetch(`${baseUrl}/users`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -34,7 +36,7 @@ export async function createUser(newUser: User): Promise<void> {
 
 export async function loginUser(user: User): Promise<User> {
     try {
-        const response = await fetch(`http://10.125.244.121:5160/users/${user.username}`);
+        const response = await fetch(`${baseUrl}/users/${user.username}`);
         if (response.ok) {
             const loggedInUser: User = await response.json();
             return loggedInUser;
@@ -48,7 +50,7 @@ export async function loginUser(user: User): Promise<User> {
 
 export async function loginUserWithToken(token: string): Promise<User> {
     try {
-        const response = await fetch(`http://10.125.244.121:5160/users/token/${token}`);
+        const response = await fetch(`${baseUrl}/users/token/${token}`);
         if (response.ok) {
             const loggedInUser: User = await response.json();
             return loggedInUser;
@@ -63,7 +65,7 @@ export async function loginUserWithToken(token: string): Promise<User> {
 
 export async function getUserPasswordHash(username: string): Promise<string | null> {
     try {
-        const response = await fetch(`http://10.125.244.121:5160/users/password/${username}`);
+        const response = await fetch(`${baseUrl}/users/password/${username}`);
         if (response.ok) {
             const data = await response.json();
             return data;
@@ -78,7 +80,7 @@ export async function getUserPasswordHash(username: string): Promise<string | nu
 
 export async function getVerseSearchResult(search: string): Promise<SearchData> {
     try {
-        const response = await fetch(`http://10.125.244.121:5160/verses/search/${search}`);
+        const response = await fetch(`${baseUrl}/verses/search/${search}`);
         if (response.ok) {
             const data: SearchData = await response.json();
             return data;
