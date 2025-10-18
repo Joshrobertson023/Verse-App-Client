@@ -14,7 +14,8 @@ export default function useAppTheme() {
           surface: '#292929ff',
           surface2: '#3d3d3dff',
           onBackground: colors.primaryWhite,
-          backdrop: '#2a2a2aff'
+          backdrop: '#2a2a2aff',
+          onPrimary: '#1b3660ff'
         }
     } : {
         ...MD3LightTheme,
@@ -26,7 +27,8 @@ export default function useAppTheme() {
           surface: '#f5f5f5',
           surface2: '#cececeff',
           onBackground: '#000',
-          backdrop: '#f5f5f5'
+          backdrop: '#f5f5f5',
+          onPrimary: '#1b3660ff'
           // add more overrides as needed
         }
     };

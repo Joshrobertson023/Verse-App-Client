@@ -14,7 +14,7 @@ export default function Index() {
   const params = useLocalSearchParams();
 
     const collection = useAppStore((state) =>
-        state.collections.find((c) => c.id?.toString() === params.id)
+        state.collections.find((c) => c.collectionId?.toString() === params.id)
   );
 
     const navigation = useNavigation();
@@ -30,7 +30,7 @@ export default function Index() {
   return (
     <View style={styles.container}>
       {collection?.userVerses.map((userVerse) => (
-              <UserVerseCard key={userVerse.id} userVerse={userVerse} />
+              <UserVerseCard uvKey={userVerse.id} userVerse={userVerse} />
             ))}
     </View>
   );

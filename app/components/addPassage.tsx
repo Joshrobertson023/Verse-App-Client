@@ -60,7 +60,7 @@ export default function AddPassage() {
     }
 
     return (
-        <ScrollView style={{marginTop: 10}}>
+        <ScrollView style={{padding: 20}}>
             <Searchbar
                 placeholder="Search by reference or keywords"
                 onChangeText={setSearchQuery}
@@ -95,14 +95,15 @@ export default function AddPassage() {
             
             {passageSearchResults && passageSearchResults.verses.length > 0 ? (
                 passageSearchResults.verses.map((verse, i) => (
+                    passageSearchResults.searched_By_Passage === true ?
                     <View key={i} style={{paddingTop: 10}}>
-                        <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 300}}>
+                        <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 300, marginBottom: 10}}>
                             {verse.verse_reference}
                         </Text>
-                        <Text style={{...styles.text, fontFamily: 'Noto Serif', alignContent: 'flex-start', marginTop: -10}}>
+                        <Text style={{...styles.text, fontFamily: 'Noto Serif', alignContent: 'flex-start'}}>
                             {verse.text}
                         </Text>
-                        <View style={{marginTop: -30, marginBottom: 20, flex: 1, flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center'}}>
+                        <View style={{marginBottom: 20, flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center'}}>
                             <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',  width: 20}}>
                                     <Ionicons name="people" size={20} color={theme.colors.onBackground}/>
                                     <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
@@ -121,6 +122,44 @@ export default function AddPassage() {
                             </View>
                         </View>
                     </View>
+                    :
+                     <View key={i} style={{paddingTop: 10, flex: 1}}>
+                            <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 300, marginBottom: 10}}>
+                                {verse.verse_reference}
+                            </Text>
+
+                        <View style={{flexDirection: 'row', alignItems: 'start'}}>
+                            <View style={{width: '85%'}}>
+                                <Text style={{...styles.text, fontFamily: 'Noto Serif', alignContent: 'flex-start'}}>
+                                    {verse.text}
+                                </Text>
+                            </View>
+                            <View style={{width: '15%', alignItems: 'center', justifyContent: 'center'}}>
+                                <TouchableOpacity style={{...styles.button_filled, borderRadius: 30, width: 40, height: 40}}>
+                                    <Ionicons name="add" size={28}/>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                            <View style={{marginBottom: 20, flexDirection: 'row', justifyContent: 'flex-start'}}>
+                                <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start'}}>
+                                        <Ionicons name="people" size={20} color={theme.colors.onBackground}/>
+                                        <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
+                                                {verse.verse_reference.includes('Invalid') 
+                                                || verse.verse_reference.includes('spelling') 
+                                                ? null : (verse.users_Saved_Verse + " saves")}
+                                        </Text>
+                                </View>
+                                <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start'}}>
+                                    <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} />
+                                    <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
+                                        {verse.verse_reference.includes('Invalid') 
+                                        || verse.verse_reference.includes('spelling') 
+                                        ? null : (verse.users_Memorized + " memorized")}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
                 ) )
                 ) : <View></View>}
 

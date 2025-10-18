@@ -7,15 +7,16 @@ import useAppTheme from '../theme';
 
 interface userVerseProps {
     userVerse: UserVerse;
+    uvKey: number | undefined;
 }
 
 
-export default function UserVerseCard({userVerse}: userVerseProps) {
+export default function UserVerseCard({userVerse, uvKey}: userVerseProps) {
     const styles = useStyles();
     const theme = useAppTheme();
 
     return (
-        <View style={{width: '100%'}}>
+        <View key={uvKey} style={{width: '100%', marginBottom: 20}}>
             <Surface style={{width: '100%', padding: 20, borderRadius: 3}} elevation={4}>
                 <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
                 {userVerse.verses.map((verse) => (

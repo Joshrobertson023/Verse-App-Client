@@ -7,9 +7,9 @@ export interface ErrorMessage {
 }
 
 export interface Collection {
-    id: number;
+    collectionId: number;
     title: string;
-    author?: string;
+    authorUsername?: string;
     visibility?: string;
     isPublished?: boolean;
     numSaves?: number;
@@ -95,7 +95,7 @@ const defaultCollection: Collection = {
     visibility: 'Private',
     userVerses: [],
     dateCreated: new Date(),
-    id: 0,
+    collectionId: 0,
     favorites: true,
 };
 
@@ -133,38 +133,8 @@ const defaultCollections: Collection[] = [
             ]}
         ],
         dateCreated: new Date(),
-        id: 0,
+        collectionId: 0,
         favorites: true,
-    },
-    {
-        
-        title: 'God is Good',
-        visibility: 'Public',
-        userVerses: [],
-        dateCreated: new Date(),
-        id: 1,
-        favorites: false,
-        author: 'JoshRobertson023'
-    },
-    {
-        
-        title: 'Hard Work',
-        visibility: 'Private',
-        userVerses: [],
-        dateCreated: new Date(),
-        id: 2,
-        favorites: false,
-        author: 'JoshRobertson023'
-    },
-    {
-        
-        title: 'Peace Through Christ',
-        visibility: 'Public',
-        userVerses: [],
-        dateCreated: new Date(),
-        id: 3,
-        favorites: false,
-        author: 'OtherUser22'
     },
 ]
 
@@ -179,8 +149,8 @@ const emptyLoginInfo: loginInfo = {
 
 const emptyNewCollection: Collection = {
     title: '',
-    userVerses: [defaultNewUserVerse],
-    id: 0,
+    userVerses: [],
+    collectionId: 0,
     favorites: false,
 }
 
@@ -203,7 +173,7 @@ interface AppState {
   showStreakOnHomepage: boolean;
   sendStreakNotifications: boolean;
   sendVerseOfDayNotifications: boolean;
-  newCollection?: Collection;
+  newCollection: Collection;
   numNotifications: number;
 
   getHomePageStats: (user: User) => void;
@@ -217,6 +187,7 @@ interface AppState {
     setSendVerseOfDayNotifications?: (send: boolean) => void;
     setNewCollection: (collection: Collection) => void;
     addUserVerseToCollection: (userVerse: UserVerse) => void;
+    resetNewCollection: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -238,7 +209,7 @@ export const useAppStore = create<AppState>((set) => ({
     removeCollection: (id: number) => set((state: { collections: Collection[] }) => ({collections: state.collections.filter((c) => c.id !== id)})),
     updateCollection: (updated: Collection) => set((state: { collections: Collection[] }) => ({
     collections: state.collections.map((c) =>
-        c.id === updated.id ? updated : c
+        c.collectionId === updated.collectionId ? updated : c
     ),})), // const updateCollection = useAppStore((s) => s.updateCollection);
     setLoginInfo: (info: loginInfo) => set({ loginInfo: info }),
     setStreak: (streak: Streak[]) => set((state) => ({ user: { ...state.user, streak } })),
@@ -254,5 +225,9 @@ export const useAppStore = create<AppState>((set) => ({
             userVerses: [...(state.newCollection?.userVerses || []), userVerse],
         },
     })),
+    resetNewCollection: () =>
+        set(() => ({
+            newCollection: emptyNewCollection
+        }))
 
 }))
