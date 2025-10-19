@@ -66,7 +66,7 @@ export interface Verse {
     text: string;
     users_Saved_Verse?: number;
     users_Memorized?: number;
-    verseNumber?: number;
+    verse_Number?: number;
 }
 
 export interface loginInfo {

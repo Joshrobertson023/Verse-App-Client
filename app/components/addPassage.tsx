@@ -98,26 +98,22 @@ export default function AddPassage() {
                     passageSearchResults.searched_By_Passage === true ?
                     <View key={i} style={{paddingTop: 10}}>
                         <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 300, marginBottom: 10}}>
-                            {verse.verse_reference}
+                                {verse.verse_reference}
                         </Text>
                         <Text style={{...styles.text, fontFamily: 'Noto Serif', alignContent: 'flex-start'}}>
-                            {verse.text}
+                            {verse.verse_Number ? verse.verse_Number + ":" : undefined} {verse.text}
                         </Text>
                         <View style={{marginBottom: 20, flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center'}}>
                             <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',  width: 20}}>
-                                    <Ionicons name="people" size={20} color={theme.colors.onBackground}/>
+                                {verse.verse_Number ? <Ionicons name="people" size={20} color={theme.colors.onBackground} /> : null}
                                     <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                            {verse.verse_reference.includes('Invalid') 
-                                            || verse.verse_reference.includes('spelling') 
-                                            ? null : (verse.users_Saved_Verse + " saves")}
+                                                {verse.verse_Number ? (verse.users_Saved_Verse + " saves") : null}
                                     </Text>
                             </View>
                             <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',  width: 20}}>
-                                <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} />
+                                {verse.verse_Number ? <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} /> : null}
                                 <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                    {verse.verse_reference.includes('Invalid') 
-                                    || verse.verse_reference.includes('spelling') 
-                                    ? null : (verse.users_Memorized + " memorized")}
+                                        {verse.verse_Number ? (verse.users_Memorized + " memorized") : null}
                                 </Text>
                             </View>
                         </View>
@@ -131,31 +127,27 @@ export default function AddPassage() {
                         <View style={{flexDirection: 'row', alignItems: 'start'}}>
                             <View style={{width: '85%'}}>
                                 <Text style={{...styles.text, fontFamily: 'Noto Serif', alignContent: 'flex-start'}}>
-                                    {verse.text}
+                            {verse.verse_Number ? verse.verse_Number + ":" : undefined} {verse.text}
                                 </Text>
                             </View>
                             <View style={{width: '15%', alignItems: 'center', justifyContent: 'center'}}>
-                                <TouchableOpacity style={{...styles.button_filled, borderRadius: 30, width: 40, height: 40}}>
+                                {verse.verse_Number ? <TouchableOpacity style={{...styles.button_filled, borderRadius: 30, width: 40, height: 40}}>
                                     <Ionicons name="add" size={28}/>
-                                </TouchableOpacity>
+                                </TouchableOpacity> : null}
                             </View>
                         </View>
 
                             <View style={{marginBottom: 20, flexDirection: 'row', justifyContent: 'flex-start'}}>
                                 <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start'}}>
-                                        <Ionicons name="people" size={20} color={theme.colors.onBackground}/>
+                                {verse.verse_Number ? <Ionicons name="people" size={20} color={theme.colors.onBackground} /> : null}
                                         <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                                {verse.verse_reference.includes('Invalid') 
-                                                || verse.verse_reference.includes('spelling') 
-                                                ? null : (verse.users_Saved_Verse + " saves")}
+                                                {verse.verse_Number ? (verse.users_Saved_Verse + " saves") : null}
                                         </Text>
                                 </View>
                                 <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start'}}>
-                                    <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} />
+                                {verse.verse_Number ? <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} /> : null}
                                     <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                        {verse.verse_reference.includes('Invalid') 
-                                        || verse.verse_reference.includes('spelling') 
-                                        ? null : (verse.users_Memorized + " memorized")}
+                                        {verse.verse_Number ? (verse.users_Memorized + " memorized") : null}
                                     </Text>
                                 </View>
                             </View>
