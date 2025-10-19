@@ -21,15 +21,15 @@ export default function collectionItem({ collection }: CollectionItemProps) {
   return (
     collection.favorites ? 
       <TouchableOpacity
-      key={collection.id}
-      onPress={() => router.push(`../collections/${collection.id}`)}
+      key={collection.collectionId}
+      onPress={() => router.push(`../collections/${collection.collectionId}`)}
     >
       <View style={styles.collectionItem}>
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
           <View style={{justifyContent: 'space-between', height: '100%'}}>
             <View style={{justifyContent: 'flex-start'}}>
               {/* title */}
-              <View style={{}} key={collection.id}>
+              <View style={{}} key={collection.collectionId}>
                 <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}}>{collection.title} <Ionicons name="star" size={18} color={theme.colors.onBackground} /></Text>
               </View>
               <View>
@@ -68,7 +68,7 @@ export default function collectionItem({ collection }: CollectionItemProps) {
             <View>
 
               {/* author */}
-              <Text style={styles.tinyText}>{collection.author ? collection.author : ''}</Text>
+              <Text style={styles.tinyText}>{collection.authorUsername ? collection.authorUsername : ''}</Text>
             </View>
           </View>
           
@@ -77,8 +77,8 @@ export default function collectionItem({ collection }: CollectionItemProps) {
     </TouchableOpacity>
       : 
           <TouchableOpacity
-      key={collection.id}
-      onPress={() => router.push(`../collections/${collection.id}`)}
+      key={collection.collectionId}
+      onPress={() => router.push(`../collections/${collection.collectionId}`)}
     >
       <View style={styles.collectionItem}>
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
@@ -86,7 +86,7 @@ export default function collectionItem({ collection }: CollectionItemProps) {
             <View style={{justifyContent: 'flex-start'}}>
               {/* title */}
               <View>
-                <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}} key={collection.id}>{collection.title}</Text>
+                <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}} key={collection.collectionId}>{collection.title}</Text>
               </View>
               <View>
 
@@ -126,7 +126,7 @@ export default function collectionItem({ collection }: CollectionItemProps) {
             <View>
 
               {/* author */}
-              <Text style={styles.tinyText}>{collection.author ? collection.author : ''}</Text>
+              <Text style={styles.tinyText}>{collection.authorUsername ? collection.authorUsername : ''}</Text>
             </View>
           </View>
           

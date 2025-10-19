@@ -14,7 +14,6 @@ interface userVerseProps {
 export default function UserVerseCard({userVerse, uvKey}: userVerseProps) {
     const styles = useStyles();
     const theme = useAppTheme();
-
     return (
         <View key={uvKey} style={{width: '100%', marginBottom: 20}}>
             <Surface style={{width: '100%', padding: 20, borderRadius: 3}} elevation={4}>
@@ -22,7 +21,7 @@ export default function UserVerseCard({userVerse, uvKey}: userVerseProps) {
                 {userVerse.verses.map((verse) => (
                     <View key={verse.verse_reference} style={{}}>
                         <View>
-                            <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number}: {verse.text}</Text>
+                            <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number}: {verse.text} | {uvKey}</Text>
                         </View>
                     </View>
                 ))}

@@ -1,7 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useLayoutEffect } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import { View } from 'react-native';
+import { ActivityIndicator } from 'react-native-paper';
 import UserVerseCard from '../components/userVerse';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
@@ -27,11 +28,24 @@ export default function Index() {
       }
     }, [collection]);
 
-  return (
-    <View style={styles.container}>
-      {collection?.userVerses.map((userVerse) => (
-              <UserVerseCard uvKey={userVerse.id} userVerse={userVerse} />
-            ))}
-    </View>
-  );
+    const [loadingVerses, setLoadingVerses] = useState(true);
+
+    const userVerses = [[]];
+    // await getUserVersesPopulated
+
+    if (loadingVerses) {
+        return (
+            <View style={{...styles.container, alignItems: 'center', justifyContent: 'center', marginTop: -100}}>
+                <ActivityIndicator size={70} animating={true} />
+            </View>
+        )
+    } else {
+      return (
+        <View style={styles.container}>
+          {userVerses.map((userVerse) => (
+            <UserVerseCard uvKey={userVerse.id} userVerse={userVerse} />
+          ))}
+        </View>
+      );
+    }
 }
