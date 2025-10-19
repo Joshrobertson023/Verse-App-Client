@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Divider, FAB } from 'react-native-paper';
 import CollectionItem from '../components/collectionItem';
@@ -15,10 +15,13 @@ export default function Index() {
   const collections = useAppStore((state) => state.collections);
   const addCollection = useAppStore((state) => state.addCollection);
   const homePageStats = useAppStore((state) => state.homePageStats);
+  const setCollections = useAppStore((state) => state.setCollections);
 
-  // useEffect(() => { // Apparently this runs even if the user is not logged in
-  //   alert('Running index.tsx use effect');
-  // }, []);
+  useEffect(() => { // Apparently this runs even if the user is not logged in
+    if (useAppStore.getState().user.username === 'Default User') {
+      return;
+    }
+  }, []);
 
 
   return (
@@ -100,7 +103,7 @@ export default function Index() {
     <View style={styles.collectionsContainer}>
 
       {collections.map((collection) => (
-        <CollectionItem key={collection.id} collection={collection} />
+        <CollectionItem key={collection.collectionId} collection={collection} />
       ))}
 
     </View>

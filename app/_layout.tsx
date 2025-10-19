@@ -8,7 +8,7 @@ import { Text, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
-import { loginUserWithToken } from './db';
+import { getUserCollections, loginUserWithToken } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -33,6 +33,7 @@ export default function RootLayout() {
   const homePageStats = useAppStore((state) => state.homePageStats);
   const getHomePageStats = useAppStore((state) => state.getHomePageStats);
   const [errorLogginIn, setErrorLoggingIn] = useState(false);
+  const setCollections = useAppStore((state) => state.setCollections);
 
   
 SystemUI.setBackgroundColorAsync(theme.colors.background);
@@ -61,6 +62,9 @@ React.useEffect(() => {
                 fetchedUser.versesOverdue = 0;
                 fetchedUser.numberPublishedCollections = 0;
                 setUser(fetchedUser);
+                const collections = await getUserCollections(fetchedUser.username);
+                setCollections(collections);
+                alert('logging in for user: ' + fetchedUser.username);
               }
             }
             setAppIsReady(true);

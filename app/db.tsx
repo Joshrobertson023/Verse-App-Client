@@ -1,4 +1,4 @@
-import { Collection, SearchData, User } from "./store";
+import { Collection, SearchData, User, UserVerse } from "./store";
 
 const baseUrl = 'http://10.87.110.121:5160'
 
@@ -94,8 +94,26 @@ export async function getVerseSearchResult(search: string): Promise<SearchData> 
     }
 }
 
-export async function createCollectionDB(collection: Collection, username: string): Promise<Collection> {
+export async function getMostRecentCollectionId(username: string): Promise<number> {
     try {
+        const newCollectionReponse = await fetch(`${baseUrl}/collections/mostrecent/${username}`);
+                if (newCollectionReponse.ok) {
+            const data: number = await newCollectionReponse.json();
+            console.log('\n\n\n' + data + '\n\n\n')
+            return data;
+        } else {
+            const responseText = await newCollectionReponse.text();
+            throw new Error(responseText || 'Failed to fetch search results');
+        }
+    } catch (error) {
+        alert(error);
+        throw error;
+    }
+}
+
+export async function createCollectionDB(collection: Collection, username: string) {
+    try {
+        console.log('creating collection: ' + collection);
         const response = await fetch(`${baseUrl}/collections`, {
             method: 'POST',
             headers: {
@@ -107,14 +125,40 @@ export async function createCollectionDB(collection: Collection, username: strin
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to create collection');
         }
+    } catch (error) {
+        alert(error);
+        throw error;
+    }
+}
 
-        const newCollectionReponse = await fetch(`${baseUrl}/collections/mostrecent/${username}`);
-                if (newCollectionReponse.ok) {
-            const data: Collection = await newCollectionReponse.json();
+export async function addUserVersesToNewCollection(userVerses: UserVerse[], collectionId: number) {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/newcollection/${collectionId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userVerses),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to create user');
+        }
+    }
+    catch (error) {
+        throw error;
+    }
+}
+
+export async function getUserCollections(username: string): Promise<Collection[]> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/all/${username}`);
+        if (response.ok) {
+            const data: Collection[] = await response.json();
             return data;
         } else {
-            const responseText = await newCollectionReponse.text();
-            throw new Error(responseText || 'Failed to fetch search results');
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch user collections');
         }
     } catch (error) {
         console.error(error);

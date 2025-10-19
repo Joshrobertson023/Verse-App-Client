@@ -87,7 +87,7 @@ const nextClick = async () => {
                         <Text style={styles.tinyText}>The username you entered is already taken. Please try a different one.</Text>
                     </Dialog.Content>
                     <Dialog.Actions>
-                        <TouchableOpacity onPress={hideDialog} style={{...styles.button_filled, backgroundColor: theme.colors.background, marginTop: 12}}>
+                        <TouchableOpacity onPress={hideDialog} style={{...styles.button_outlined, marginTop: 12}}>
                             <Text style={styles.buttonText_outlined}>OK</Text>
                         </TouchableOpacity>
                     </Dialog.Actions>

@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { createUser, loginUser } from '../db';
-import { useAppStore, User } from '../store';
+import { createCollectionDB, createUser, getUserCollections, loginUser } from '../db';
+import { Collection, useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -18,6 +18,8 @@ export default function CreatePasswordScreen() {
   const theme = useAppTheme();
   const loginInfo = useAppStore.getState().loginInfo;
   const setUser = useAppStore((state) => state.setUser);
+  const user = useAppStore((state) => state.user);
+  const setCollections = useAppStore((state) => state.setCollections);
 
 const nextClick = async () => {
     try {
@@ -44,6 +46,10 @@ const nextClick = async () => {
             lastName: loginInfo?.lastName || '',
             hashedPassword: password, // todo: hash password
             streak: [],
+            streakLength: 0,
+            numberPublishedCollections: 0,
+            versesMemorized: 0,
+            versesOverdue: 0
         }
 
         await createUser(newUser);
@@ -52,11 +58,20 @@ const nextClick = async () => {
         await SecureStore.setItemAsync('userToken', loggedInUser.authToken || '');
         console.log(loggedInUser);
         console.log('set user token: ' + loggedInUser.authToken || '');
+        const favoritesCollection: Collection = {
+            title: 'Favorites',
+            visibility: 'Private',
+            userVerses: [],
+            favorites: true,
+            authorUsername: loggedInUser.username,
+        }
+        await createCollectionDB(favoritesCollection, loggedInUser.username);
+        setCollections(await getUserCollections(loggedInUser.username));
         setLoading(false);
         router.push('/');
     } catch (error) {
         console.error(error);
-        alert('An error occurred while checking email availability. Please try again. | ' + error);
+        alert('An error occurred while creating your account. Please try again. | ' + error);
         setLoading(false);
         return;
     }

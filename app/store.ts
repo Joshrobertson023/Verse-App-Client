@@ -7,7 +7,7 @@ export interface ErrorMessage {
 }
 
 export interface Collection {
-    collectionId: number;
+    collectionId?: number;
     title: string;
     authorUsername?: string;
     visibility?: string;
@@ -105,38 +105,7 @@ const defaultNewUserVerse: UserVerse = {
     verses: [],
 }
 
-const defaultCollections: Collection[] = [
-    {
-        title: 'Favorites',
-        visibility: 'Private',
-        userVerses: [
-            {
-                readableReference: 'Psalms 119:2-3', 
-                username: 'You', 
-                verses: [
-                {
-                    verse_reference: 'Psalms 119:2',
-                    verseNumber: 2,
-                    id: 582,
-                    text: 'verse text',
-                    users_Saved_Verse: 18,
-                    users_Memorized: 0,
-                },
-                {
-                    verse_reference: 'Psalms 119:3',
-                    verseNumber: 3,
-                    id: 899,
-                    text: 'text',
-                    users_Memorized: 0,
-                    users_Saved_Verse: 2,
-                }
-            ]}
-        ],
-        dateCreated: new Date(),
-        collectionId: 0,
-        favorites: true,
-    },
-]
+const defaultCollections: Collection[] = []
 
 const emptyLoginInfo: loginInfo = {
     firstName: '',
@@ -148,9 +117,8 @@ const emptyLoginInfo: loginInfo = {
 };
 
 const emptyNewCollection: Collection = {
-    title: '',
+    title: 'New Collection',
     userVerses: [],
-    collectionId: 0,
     favorites: false,
 }
 
@@ -188,6 +156,7 @@ interface AppState {
     setNewCollection: (collection: Collection) => void;
     addUserVerseToCollection: (userVerse: UserVerse) => void;
     resetNewCollection: () => void;
+    setCollections: (collections: Collection[]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -204,7 +173,9 @@ export const useAppStore = create<AppState>((set) => ({
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
     },
-    setUser: (user: User) => set({ user }),
+    setUser: (newUser: User) => set((state) => ({
+        user: newUser
+    })),
     addCollection: (newCollection: Collection) => set((state: { collections: Collection[] }) => ({collections: [...state.collections, newCollection]})),
     removeCollection: (id: number) => set((state: { collections: Collection[] }) => ({collections: state.collections.filter((c) => c.id !== id)})),
     updateCollection: (updated: Collection) => set((state: { collections: Collection[] }) => ({
@@ -228,6 +199,10 @@ export const useAppStore = create<AppState>((set) => ({
     resetNewCollection: () =>
         set(() => ({
             newCollection: emptyNewCollection
+        })),
+    setCollections: (collections) => {
+        set((state) => ({
+            collections: collections
         }))
-
+    }
 }))

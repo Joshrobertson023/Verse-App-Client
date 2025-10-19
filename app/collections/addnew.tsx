@@ -1,11 +1,11 @@
   import React, { useState } from 'react';
 import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { ProgressBar, TextInput } from 'react-native-paper';
+import { ActivityIndicator, TextInput } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
 import UserVerseCard from '../components/userVerse';
-import { createCollectionDB } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections } from '../db';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -15,14 +15,17 @@ const { height } = Dimensions.get('window');
 export default function Index() {
     const styles = useStyles();
     const theme = useAppTheme();
-    const [title, setTitle] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
     const newCollection = useAppStore((state) => state.newCollection);
+    const [title, setTitle] = useState('');
     const addCollection = useAppStore((state) => state.addCollection);
+    const setNewCollection = useAppStore((state) => state.setNewCollection);
     const resetNewCollection = useAppStore((state) => state.resetNewCollection);
     const user = useAppStore((state) => state.user);
     const [creatingCollection, setCreatingCollection] = useState(false);
     const [progressPercent, setProgressPercent] = useState(0.0);
+    const setCollections = useAppStore((state) => state.setCollections);
+    const [loading, setLoading] = useState(false);
 
    const sheetHeight = height * .96;
    const closedPosition = height;
@@ -71,11 +74,18 @@ export default function Index() {
             newCollection.authorUsername = user.username;
             newCollection.visibility = 'Private';
             newCollection.verseOrder = newCollection.userVerses.join(",");
+            newCollection.title = title;
             setProgressPercent(.50);
-            const collection = await createCollectionDB(newCollection, user.username);
-            // Add all user verses
-            // Set saved for all verses
-            addCollection(collection);
+            await createCollectionDB(newCollection, user.username);
+            const id = await getMostRecentCollectionId(user.username);
+            alert(id);
+                    // await createCollectionDB(favoritesCollection, loggedInUser.username);
+                    // setCollections(await getUserCollections(loggedInUser.username));
+            await addUserVersesToNewCollection(newCollection.userVerses, id);
+            const collections = await getUserCollections(user.username);
+            setCollections(collections);
+            // Delete this: (since we need all new uvs ids, just re-grab collections when getting to home)
+            // addCollection(collection);
             resetNewCollection();
             setTitle('');
             setErrorMessage('');
@@ -111,7 +121,13 @@ export default function Index() {
           }}></View>
           <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, alignSelf: 'center'
           }} activeOpacity={.2} onPress={handleCreateCollection}>
-            {creatingCollection ? <ProgressBar progress={0.5} color={theme.colors.background} /> : <Text style={{...styles.buttonText_filled}}>Create Collection</Text>}
+            {creatingCollection ? (
+                        <Text style={styles.buttonText_filled}>
+                            <ActivityIndicator animating={true} color={theme.colors.background} />
+                        </Text> 
+                    ) : (
+                        <Text style={styles.buttonText_filled}>Create Account</Text>
+                    )}
           </TouchableOpacity>
 
           <Animated.View style={[{position: 'absolute',

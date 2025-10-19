@@ -82,9 +82,9 @@ export default function useStyles() {
       backgroundColor: theme.colors.background,
       color: theme.colors.onBackground,
       borderRadius: 8,
-      padding: 12,
+      padding: 10,
       marginBottom: 12,
-      height: 24,
+      height: 34,
     },
     errorInput: {
       borderColor: 'red',

@@ -8,10 +8,12 @@ import useStyles from '../styles';
 export default function ProfileScreen() {
   const styles = useStyles();
   const setUser = useAppStore((state) => state.setUser);
+  const setCollections = useAppStore((state) => state.setCollections);
 
   const logoutClick = async () => {
     setUser(loggedOutUser);
     await SecureStore.deleteItemAsync('userToken');
+    setCollections([]);
     router.replace('/(auth)/createName');
   };
 
