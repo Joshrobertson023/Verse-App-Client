@@ -4,7 +4,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import React, { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
@@ -34,65 +34,104 @@ export default function RootLayout() {
   const getHomePageStats = useAppStore((state) => state.getHomePageStats);
   const [errorLogginIn, setErrorLoggingIn] = useState(false);
   const setCollections = useAppStore((state) => state.setCollections);
+  const [startupVerse, setStartupVerse] = useState(0);
 
   
-SystemUI.setBackgroundColorAsync(theme.colors.background);
+  SystemUI.setBackgroundColorAsync(theme.colors.background);
 
-React.useEffect(() => {
-  const login = async () => {
-    const TIMEOUT_MS = 4000; 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Login process timed out')), TIMEOUT_MS)
-    );
-
-    try {
-      await Promise.race([
-        (async () => {
-          if (!errorLogginIn) {
-            const token = await SecureStore.getItemAsync('userToken');
-  
-            console.log('logging in with token:');
-            console.log(token);
-            console.log(user);
-            if (token) {
-              if (user.username === 'Default User') {
-                const fetchedUser = await loginUserWithToken(token);
-                fetchedUser.streakLength = 0; // Change to functions in store that do it automatically on user set
-                fetchedUser.versesMemorized = 0;
-                fetchedUser.versesOverdue = 0;
-                fetchedUser.numberPublishedCollections = 0;
-                setUser(fetchedUser);
-                const collections = await getUserCollections(fetchedUser.username);
-                setCollections(collections);
-                alert('logging in for user: ' + fetchedUser.username);
-              }
-            }
-            setAppIsReady(true);
-            getHomePageStats(user);
-          }
-        })(),
-        timeoutPromise,
-      ]);
-    } catch (e) {
-      console.warn('Login error:', e);
-      setErrorLoggingIn(true);
-    } finally {
-      setAppIsReady(true);
+  const startupVerses = [
+    {
+      reference: 'Colossians 3:16',
+      text: 'Let the word of Christ dwell in you richly in all wisdom'
+    },
+    {
+      reference: 'Joshua 1:8',
+      text: 'This book of the law shall not depart out of thy mouth; but thou shalt meditate therein day and night'
+    },
+    {
+      reference: 'Deuteronomy 6:6-7',
+      text: 'And these words, which I command thee this day, shall be in thine heart'
+    },
+    {
+      reference: '2 Timothy 2:15',
+      text: 'Study to shew thyself approved unto God, a workman that needeth not to be ashamed, rightly dividing the word of truth.'
+    },
+    {
+      reference: 'Psalm 1:2',
+      text: 'But his delight is in the law of the Lord; and in his law doth he meditate day and night.'
+    },
+    {
+      reference: 'Hebrews 4:12',
+      text: 'For the word of God is quick, and powerful, and sharper than any twoedged sword'
+    },
+    {
+      reference: 'Matthew 4:4',
+      text: '...It is written, Man shall not live by bread alone, but by every word that proceedeth out of the mouth of God.'
+    },
+    {
+      reference: 'Ephesians 6:17',
+      text: 'And take the helmet of salvation, and the sword of the Spirit, which is the word of God:'
     }
-  };
+  ]
 
-  login();
-}, [loaded, error]);
+  React.useEffect(() => {
+    const login = async () => {
+      const TIMEOUT_MS = 4000; 
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Login process timed out')), TIMEOUT_MS)
+      );
+
+      try {
+        await Promise.race([
+          (async () => {
+            if (!errorLogginIn) {
+              const token = await SecureStore.getItemAsync('userToken');
+    
+              console.log('logging in with token:');
+              console.log(token);
+              console.log(user);
+
+              const max = startupVerses.length;
+              setStartupVerse(Math.floor(Math.random() * max));
+
+              if (token) {
+                if (user.username === 'Default User') {
+                  const fetchedUser = await loginUserWithToken(token);
+                  fetchedUser.streakLength = 0; // Change to functions in store that do it automatically on user set
+                  fetchedUser.versesMemorized = 0;
+                  fetchedUser.versesOverdue = 0;
+                  fetchedUser.numberPublishedCollections = 0;
+                  setUser(fetchedUser);
+                  const collections = await getUserCollections(fetchedUser.username);
+                  setCollections(collections);
+                  alert('logging in for user: ' + fetchedUser.username);
+                }
+              }
+              setAppIsReady(true);
+              getHomePageStats(user);
+            }
+          })(),
+          timeoutPromise,
+        ]);
+      } catch (e) {
+        console.warn('Login error:', e);
+        setErrorLoggingIn(true);
+      } finally {
+        setAppIsReady(true);
+      }
+    };
+
+    login();
+  }, [loaded, error]);
 
 
   if (!appIsReady) {
     return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background, padding: 30 }}>
-      <Text style={{fontSize: 36, color: theme.colors.onBackground, position: 'absolute', top: 200}}>Logo goes here</Text>
+      <Image source={require('../assets/images/Logo.png')} style={{width: 100, height: 100, borderRadius: 30, marginBottom: 20}} />
       <View style={{padding: 20}}>
-        <Text style={{fontSize: 20, fontWeight: 900, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}} >Let the word of Christ dwell in you richly in all wisdom.</Text>
-        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>- Colossians 3:16</Text>
-        <Text style={{marginTop: 50, fontSize: 20, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>Starting Up...</Text>
+        <Text style={{fontSize: 20, fontWeight: 600, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}} >{startupVerses[startupVerse].text}</Text>
+        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>{startupVerses[startupVerse].reference}</Text>
       </View>
     </View>
     )
