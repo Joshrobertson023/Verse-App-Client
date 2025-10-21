@@ -93,7 +93,7 @@ const nextClick = async () => {
                     </Dialog.Actions>
                 </Dialog>
                 </Portal>
-                <Text style={{...styles.text, marginBottom: 20}}>Let's create a username:</Text>
+                <Text style={{...styles.startupText, marginBottom: 30}}>Create a Username</Text>
                 <TextInput label="Username" mode="outlined" style={styles.input} value={username} onChangeText={(text) => handleTextChange('username', text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>

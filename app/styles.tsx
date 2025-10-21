@@ -48,6 +48,13 @@ export default function useStyles() {
       marginBottom: 16,
       fontFamily: 'Inter',
     },
+    startupText: {
+      color: theme.colors.onBackground,
+      fontSize: 24,
+      marginBottom: 16,
+      fontFamily: 'Inter',
+      fontWeight: 900,
+    },
     tinyText: {
       color: theme.colors.onBackground,
       fontSize: 16,

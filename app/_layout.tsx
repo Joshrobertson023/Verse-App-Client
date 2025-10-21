@@ -129,9 +129,9 @@ export default function RootLayout() {
     return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background, padding: 30 }}>
       <Image source={require('../assets/images/Logo.png')} style={{width: 100, height: 100, borderRadius: 30, marginBottom: 20}} />
-      <View style={{padding: 20}}>
-        <Text style={{fontSize: 20, fontWeight: 600, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}} >{startupVerses[startupVerse].text}</Text>
-        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>{startupVerses[startupVerse].reference}</Text>
+      <View style={{padding: 0}}>
+        <Text style={{fontSize: 20, fontFamily: 'Noto Serif', color: theme.colors.onBackground, textAlign: 'center'}} >{startupVerses[startupVerse].text}</Text>
+        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>- {startupVerses[startupVerse].reference}</Text>
       </View>
     </View>
     )

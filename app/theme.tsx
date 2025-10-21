@@ -8,7 +8,7 @@ export default function useAppTheme() {
         ...MD3DarkTheme,
         colors: {
           ...MD3DarkTheme.colors,
-          primary: '#3769b4ff',
+          primary: '#b9641aff',
           secondary: '#3769b4ff',
           background: '#000000ff',
           surface: '#292929ff',

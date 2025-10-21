@@ -34,8 +34,8 @@ export default function CreateNameScreen() {
     return (
         <SafeAreaView style={styles.container}>
                 <Logo />
-            <View style={{...styles.centered, marginBottom: 20}}>
-                <Text style={{...styles.text, marginBottom: 20}}>Welcome! What's your name?</Text>
+            <View style={{...styles.centered, marginBottom: 0}}>
+                <Text style={{...styles.startupText, marginBottom: 30}}>Create an Account</Text>
                 <TextInput label="First Name" mode="outlined" style={styles.input} value={firstName} 
                     onChangeText={(text) => { 
                         setFirstName(text); 
