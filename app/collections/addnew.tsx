@@ -158,18 +158,17 @@ export default function Index() {
       });
 
       const handleCreateCollection = async () => {
-            if (title.trim() === '') {
-              alert('Title cannot be empty.')
-              return;
-            } else {
-              setErrorMessage('');
-            }
             setCreatingCollection(true);
 
             newCollection.authorUsername = user.username;
             newCollection.visibility = visibility;
             newCollection.verseOrder = newCollection.userVerses.join(",");
-            newCollection.title = title;
+            
+            if (title.trim() === '') {
+              newCollection.title = 'New Collection';
+            } else {
+              newCollection.title = title;
+            }
             setProgressPercent(.50);
             await createCollectionDB(newCollection, user.username);
             const id = await getMostRecentCollectionId(user.username);

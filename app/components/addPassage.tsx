@@ -65,6 +65,9 @@ export default function AddPassage({onAddPassage}: AddPassageProps) {
             readableReference: passageSearchResults ? passageSearchResults.readable_Reference : 'Undefined',
             verses: passageSearchResults ? passageSearchResults.verses : [],
         }
+        if (newCollection.userVerses.find(r => r.readableReference === userVerse.readableReference)) {
+            return;
+        }
         addUserVerseToCollection(userVerse);
         onAddPassage();
     }

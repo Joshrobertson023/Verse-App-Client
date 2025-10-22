@@ -90,6 +90,16 @@ export interface SearchData {
     verses: Verse[];
 }
 
+export interface CollectionSheetControls {
+    openSettingsSheet: () => void;
+    collection: Collection | undefined;
+}
+
+const defaultCollectionsSheetControls = {
+    openSettingsSheet: () => console.log('Collection settings sheet not yet registered or component unmounted.'),
+    collection: undefined,
+}
+
 const defaultCollection: Collection = {
     title: 'Favorites',
     visibility: 'Private',
@@ -143,6 +153,7 @@ interface AppState {
   sendVerseOfDayNotifications: boolean;
   newCollection: Collection;
   numNotifications: number;
+  collectionsSheetControls: CollectionSheetControls;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -157,6 +168,7 @@ interface AppState {
     addUserVerseToCollection: (userVerse: UserVerse) => void;
     resetNewCollection: () => void;
     setCollections: (collections: Collection[]) => void;
+    setCollectionsSheetControls: (controls: CollectionSheetControls) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -169,6 +181,7 @@ export const useAppStore = create<AppState>((set) => ({
     sendVerseOfDayNotifications: true,
     newCollection: emptyNewCollection,
     numNotifications: 0,
+    collectionsSheetControls: defaultCollectionsSheetControls,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -204,5 +217,6 @@ export const useAppStore = create<AppState>((set) => ({
         set((state) => ({
             collections: collections
         }))
-    }
+    },
+    setCollectionsSheetControls: (controls: CollectionSheetControls) => set({collectionsSheetControls: controls}),
 }))

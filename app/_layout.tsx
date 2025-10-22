@@ -1,10 +1,11 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import React, { useState } from 'react';
-import { Image, Text, View } from 'react-native';
+import { Image, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, Portal } from 'react-native-paper';
@@ -35,6 +36,7 @@ export default function RootLayout() {
   const [errorLogginIn, setErrorLoggingIn] = useState(false);
   const setCollections = useAppStore((state) => state.setCollections);
   const [startupVerse, setStartupVerse] = useState(0);
+  const { openSettingsSheet } = useAppStore((state) => state.collectionsSheetControls);
 
   
   SystemUI.setBackgroundColorAsync(theme.colors.background);
@@ -188,6 +190,13 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
+                headerRight: () => (
+            <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
+              <TouchableOpacity onPress={() => {openSettingsSheet()}}>
+                <Ionicons style={{marginTop: 4}} name={"ellipsis-vertical"} size={32} color={theme.colors.onBackground} />
+              </TouchableOpacity>
+            </View>
+          ),
           headerShadowVisible: false,
               }} 
             />
