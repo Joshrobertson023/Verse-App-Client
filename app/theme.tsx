@@ -9,26 +9,26 @@ export default function useAppTheme() {
         colors: {
           ...MD3DarkTheme.colors,
           primary: '#b9641aff',
-          secondary: '#3769b4ff',
+          secondary: '#b47837ff',
           background: '#000000ff',
           surface: '#292929ff',
           surface2: '#3d3d3dff',
           onBackground: colors.primaryWhite,
           backdrop: '#2a2a2aff',
-          onPrimary: '#1b3660ff'
+          onPrimary: '#603f1bff'
         }
     } : {
         ...MD3LightTheme,
         colors: {
           ...MD3LightTheme.colors,
-          primary: '#2E4B95',
-          secondary: '#3f8ee8ff',
+          primary: '#b9641aff',
+          secondary: '#b47837ff',
           background: '#fff',
           surface: '#f5f5f5',
           surface2: '#cececeff',
           onBackground: '#000',
           backdrop: '#f5f5f5',
-          onPrimary: '#1b3660ff'
+          onPrimary: '#603f1bff'
           // add more overrides as needed
         }
     };

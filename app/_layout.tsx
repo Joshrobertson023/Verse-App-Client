@@ -7,7 +7,7 @@ import React, { useState } from 'react';
 import { Image, Text, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { PaperProvider } from 'react-native-paper';
+import { PaperProvider, Portal } from 'react-native-paper';
 import { getUserCollections, loginUserWithToken } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
@@ -104,7 +104,6 @@ export default function RootLayout() {
                   setUser(fetchedUser);
                   const collections = await getUserCollections(fetchedUser.username);
                   setCollections(collections);
-                  alert('logging in for user: ' + fetchedUser.username);
                 }
               }
               setAppIsReady(true);
@@ -140,6 +139,7 @@ export default function RootLayout() {
   return ( 
     <GestureHandlerRootView style={{flex: 1}}>
         <PaperProvider theme={theme}>
+          <Portal.Host>
           <Stack>
             <Stack.Screen 
               name="(tabs)"
@@ -206,6 +206,7 @@ export default function RootLayout() {
               }} 
             />
         </Stack>
+        </Portal.Host>
       </PaperProvider>
     </GestureHandlerRootView>
   )

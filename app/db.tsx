@@ -1,6 +1,6 @@
 import { Collection, SearchData, User, UserVerse } from "./store";
 
-const baseUrl = 'http://10.87.110.121:5160'
+const baseUrl = 'http://10.165.101.121:5160'
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {

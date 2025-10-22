@@ -8,7 +8,11 @@ import { SearchData, useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
-export default function AddPassage() {
+interface AddPassageProps {
+    onAddPassage: () => void;
+}
+
+export default function AddPassage({onAddPassage}: AddPassageProps) {
     const styles = useStyles();
     const theme = useAppTheme();
     const [searchQuery, setSearchQuery] = useState('');
@@ -44,6 +48,11 @@ export default function AddPassage() {
         setSearchLoading(false);
     }
 
+    const checkClearedInput = (value: string) => {
+        if (value.trim().length === 0)
+            clearSearchResults();
+    }
+
     const clearSearchResults = () => {
         setPassageSearchResults(undefined);
         setShowAddPassage(false);
@@ -57,13 +66,17 @@ export default function AddPassage() {
             verses: passageSearchResults ? passageSearchResults.verses : [],
         }
         addUserVerseToCollection(userVerse);
+        onAddPassage();
     }
 
     return (
         <ScrollView style={{padding: 20}}>
             <Searchbar
                 placeholder="Search by reference or keywords"
-                onChangeText={setSearchQuery}
+                onChangeText={(value) => {
+                    setSearchQuery(value);
+                    checkClearedInput(value);
+                }}
                 value={searchQuery}
                 loading={searchLoading}
                 onClearIconPress={clearSearchResults}
