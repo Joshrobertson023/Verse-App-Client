@@ -211,6 +211,8 @@ export default function Index() {
         if (newCollection.userVerses.find(r => r.readableReference === userVerse.readableReference)) {
             return;
         }
+        console.log(userVerse.readableReference);
+        console.log(userVerse.verses.at(0)?.verse_reference);
         addUserVerseToCollection(userVerse);
         
         closeSheet();
@@ -254,7 +256,7 @@ export default function Index() {
                     {userVerse.verses.map((verse) => (
                         <View key={verse.verse_reference} style={{}}>
                             <View>
-                                <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number}: {verse.text}</Text>
+                                <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number ? verse.verse_Number + ": " : ''}{verse.text}</Text>
                             </View>
                         </View>
                     ))}

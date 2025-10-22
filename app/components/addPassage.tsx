@@ -85,6 +85,7 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
         if (newCollection.userVerses.find(r => r.readableReference === userVerse.readableReference)) {
             return;
         }
+        console.log('userVerse being added:', JSON.stringify(userVerse, null, 2));
         addUserVerseToCollection(userVerse);
         onAddPassage();
     }

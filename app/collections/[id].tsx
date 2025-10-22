@@ -51,6 +51,7 @@ useEffect(() => {
     try {
       const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
       const data = await getUserVersesPopulated(colToSend);
+      console.log(JSON.stringify(colToSend, null, 1));
       setUserVerses(data.userVerses ?? []);
       updateCollection(data);
     } catch (err) {
@@ -292,7 +293,7 @@ const addPassage = () => {
 
             ))}
           </View>
-          <View style={{height: 200}}></View>
+          <View style={{height: 0}}></View>
         </ScrollView>
 
         <Portal>

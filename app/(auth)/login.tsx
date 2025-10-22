@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import checkUsernameAvailable, { getUserPasswordHash, loginUser } from '../db';
+import checkUsernameAvailable, { getUserCollections, getUserPasswordHash, loginUser } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -21,6 +21,7 @@ export default function LoginScreen() {
   const currentLoginInfo = useAppStore.getState().loginInfo;
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
+  const setCollections = useAppStore((state) => state.setCollections);
 
 const handleTextChange = (field: string, text: string) => {    
     setLoginInfo({ ...loginInfo, [field]: text });
@@ -70,7 +71,12 @@ const nextClick = async () => {
         }
 
         const loggedInUser = await loginUser(newUser);
+        loggedInUser.streakLength = 0; // Change to functions in store that do it automatically on user set
+        loggedInUser.versesMemorized = 0;
+        loggedInUser.versesOverdue = 0;
+        loggedInUser.numberPublishedCollections = 0;
         setUser(loggedInUser);
+        setCollections(await getUserCollections(loggedInUser.username));
         console.log(loggedInUser);
         console.log('set user token: ' + loggedInUser.authToken || '');
 
