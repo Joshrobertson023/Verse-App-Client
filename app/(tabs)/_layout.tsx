@@ -28,8 +28,8 @@ React.useEffect(() => {
         headerShown: true,
         headerStyle: {
           backgroundColor: theme.colors.background,
-          borderBottomColor: theme.colors.outline,
-          borderBottomWidth: 1,
+          borderBottomWidth: 0,
+          borderBottomColor: 'transparent'
         },
         headerShadowVisible: false,
         headerTitleStyle: {

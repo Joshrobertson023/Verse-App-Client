@@ -165,3 +165,24 @@ export async function getUserCollections(username: string): Promise<Collection[]
         throw error;
     }
 }
+
+export async function getUserVersesPopulated(collection: Collection | undefined): Promise<Collection> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/get`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(collection)});
+        if (response.ok) {
+            const data: Collection = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch collection');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}

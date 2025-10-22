@@ -1,10 +1,10 @@
 import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { View } from 'react-native';
-import { ActivityIndicator } from 'react-native-paper';
-import UserVerseCard from '../components/userVerse';
-import { useAppStore } from '../store';
+import { ActivityIndicator, Surface, Text } from 'react-native-paper';
+import { getUserVersesPopulated } from '../db';
+import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 
 export default function Index() {
@@ -14,24 +14,47 @@ export default function Index() {
   const addCollection = useAppStore((state) => state.addCollection);
   const params = useLocalSearchParams();
 
-    const collection = useAppStore((state) =>
-        state.collections.find((c) => c.collectionId?.toString() === params.id)
-  );
-
     const navigation = useNavigation();
 
-    useLayoutEffect(() => {
-      if (collection) {
-        navigation.setOptions({
-          title: collection.title,
-        });
-      }
-    }, [collection]);
+    const id = Array.isArray(params.id) ? params.id[0] : params.id;
+    
+    const [loadingVerses, setLoadingVerses] = useState(false);
+    const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
+    
+    const collection = useAppStore((state) =>
+      state.collections.find((c) => c.collectionId?.toString() === params.id)
+  );
 
-    const [loadingVerses, setLoadingVerses] = useState(true);
+useEffect(() => {
+  console.log('Collection ID being sought:', id);
+  console.log('Is Collection found?', !!collection);
+  if (!collection) return;
+  
+  console.log('Running fetchPopulated for collection:', collection.title);
+  
+  const fetchPopulated = async () => {
+    setLoadingVerses(true);
+    try {
+      const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
+      const data = await getUserVersesPopulated(colToSend);
+      setUserVerses(data.userVerses ?? []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingVerses(false);
+    }
+  };
+  
+  fetchPopulated();
+}, [collection]);
 
-    const userVerses = [[]];
-    // await getUserVersesPopulated
+useLayoutEffect(() => {
+  if (collection) {
+    navigation.setOptions({
+      title: collection.title,
+    });
+  }
+}, [collection]);
 
     if (loadingVerses) {
         return (
@@ -42,8 +65,21 @@ export default function Index() {
     } else {
       return (
         <View style={styles.container}>
-          {userVerses.map((userVerse) => (
-            <UserVerseCard uvKey={userVerse.id} userVerse={userVerse} />
+          {userVerses.map((userVerse: UserVerse) => (
+
+              <View key={userVerse.id} style={{width: '100%', marginBottom: 20}}>
+                  <Surface style={{width: '100%', padding: 20, borderRadius: 3}} elevation={4}>
+                      <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
+                      {userVerse.verses.map((verse) => (
+                          <View key={verse.verse_reference} style={{}}>
+                              <View>
+                                  <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number}: {verse.text} </Text>
+                              </View>
+                          </View>
+                      ))}
+                  </Surface>
+              </View>
+
           ))}
         </View>
       );
