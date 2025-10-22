@@ -61,7 +61,7 @@ useEffect(() => {
   };
   
   fetchPopulated();
-}, [collection]);
+}, []);
 
 useLayoutEffect(() => {
   if (collection) {
@@ -75,9 +75,9 @@ useLayoutEffect(() => {
 // Animations
 
 
-    const [sheetVisible, setSheetVisible] = useState(false);
+  const [sheetVisible, setSheetVisible] = useState(false);
 
-const offset = .1;
+  const offset = .1;
    const sheetHeight = height * (.89 + offset);
    const closedPosition = height;
     const openPosition = height - sheetHeight + (height * offset);
@@ -212,6 +212,10 @@ const offset = .1;
       });
 
 // End animations
+
+const clickPlus = () => {
+
+}
 
 const addPassage = () => {
   closeSheet();
@@ -420,7 +424,7 @@ const addPassage = () => {
                   ></View>
                 </View>
               </GestureDetector>
-              <AddPassage onAddPassage={addPassage} />
+              <AddPassage onAddPassage={addPassage} onClickPlus={clickPlus} />
             </Animated.View>
           </Portal>
         </View>

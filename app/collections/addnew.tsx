@@ -7,7 +7,7 @@ import { ActivityIndicator, Divider, Portal, Surface, TextInput } from 'react-na
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
 import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections } from '../db';
-import { useAppStore, UserVerse } from '../store';
+import { useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -29,6 +29,7 @@ export default function Index() {
     const [loading, setLoading] = useState(false);
     const [visibility, setVisibility] = useState('Private');
     const [sheetVisible, setSheetVisible] = useState(false);
+    const addUserVerseToCollection = useAppStore((state) => state.addUserVerseToCollection)
 
 
     const offset = .1;
@@ -184,12 +185,41 @@ export default function Index() {
             setCreatingCollection(false);
             router.replace("/");
       }
+          
+      const clickPlus = (verse: Verse) => {
+        // const newUserVerse: UserVerse = {
+        //   readableReference: verse.verse_reference,
+        //   username: user.username,
+        //   verses: [verse],
+        // }
+        // const existingVerse =newCollection.userVerses.find(v => v.readableReference === newUserVerse.readableReference);
+        // let updatedUserVerses: UserVerse[];
+
+        //  if (existingVerse) {
+        // //   updatedUserVerses = newCollection.userVerses.filter(v => v.readableReference !== newUserVerse.readableReference);
+        //   return;
+        //  }
+        //   updatedUserVerses = [...newCollection.userVerses, newUserVerse];
+
+        // setNewCollection({...newCollection, userVerses: updatedUserVerses});
+
+        const userVerse: UserVerse = {
+            username: user.username,
+            readableReference: verse.verse_reference,
+            verses: [verse],
+        }
+        if (newCollection.userVerses.find(r => r.readableReference === userVerse.readableReference)) {
+            return;
+        }
+        addUserVerseToCollection(userVerse);
+        
+        closeSheet();
+      }
 
       const handleDeleteUV = (userVerse: UserVerse) => {
         const updatedUserVerses = newCollection.userVerses.filter(uv => uv.readableReference !== userVerse.readableReference);
           setNewCollection({...newCollection, userVerses: updatedUserVerses});
       }
-    
 
     return (
       <View style={{...styles.container}}>
@@ -371,7 +401,7 @@ export default function Index() {
                   ></View>
                 </View>
               </GestureDetector>
-              <AddPassage onAddPassage={closeSheet} />
+              <AddPassage onAddPassage={closeSheet} onClickPlus={clickPlus} />
             </Animated.View>
           </Portal>
 

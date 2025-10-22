@@ -4,15 +4,16 @@ import { ActivityIndicator, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Searchbar, Text } from 'react-native-paper';
 import { getVerseSearchResult } from '../db';
-import { SearchData, useAppStore, UserVerse } from '../store';
+import { SearchData, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 interface AddPassageProps {
     onAddPassage: () => void;
+    onClickPlus: (verse: Verse) => void;
 }
 
-export default function AddPassage({onAddPassage}: AddPassageProps) {
+export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps) {
     const styles = useStyles();
     const theme = useAppTheme();
     const [searchQuery, setSearchQuery] = useState('');
@@ -25,6 +26,8 @@ export default function AddPassage({onAddPassage}: AddPassageProps) {
     const user = useAppStore((state) => state.user);
     const addUserVerseToCollection = useAppStore((state) => state.addUserVerseToCollection);
     const newCollection = useAppStore((state) => state.newCollection);
+    const [errorSearching, setErrorSearching] = useState(false);
+    const [errorMsg, setErrorMsg] = useState('');
 
     const handleSearch = async () => {
         if (searchQuery.length === 0) {
@@ -35,6 +38,20 @@ export default function AddPassage({onAddPassage}: AddPassageProps) {
         }
         
         const results = await getVerseSearchResult(searchQuery);
+        if (results.verses.at(0)?.verse_reference.includes('missing expression')) {
+            setErrorSearching(true);
+            setErrorMsg('Nothing came back from that search. Please check your spelling and try again.');
+        }
+        else if (results.verses.at(0)?.verse_reference.includes('Not a valid verse')) {
+            setErrorSearching(true);
+            setErrorMsg('That is not a valid verse number. Please try again.');
+        }
+        else if (results.verses.at(0)?.verse_reference.includes('Error getting chapter')) {
+            setErrorSearching(true);
+            setErrorMsg('That is not a valid chapter number. Please try again.')
+        }
+        else
+            setErrorSearching(false);
         setPassageSearchResults(results); 
         
         if (results?.searched_By_Passage === true) {
@@ -114,7 +131,7 @@ export default function AddPassage({onAddPassage}: AddPassageProps) {
                     passageSearchResults.searched_By_Passage === true ?
                     <View key={i} style={{paddingTop: 10}}>
                         <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 300, marginBottom: 10}}>
-                                {verse.verse_reference}
+                                {errorSearching ? errorMsg : verse.verse_reference}
                         </Text>
                         <Text style={{...styles.text, fontFamily: 'Noto Serif', alignContent: 'flex-start'}}>
                             {verse.verse_Number ? verse.verse_Number + ":" : undefined} {verse.text}
@@ -137,33 +154,36 @@ export default function AddPassage({onAddPassage}: AddPassageProps) {
                     :
                      <View key={i} style={{paddingTop: 10, flex: 1}}>
                             <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 300, marginBottom: 10}}>
-                                {verse.verse_reference}
+                                {errorSearching ? errorMsg : verse.verse_reference}
                             </Text>
 
                         <View style={{flexDirection: 'row', alignItems: 'start'}}>
                             <View style={{width: '85%'}}>
                                 <Text style={{...styles.text, fontFamily: 'Noto Serif', alignContent: 'flex-start'}}>
-                            {verse.verse_Number ? verse.verse_Number + ":" : undefined} {verse.text}
+                            {errorSearching ? null : verse.text}
                                 </Text>
                             </View>
                             <View style={{width: '15%', alignItems: 'center', justifyContent: 'center'}}>
-                                {verse.verse_Number ? <TouchableOpacity style={{...styles.button_filled, borderRadius: 30, width: 40, height: 40}}>
+                                {errorSearching ? null 
+                                : <TouchableOpacity style={{...styles.button_filled, borderRadius: 30, width: 40, height: 40}} onPress={() => {onClickPlus(verse); }}>
                                     <Ionicons name="add" size={28}/>
-                                </TouchableOpacity> : null}
+                                </TouchableOpacity>}
                             </View>
                         </View>
 
                             <View style={{marginBottom: 20, flexDirection: 'row', justifyContent: 'flex-start'}}>
                                 <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start'}}>
-                                {verse.verse_Number ? <Ionicons name="people" size={20} color={theme.colors.onBackground} /> : null}
+                                {errorSearching ? null : <Ionicons name="people" size={20} color={theme.colors.onBackground} />}
                                         <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                                {verse.verse_Number ? (verse.users_Saved_Verse + " saves") : null}
+                                                {errorSearching ? null :
+                                                 (verse.users_Saved_Verse + " saves")}
                                         </Text>
                                 </View>
                                 <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start'}}>
-                                {verse.verse_Number ? <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} /> : null}
+                                {errorSearching ? null : <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} />}
                                     <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                        {verse.verse_Number ? (verse.users_Memorized + " memorized") : null}
+                                        {errorSearching ? null :
+                                        (verse.users_Memorized + " memorized")}
                                     </Text>
                                 </View>
                             </View>

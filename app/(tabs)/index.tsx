@@ -170,7 +170,7 @@ export default function Index() {
               <Ionicons name="flame" size={32} color={theme.colors.onBackground} style={{ marginRight: 5 }} />
               <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.streakLength}</Text>
+                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.streakLength || 0}</Text>
                 </View>
                 <Text style={{ ...styles.tinyText, fontSize: 14 }}>Day Streak</Text>
               </View>
@@ -184,7 +184,7 @@ export default function Index() {
               <Ionicons name="checkmark-done" size={28} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
               <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.versesMemorized}</Text>
+                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.versesMemorized || '0'}</Text>
                 </View>
                 <Text style={{ ...styles.tinyText, fontSize: 14 }}>Verses Memorized</Text>
               </View>
@@ -199,7 +199,7 @@ export default function Index() {
               <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   {user.versesOverdue > 0 ? <Ionicons name='alert-circle' size={22} color={theme.colors.error} /> : null}
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3, marginLeft: user.versesOverdue > 0 ? 5 : 0 }}>{user.versesOverdue}</Text>
+                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3, marginLeft: user.versesOverdue > 0 ? 5 : 0 }}>{user.versesOverdue || 0}</Text>
                 </View>
                 <Text style={{ ...styles.tinyText, fontSize: 14 }}>Verses Overdue</Text>
               </View>
@@ -213,7 +213,7 @@ export default function Index() {
               <Ionicons name="people" size={28} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
               <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.numberPublishedCollections}</Text>
+                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.numberPublishedCollections || 0}</Text>
                 </View>
                 <Text style={{ ...styles.tinyText, fontSize: 14 }}>Published Collections</Text>
               </View>
