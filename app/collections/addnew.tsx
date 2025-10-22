@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { ActivityIndicator, Divider, Surface, TextInput } from 'react-native-paper';
+import { ActivityIndicator, Divider, Portal, Surface, TextInput } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
 import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections } from '../db';
@@ -28,15 +28,18 @@ export default function Index() {
     const setCollections = useAppStore((state) => state.setCollections);
     const [loading, setLoading] = useState(false);
     const [visibility, setVisibility] = useState('Private');
+    const [sheetVisible, setSheetVisible] = useState(false);
 
-   const sheetHeight = height * .96;
+
+    const offset = .1;
+   const sheetHeight = height * (.89 + offset);
    const closedPosition = height;
-    const openPosition = height - sheetHeight;
+    const openPosition = height - sheetHeight + (height * offset);
     const peekPosition = height;
 
-    const settingsSheetHeight = height * .5;
-    const settingsClosedPosition = height;
-    const settingsOpenPosition = height - settingsSheetHeight;
+  const settingsSheetHeight = height * (.40 + offset);
+  const settingsClosedPosition = height;
+  const settingsOpenPosition = height - settingsSheetHeight + (height * offset);
 
     const translateY = useSharedValue(closedPosition);
     const startY = useSharedValue(0);
@@ -45,19 +48,43 @@ export default function Index() {
     const settingsStartY = useSharedValue(0);
 
     const openSheet = () => {
-      translateY.value = withSpring(openPosition, { damping: 90, stiffness: 900 });
+      translateY.value = withSpring(openPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
+      setSheetVisible(true);
     };
 
     const openSettingsSheet = () => {
-      settingsTranslateY.value = withSpring(settingsOpenPosition, { damping: 90, stiffness: 900});
+      settingsTranslateY.value = withSpring(settingsOpenPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
+      setSheetVisible(true);
     }
 
     const closeSheet = () => {
-      translateY.value = withSpring(closedPosition, { damping: 90, stiffness: 900 });
+      translateY.value = withSpring(closedPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
+      setSheetVisible(false);
     };
 
     const closeSettingsSheet = () => {
-      settingsTranslateY.value = withSpring(settingsClosedPosition, { damping: 90, stiffness: 900});
+      settingsTranslateY.value = withSpring(settingsClosedPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
+      setSheetVisible(true);
     }
 
     const animatedStyle = useAnimatedStyle(() => ({
@@ -68,6 +95,18 @@ export default function Index() {
       transform: [{ translateY: settingsTranslateY.value }],
     }));
 
+    const backdropAnimatedStyle = useAnimatedStyle(() => {
+      const sheetProgress =
+        (settingsClosedPosition - settingsTranslateY.value) / settingsSheetHeight;
+  
+      const opacity = Math.min(1, Math.max(0, sheetProgress)) * 0.5;
+  
+      return {
+        opacity,
+        pointerEvents: opacity > 0.001 ? 'auto' : 'none',
+      };
+    });
+
     const settingsPanGesture = Gesture.Pan()
       .onBegin(() => {
         settingsStartY.value = settingsTranslateY.value;
@@ -77,9 +116,19 @@ export default function Index() {
       })
       .onEnd(() => {
         if (settingsTranslateY.value > settingsOpenPosition + 50) {
-          settingsTranslateY.value = withSpring(settingsClosedPosition, {damping: 90, stiffness: 900});
+          settingsTranslateY.value = withSpring(settingsClosedPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
         } else {
-          settingsTranslateY.value = withSpring(settingsOpenPosition, { damping: 90, stiffness: 900});
+          settingsTranslateY.value = withSpring(settingsOpenPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
         }
       })
 
@@ -92,9 +141,19 @@ export default function Index() {
       })
       .onEnd(() => {
         if (translateY.value > openPosition + 50) {
-          translateY.value = withSpring(peekPosition, { damping: 90, stiffness: 900 });
+          translateY.value = withSpring(peekPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
         } else {
-          translateY.value = withSpring(openPosition, { damping: 90, stiffness: 900 });
+          translateY.value = withSpring(openPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
         }
       });
 
@@ -195,61 +254,128 @@ export default function Index() {
                     )}
           </TouchableOpacity>
 
-          <Animated.View style={[{position: 'absolute',
-                                  left: 0,
-                                  right: 0,
-                                  height: sheetHeight,
-                                  backgroundColor: theme.colors.surface,
-                                  borderTopLeftRadius: 16,
-                                  borderTopRightRadius: 16,
-                                  paddingTop: 20,
-                                  paddingBottom: 80,
-                                  zIndex: 999,
-                                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
-                                }, animatedStyle]}>
-            <GestureDetector gesture={panGesture}>
-              <View style={{padding: 20, marginTop: -20}}>
-                <View style={{width: 70, height: 2, borderRadius: 20, borderWidth: 2, alignSelf: 'center', borderColor: theme.colors.onBackground}}></View>
-              </View>
-          </GestureDetector>
-              <AddPassage onAddPassage={closeSheet} />
-          </Animated.View>
+          <Portal>
+            {sheetVisible && (
+              <Animated.View
+                style={[
+                  {
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    zIndex: 10,
+                  },
+                  backdropAnimatedStyle,
+                ]}
+                pointerEvents="auto"
+              >
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  activeOpacity={1}
+                  onPress={() => {
+                    closeSettingsSheet();
+                    closeSheet();
+                  }}
+                />
+              </Animated.View>
+            )}
 
-          <Animated.View style={[{
-                        position: 'absolute',
-                        left: 0,
-                        right: 0,
-                        height: settingsSheetHeight,
-                        backgroundColor: theme.colors.surface,
-                        borderTopLeftRadius: 16,
-                        borderTopRightRadius: 16,
-                        paddingTop: 20,
-                        paddingBottom: 80,
-                        zIndex: 99,
-                        elevation: 50,
-                        boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)'
-                    }, settingsAnimatedStyle]}>
-            <GestureDetector gesture={settingsPanGesture}>
-              <View style={{padding: 20, marginTop: -20}}>
-                <View style={{width: 70, height: 2, borderRadius: 20, borderWidth: 2, alignSelf: 'center', borderColor: theme.colors.onBackground}}></View>
-              </View>
-            </GestureDetector>
-            <Divider />
-            <TouchableOpacity style={{...styles.button_text}} onPress={() => {
-              setVisibility('Private');
-              closeSettingsSheet();
-            }}>
-              <Text style={{...styles.tinyText}}>Private</Text>
-            </TouchableOpacity>
-            <Divider />
-            <TouchableOpacity style={{...styles.button_text}} onPress={() => {
-              setVisibility('Public');
-              closeSettingsSheet();
-            }}>
-              <Text style={{...styles.tinyText}}>Public</Text>
-            </TouchableOpacity>
-            <Divider />
-          </Animated.View>
+            <Animated.View
+              style={[
+                {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  height: settingsSheetHeight,
+                  backgroundColor: theme.colors.surface,
+                  borderTopLeftRadius: 16,
+                  borderTopRightRadius: 16,
+                  paddingTop: 20,
+                  paddingBottom: 80,
+                  zIndex: 20, // 👈 higher than backdrop
+                  elevation: 20,
+                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
+                },
+                settingsAnimatedStyle,
+              ]}
+            >
+              <GestureDetector gesture={settingsPanGesture}>
+                <View style={{ padding: 20, marginTop: -20 }}>
+                  <View
+                    style={{
+                      width: 70,
+                      height: 2,
+                      borderRadius: 20,
+                      borderWidth: 2,
+                      alignSelf: 'center',
+                      borderColor: theme.colors.onBackground,
+                    }}
+                  ></View>
+                </View>
+              </GestureDetector>
+
+              <Divider />
+              <TouchableOpacity
+                style={{ ...styles.button_text }}
+                onPress={() => {
+                  setVisibility('Private');
+                  closeSettingsSheet();
+                }}
+              >
+                <Text style={{ ...styles.tinyText }}>Private</Text>
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={{ ...styles.button_text }}
+                onPress={() => {
+                  setVisibility('Public');
+                  closeSettingsSheet();
+                }}
+              >
+                <Text style={{ ...styles.tinyText }}>Public</Text>
+              </TouchableOpacity>
+              <Divider />
+            </Animated.View>
+
+            <Animated.View
+              style={[
+                {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  height: sheetHeight,
+                  backgroundColor: theme.colors.surface,
+                  borderTopLeftRadius: 16,
+                  borderTopRightRadius: 16,
+                  paddingTop: 20,
+                  paddingBottom: 80,
+                  zIndex: 15,
+                  elevation: 15,
+                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
+                },
+                animatedStyle,
+              ]}
+            >
+              <GestureDetector gesture={panGesture}>
+                <View style={{ padding: 20, marginTop: -20 }}>
+                  <View
+                    style={{
+                      width: 70,
+                      height: 2,
+                      borderRadius: 20,
+                      borderWidth: 2,
+                      alignSelf: 'center',
+                      borderColor: theme.colors.onBackground,
+                    }}
+                  ></View>
+                </View>
+              </GestureDetector>
+              <AddPassage onAddPassage={closeSheet} />
+            </Animated.View>
+          </Portal>
+
           </View>
     )
   }

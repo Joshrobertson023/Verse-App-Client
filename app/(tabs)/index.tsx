@@ -46,11 +46,21 @@ export default function Index() {
 
   const openSettingsSheet = () => {
     setIsSettingsSheetOpen(true);
-    settingsTranslateY.value = withSpring(settingsOpenPosition, { damping: 90, stiffness: 900 });
+    settingsTranslateY.value = withSpring(settingsOpenPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
   }
 
   const closeSettingsSheet = (onCloseComplete?: () => void) => {
-    settingsTranslateY.value = withSpring(settingsClosedPosition, { damping: 90, stiffness: 900 }, (isFinished) => {
+    settingsTranslateY.value = withSpring(settingsClosedPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,}, (isFinished) => {
       'worklet';
       if (isFinished) {
         if (onCloseComplete) {
@@ -96,14 +106,24 @@ export default function Index() {
       const isFlickedDown = e.velocityY > VELOCITY_THRESHOLD;
 
       if (isDraggedDownFar || isFlickedDown) {
-        settingsTranslateY.value = withSpring(settingsClosedPosition, { damping: 90, stiffness: 900 }, (isFinished) => {
+        settingsTranslateY.value = withSpring(settingsClosedPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,}, (isFinished) => {
           'worklet';
           if (isFinished) {
             runOnJS(closeSettingsSheet)();
           }
         });
       } else {
-        settingsTranslateY.value = withSpring(settingsOpenPosition, { damping: 90, stiffness: 900 });
+        settingsTranslateY.value = withSpring(settingsOpenPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,});
       }
     })
 
