@@ -13,6 +13,37 @@ import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
 
+function orderCompletion(collections: Collection[]): Collection[] {
+  const lookupMap = new Map<number, Collection>();
+  for (const col of collections) {
+  let progressPercentages: number[] = [];
+    for (const uv of col.userVerses) {
+      if (uv.progressPercent) {
+        progressPercentages.push(uv.progressPercent || 0.0);
+      }
+    }
+    const percentageSum = progressPercentages.reduce((accumulator, currentValue) => {
+      return accumulator + currentValue;
+    });
+    const percentageAverage = percentageSum / progressPercentages.length;
+    lookupMap.set(percentageAverage, col);
+  }
+  const reordered: [number, Collection][] | undefined = Array.from(lookupMap.entries())
+  .filter(([progressPercent, collection]) => progressPercent > 0)
+  .sort((a: [number, Collection], b: [number, Collection]) => a[0] - b[0]);
+  const reorderedCollections: Collection[] = reordered.map(([progressPercent, collection]) => collection);
+  return reorderedCollections;
+}
+
+function orderNewest(collections: Collection[]): Collection[] {
+  const reordered = collections.filter(c => c.dateCreated).sort((a: Collection, b: Collection) => {
+    const dateA = new Date(a.dateCreated || '').getDate();
+    const dateB = new Date(b.dateCreated || '').getDate();
+    return dateA - dateB;
+  });
+  return reordered.filter(r => !r.dateCreated);
+}
+
 function orderCustom(array: Collection[], idString: string | undefined): Collection[] {
   if (!idString || array.length === 0) return array;
 
@@ -183,7 +214,17 @@ export default function Index() {
     }
   })
 
-  const orderedCollections: Collection[] = orderCustom(collections, user.collectionsOrder);
+  let orderedCollections: Collection[] = [];
+  const orderBy = useAppStore((state) => state.user.collectionsSortBy);
+  switch (orderBy) {
+    case 0: // custom order
+      orderedCollections = orderCustom(collections, user.collectionsOrder);
+      break;
+    case 1: // by newest modified
+      orderedCollections = orderNewest(collections);
+    case 2: // by percent memorized
+      orderedCollections = orderCompletion(collections);
+  }
 
   return (
     <View style={{ flex: 1 }}>
