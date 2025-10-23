@@ -28,12 +28,12 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
             <View style={{justifyContent: 'flex-start'}}>
               {/* title */}
               <View style={{}} key={collection.collectionId}>
-                <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}}>{collection.title} {collection.title === 'Favorites' ? <Ionicons name="star" size={18} color={theme.colors.onBackground} /> : null} </Text>
+                <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}}>{collection.title}</Text>
               </View>
               <View>
 
                 {/* number of verses */}
-                <Text style={styles.tinyText}>{collection.userVerses.length} {collection.userVerses.length === 1 ? 'verse' : 'verses'}</Text>
+                <Text style={styles.tinyText}>{collection.userVerses.length} {collection.userVerses.length === 1 ? 'passage' : 'passages'}</Text>
               </View>
             </View>
             <View>
@@ -46,15 +46,20 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
 
           {/* menu */}
             <View>
+              {collection.title === 'Favorites' ? 
+              <Ionicons name='star' size={22} color={theme.colors.onBackground} style={{marginTop: 2, marginRight: 2}} />
+              : 
                   <TouchableOpacity 
                     onPress={() => onMenuPress(collection)}>
                     <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
-                  </TouchableOpacity>
+                  </TouchableOpacity>}
+                  
               </View>
             <View>
 
               {/* author */}
-              <Text style={styles.tinyText}>{collection.authorUsername ? collection.authorUsername : ''}</Text>
+              {collection.title === 'Favorites' ? null : <Text style={styles.tinyText}>{collection.authorUsername ? collection.authorUsername : ''}</Text>}
+              
             </View>
           </View>
           

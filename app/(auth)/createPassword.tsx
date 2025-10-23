@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { createCollectionDB, createUser, getUserCollections, loginUser } from '../db';
+import { createCollectionDB, createUser, getUserCollections, loginUser, updateCollectionsOrder } from '../db';
 import { Collection, useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -66,7 +66,13 @@ const nextClick = async () => {
             authorUsername: loggedInUser.username,
         }
         await createCollectionDB(favoritesCollection, loggedInUser.username);
-        setCollections(await getUserCollections(loggedInUser.username));
+        const collections = await getUserCollections(loggedInUser.username);
+        setCollections(collections);
+        const lastCollectionId = collections.at(0)?.collectionId;
+        console.log(lastCollectionId?.toString());
+        await updateCollectionsOrder(lastCollectionId ? lastCollectionId.toString() : '', loggedInUser.username);
+        loggedInUser.collectionsOrder = lastCollectionId?.toString();
+        setUser(loggedInUser);
         setLoading(false);
         router.push('/');
     } catch (error) {

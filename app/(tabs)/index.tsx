@@ -3,14 +3,36 @@ import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Divider, FAB, Portal } from 'react-native-paper';
+import { Dialog, Divider, FAB, Portal } from 'react-native-paper';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import CollectionItem from '../components/collectionItem';
+import { deleteCollection } from '../db';
 import { Collection, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
+
+function orderCustom(array: Collection[], idString: string | undefined): Collection[] {
+  if (!idString || array.length === 0) return array;
+
+  const orderedIds = idString.split(',').map(id => id.trim()).filter(id => id.length > 0);
+  const lookupMap = new Map<string, Collection>();
+  for (const collection of array) {
+    if (collection.collectionId) {
+      lookupMap.set(String(collection.collectionId), collection);
+    }
+  }
+  const reorderedArray: Collection[] = [];
+  for (const id of orderedIds) {
+    const col = lookupMap.get(id);
+    if (col) {
+      reorderedArray.push(col);
+    }
+  }
+  const remainingCollections = array.filter(c => !reorderedArray.find(rc => rc.collectionId === c.collectionId));
+  return [...reorderedArray, ...remainingCollections];
+}
 
 export default function Index() {
   const styles = useStyles();
@@ -22,16 +44,28 @@ export default function Index() {
   const setCollections = useAppStore((state) => state.setCollections);
   const [settingsCollection, setSettingsCollection] = useState<Collection | undefined>(undefined);
   const [isSettingsSheetOpen, setIsSettingsSheetOpen] = useState(false);
+  const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+  const [deleteDialogCollection, setDeleteDialogCollection] = useState<Collection | undefined>(undefined);
+  const deleteCollectionStore = useAppStore((state) => state.removeCollection);
+  const [localSortBy, setLocalSortBy] = useState('');
 
   const [visible, setVisible] = React.useState(false);
 
   const hideDialog = () => setVisible(false);
+  const hideDeleteDialog = () => setDeleteDialogVisible(false);
+
+  const deleteCollectionHandle = async () => {
+    deleteCollectionStore(deleteDialogCollection?.collectionId || -1);
+    await deleteCollection(deleteDialogCollection);
+    // In the future: update collectionsOrder
+    hideDeleteDialog();
+  }
 
   useEffect(() => { // Apparently this runs even if the user is not logged in
     if (useAppStore.getState().user.username === 'Default User') {
-      return;
+      router.replace('/(auth)/createName');
     }
-  }, []);
+  }, [user]);
 
 
   // Animations
@@ -149,6 +183,7 @@ export default function Index() {
     }
   })
 
+  const orderedCollections: Collection[] = orderCustom(collections, user.collectionsOrder);
 
   return (
     <View style={{ flex: 1 }}>
@@ -165,15 +200,16 @@ export default function Index() {
       >
 
         <View style={{ height: 'auto', width: '100%' }}>
+
           <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
             <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Ionicons name="flame" size={32} color={theme.colors.onBackground} style={{ marginRight: 5 }} />
-              <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="checkmark-done" size={22} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.streakLength || 0}</Text>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>{user.versesMemorized || '0'}</Text>
                 </View>
-                <Text style={{ ...styles.tinyText, fontSize: 14 }}>Day Streak</Text>
-              </View>
+                <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>Verses Memorized</Text>
+                </View>
               <Ionicons name='chevron-forward' size={20} color={'gray'} />
             </View>
           </TouchableOpacity>
@@ -181,27 +217,13 @@ export default function Index() {
 
           <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
             <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Ionicons name="checkmark-done" size={28} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
-              <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.versesMemorized || '0'}</Text>
-                </View>
-                <Text style={{ ...styles.tinyText, fontSize: 14 }}>Verses Memorized</Text>
-              </View>
-              <Ionicons name='chevron-forward' size={20} color={'gray'} />
-            </View>
-          </TouchableOpacity>
-          <Divider style={{ marginBottom: 10, marginTop: 10 }} />
-
-          <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
-            <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Ionicons name="extension-puzzle" size={28} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
-              <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="extension-puzzle" size={22} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   {user.versesOverdue > 0 ? <Ionicons name='alert-circle' size={22} color={theme.colors.error} /> : null}
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3, marginLeft: user.versesOverdue > 0 ? 5 : 0 }}>{user.versesOverdue || 0}</Text>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: user.versesOverdue > 0 ? 10 : 5 }}>{user.versesOverdue || 0}</Text>
                 </View>
-                <Text style={{ ...styles.tinyText, fontSize: 14 }}>Verses Overdue</Text>
+                <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>Verses Overdue</Text>
               </View>
               <Ionicons name='chevron-forward' size={20} color={'gray'} />
             </View>
@@ -210,12 +232,12 @@ export default function Index() {
 
           <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
             <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Ionicons name="people" size={28} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
-              <View style={{ flex: 1, flexDirection: 'column', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="people" size={22} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 22, fontWeight: '900', marginBottom: -3, marginTop: -3 }}>{user.numberPublishedCollections || 0}</Text>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>{user.numberPublishedCollections || 0}</Text>
                 </View>
-                <Text style={{ ...styles.tinyText, fontSize: 14 }}>Published Collections</Text>
+                <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>Published Collections</Text>
               </View>
               <Ionicons name='chevron-forward' size={20} color={'gray'} />
             </View>
@@ -225,9 +247,12 @@ export default function Index() {
 
 
         <Text style={{ ...styles.subheading, marginTop: 20 }}>My Verses</Text>
+        <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}}>
+          <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
+        </TouchableOpacity>
         <View style={styles.collectionsContainer}>
 
-          {collections.map((collection) => (
+          {orderedCollections.map((collection) => (
             <CollectionItem key={collection.collectionId} collection={collection} onMenuPress={handleMenuPress} />
           ))}
 
@@ -323,12 +348,29 @@ export default function Index() {
             style={sheetItemStyle.settingsItem}
             onPress={() => {
               closeSettingsSheet();
+              setDeleteDialogVisible(true);
+              setDeleteDialogCollection(settingsCollection);
             }}>
             <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
           </TouchableOpacity>
           <Divider />
         </Animated.View>
       </Portal>
+      <Portal>
+      <Dialog visible={deleteDialogVisible} onDismiss={hideDialog}>
+        <Dialog.Content>
+          <Text style={{...styles.tinyText}}>Are you sure you want to delete the collection "{settingsCollection?.title}"?</Text>
+        </Dialog.Content>
+        <Dialog.Actions>
+          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} onPress={() => hideDeleteDialog()}>
+            <Text style={{...styles.buttonText_outlined}}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} onPress={() => deleteCollectionHandle()}>
+            <Text style={{...styles.buttonText_outlined, color: theme.colors.error}}>Delete</Text>
+          </TouchableOpacity>
+        </Dialog.Actions>
+      </Dialog>
+    </Portal>
     </View>
   );
 }

@@ -190,7 +190,7 @@ export const useAppStore = create<AppState>((set) => ({
         user: newUser
     })),
     addCollection: (newCollection: Collection) => set((state: { collections: Collection[] }) => ({collections: [...state.collections, newCollection]})),
-    removeCollection: (id: number) => set((state: { collections: Collection[] }) => ({collections: state.collections.filter((c) => c.id !== id)})),
+    removeCollection: (id: number) => set((state: { collections: Collection[] }) => ({collections: state.collections.filter((c) => c.collectionId !== id)})),
     updateCollection: (updated: Collection) => set((state: { collections: Collection[] }) => ({
     collections: state.collections.map((c) =>
         c.collectionId === updated.collectionId ? updated : c

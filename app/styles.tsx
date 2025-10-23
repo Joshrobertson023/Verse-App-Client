@@ -33,7 +33,7 @@ export default function useStyles() {
       height: 100,
       minHeight: 50,
       marginTop: 25,
-      borderRadius: 6,
+      borderRadius: 10,
       display: 'flex',
       paddingLeft: 15,
       padding: 10,

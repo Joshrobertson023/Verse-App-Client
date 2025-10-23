@@ -247,7 +247,7 @@ const addPassage = () => {
             {userVerses.map((userVerse: UserVerse) => (
 
                 <View key={userVerse.id} style={{width: '100%', marginBottom: 20}}>
-                    <Surface style={{width: '100%', padding: 20, borderRadius: 3}} elevation={4}>
+                    <Surface style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
 
                         <View>
                           <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
@@ -264,7 +264,7 @@ const addPassage = () => {
                             <View>
                               <View style={{flexDirection: 'row'}}>
                                 <View style={{}}>
-                                  <Ionicons name={"sync-circle"} size={45} color={theme.colors.onBackground} />
+                                  <Ionicons name={"sync-circle-outline"} size={45} color={theme.colors.onBackground} />
                                 </View>
                                 <View style={{flexDirection: 'column', marginLeft: 5}}>
                                   <Text style={{...styles.text, margin: 0}}>{userVerse.progressPercent || 0}%</Text>

@@ -186,3 +186,43 @@ export async function getUserVersesPopulated(collection: Collection | undefined)
         throw error;
     }
 }
+
+export async function deleteCollection(collection: Collection | undefined) {
+    try {
+        const response = await fetch(`${baseUrl}/collections/${collection?.collectionId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(collection),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to delete collection');
+        }
+    }
+    catch (error) {
+        throw error;
+    }
+}
+
+export async function updateCollectionsOrder(order: string, username: string) {
+        try {
+            if (order === '')
+                throw new Error('Error updating collections order: order was empty');
+            const response = await fetch(`${baseUrl}/users/order/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(order),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update collections order');
+        }
+    }
+    catch (error) {
+        throw error;
+    }
+}

@@ -6,7 +6,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { ActivityIndicator, Divider, Portal, Surface, TextInput } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, loginUser, updateCollectionsOrder } from '../db';
 import { useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -30,6 +30,7 @@ export default function Index() {
     const [visibility, setVisibility] = useState('Private');
     const [sheetVisible, setSheetVisible] = useState(false);
     const addUserVerseToCollection = useAppStore((state) => state.addUserVerseToCollection)
+    const setUser = useAppStore((state) => state.setUser);
 
 
     const offset = .1;
@@ -159,14 +160,22 @@ export default function Index() {
       });
 
       const handleCreateCollection = async () => {
+            if (user.collectionsOrder === undefined) return;
+            if (newCollection.userVerses.length === 0) return;
             setCreatingCollection(true);
 
             newCollection.authorUsername = user.username;
             newCollection.visibility = visibility;
-            newCollection.verseOrder = newCollection.userVerses.join(",");
+            let verseOrder = '';
+            newCollection.userVerses.forEach((userVerse: UserVerse) => {
+              verseOrder += userVerse.readableReference + ',';
+            })
+            newCollection.verseOrder = verseOrder;
             
             if (title.trim() === '') {
               newCollection.title = 'New Collection';
+            } else if (title.trim() === 'Favorites') {
+              newCollection.title = 'Favorites-Other'
             } else {
               newCollection.title = title;
             }
@@ -176,8 +185,8 @@ export default function Index() {
             await addUserVersesToNewCollection(newCollection.userVerses, id);
             const collections = await getUserCollections(user.username);
             setCollections(collections);
-            // Delete this: (since we need all new uvs ids, just re-grab collections when getting to home)
-            // addCollection(collection);
+            await updateCollectionsOrder(user.collectionsOrder ? user.collectionsOrder : '', user.username);
+            setUser(await loginUser(user));
             resetNewCollection();
             setTitle('');
             setErrorMessage('');

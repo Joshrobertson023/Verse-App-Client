@@ -47,9 +47,10 @@ React.useEffect(() => {
         },
       }}>
         <Tabs.Screen 
-        name="index" 
+        name="index"
         options={{
-          title: 'VerseApp',
+          title: 'VerseMemorization',
+          headerTitleStyle: {fontFamily: 'Noto Serif bold', fontSize: 22},
           headerRight: () => (
             <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
               <TouchableOpacity onPress={() => router.push('.././notifications')}>
