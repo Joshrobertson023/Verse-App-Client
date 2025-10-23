@@ -246,8 +246,8 @@ const addPassage = () => {
           <View>
             {userVerses.map((userVerse: UserVerse) => (
 
-                <View key={userVerse.id} style={{width: '100%', marginBottom: 20}}>
-                    <Surface style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
+                <View key={userVerse.id} style={{minWidth: '100%', marginBottom: 20}}>
+                    <Surface style={{minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
 
                         <View>
                           <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>

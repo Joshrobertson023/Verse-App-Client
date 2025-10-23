@@ -233,8 +233,19 @@ export default function Index() {
       }
 
     return (
-      <View style={{...styles.container}}>
-      <ScrollView style={{width: '100%'}}>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={{
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingBottom: 100,
+          paddingHorizontal: 20,
+          paddingTop: 20,
+          width: '100%'
+        }}
+      >
+
         <TextInput label="Collection Title" value={title} onChangeText={setTitle} style={styles.input} mode='outlined' />
 
         <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 15}}>
@@ -254,8 +265,8 @@ export default function Index() {
         <View style={{marginTop: 20}}>
           {newCollection?.userVerses.map((userVerse, i) => (
 
-            <View key={userVerse.readableReference} style={{width: '100%', marginBottom: 20}}>
-                <Surface style={{width: '100%', padding: 20, borderRadius: 3}} elevation={4}>
+            <View key={userVerse.readableReference} style={{width: '100%', marginBottom: 20, minWidth: '100%'}}>
+                <Surface style={{minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
                   <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
                     <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
                     <TouchableOpacity style={{}} onPress={() => {handleDeleteUV(userVerse)}}>
@@ -279,11 +290,11 @@ export default function Index() {
           <View style={{height: 120}}></View>
         </ScrollView>
 
-          <View style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, alignSelf: 'center', backgroundColor: theme.colors.onPrimary,
+          <View style={{...styles.button_filled, position: 'absolute', bottom: 60, width: '90%', zIndex: 10, alignSelf: 'center', backgroundColor: theme.colors.onPrimary,
           boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)'
           }}></View>
 
-          <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, alignSelf: 'center'
+          <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, marginHorizontal: 20, width: '90%', alignSelf: 'center'
           }} activeOpacity={.2} onPress={handleCreateCollection}>
             {creatingCollection ? (
                         <Text style={styles.buttonText_filled}>

@@ -204,40 +204,12 @@ export default function Index() {
           <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
             <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="checkmark-done" size={22} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>{user.versesMemorized || '0'}</Text>
-                </View>
-                <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>Verses Memorized</Text>
-                </View>
-              <Ionicons name='chevron-forward' size={20} color={'gray'} />
-            </View>
-          </TouchableOpacity>
-          <Divider style={{ marginBottom: 10, marginTop: 10 }} />
-
-          <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
-            <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="extension-puzzle" size={22} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {user.versesOverdue > 0 ? <Ionicons name='alert-circle' size={22} color={theme.colors.error} /> : null}
+                  {user.versesOverdue > 0 ? <Ionicons name='alert-circle' size={22} color={theme.colors.onBackground} /> : 
+                  <Ionicons name='checkmark-circle-outline' size={22} color={theme.colors.onBackground}/>}
                   <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: user.versesOverdue > 0 ? 10 : 5 }}>{user.versesOverdue || 0}</Text>
                 </View>
                 <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>Verses Overdue</Text>
-              </View>
-              <Ionicons name='chevron-forward' size={20} color={'gray'} />
-            </View>
-          </TouchableOpacity>
-          <Divider style={{ marginBottom: 10, marginTop: 10 }} />
-
-          <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
-            <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="people" size={22} color={theme.colors.onBackground} style={{ marginRight: 8 }} />
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>{user.numberPublishedCollections || 0}</Text>
-                </View>
-                <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>Published Collections</Text>
               </View>
               <Ionicons name='chevron-forward' size={20} color={'gray'} />
             </View>
