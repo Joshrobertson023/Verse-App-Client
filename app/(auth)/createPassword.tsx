@@ -49,7 +49,8 @@ const nextClick = async () => {
             streakLength: 0,
             numberPublishedCollections: 0,
             versesMemorized: 0,
-            versesOverdue: 0
+            versesOverdue: 0,
+            collectionsSortBy: 1,
         }
 
         await createUser(newUser);

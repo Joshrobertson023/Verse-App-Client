@@ -79,6 +79,7 @@ export default function Index() {
   const [deleteDialogCollection, setDeleteDialogCollection] = useState<Collection | undefined>(undefined);
   const deleteCollectionStore = useAppStore((state) => state.removeCollection);
   const [localSortBy, setLocalSortBy] = useState('');
+  const [orderedCollections, setOrderedCollections] = useState<Collection[]>(collections);
 
   const [visible, setVisible] = React.useState(false);
 
@@ -99,19 +100,33 @@ export default function Index() {
   }, [user]);
 
 
-  // Animations
+
+
+
+
+  // ***************************************************
+  //                    Animations   
+  // ***************************************************
+
 
   const offset = .1;
   const settingsSheetHeight = height * (.45 + offset);
   const settingsClosedPosition = height;
   const settingsOpenPosition = height - settingsSheetHeight + (height * offset);
 
+  const collectionSettingsSheetHeight = height * (.45 + offset);
+  const collectionsSettingsClosedPosition = height;
+  const collectionsSettingsOpenPosition = height - collectionSettingsSheetHeight + (height * offset);
+
   const settingsTranslateY = useSharedValue(settingsClosedPosition);
   const settingsStartY = useSharedValue(0);
 
+  const collectionsSettingsTranslateY = useSharedValue(collectionsSettingsClosedPosition);
+  const collectionsSettingsStartY = useSharedValue(collectionsSettingsOpenPosition);
+
   const openSettingsSheet = () => {
     setIsSettingsSheetOpen(true);
-    settingsTranslateY.value = withSpring(settingsOpenPosition, {       
+    settingsTranslateY.value = withSpring(settingsOpenPosition, {
       stiffness: 900,
       damping: 110,
       mass: 2,
@@ -192,7 +207,14 @@ export default function Index() {
       }
     })
 
+
   // End Animations
+
+
+
+
+
+
 
   const handleMenuPress = (collection: Collection) => {
     if (isSettingsSheetOpen) {
@@ -214,16 +236,28 @@ export default function Index() {
     }
   })
 
-  let orderedCollections: Collection[] = [];
-  const orderBy = useAppStore((state) => state.user.collectionsSortBy);
-  switch (orderBy) {
-    case 0: // custom order
-      orderedCollections = orderCustom(collections, user.collectionsOrder);
-      break;
-    case 1: // by newest modified
-      orderedCollections = orderNewest(collections);
-    case 2: // by percent memorized
-      orderedCollections = orderCompletion(collections);
+
+
+  // ***************************************************
+  //                Order Collections   
+  // ***************************************************
+
+
+  const updateCollectionsOrder = () => {
+    const orderBy = useAppStore((state) => state.user.collectionsSortBy);
+    switch (orderBy) {
+      case 0: // custom order
+        setOrderedCollections(orderCustom(useAppStore.getState().collections, user.collectionsOrder));
+        break;
+      case 1: // by newest modified
+        setOrderedCollections(orderNewest(useAppStore.getState().collections));
+        break;
+      case 2: // by percent memorized
+        setOrderedCollections(orderCompletion(useAppStore.getState().collections));
+        break;
+      case 3: // most overdue
+        break;
+    }
   }
 
   return (
