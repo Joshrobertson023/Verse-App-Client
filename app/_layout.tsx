@@ -200,10 +200,66 @@ export default function RootLayout() {
           headerShadowVisible: false,
               }} 
             />
-          <Stack.Screen
+            <Stack.Screen
           name="user/profile"
           options={{
             title: 'Profile',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }} 
+            />
+            <Stack.Screen
+          name="collections/reorderCollections"
+          options={{
+            title: 'Reorder Collections',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }} 
+            />
+            <Stack.Screen
+          name="collections/reorderVerses"
+          options={{
+            title: 'Reorder Passages',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }} 
+            />
+            <Stack.Screen
+          name="collections/editCollection"
+          options={{
+            title: 'Edit Collection',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
+              }} 
+            />
+            <Stack.Screen
+          name="practiceSession"
+          options={{
+            title: 'Practice',
                 headerStyle: {
                   backgroundColor: theme.colors.background,
                 },

@@ -24,11 +24,16 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
         onPress={() => router.push(`../collections/${collection.collectionId}`)}>
       <View style={styles.collectionItem}>
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
-          <View style={{justifyContent: 'space-between', height: '100%'}}>
+          <View style={{justifyContent: 'space-between', height: '100%', flex: 1, marginRight: 10}}>
             <View style={{justifyContent: 'flex-start'}}>
               {/* title */}
               <View style={{}} key={collection.collectionId}>
-                <Text style={{...styles.text, marginBottom: 0, fontWeight: 800}}>{collection.title}</Text>
+                <Text 
+                  numberOfLines={1} 
+                  ellipsizeMode="tail"
+                  style={{...styles.text, marginBottom: 0, fontWeight: 800}}>
+                  {collection.title}
+                </Text>
               </View>
               <View>
 

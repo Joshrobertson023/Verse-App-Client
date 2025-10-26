@@ -1,12 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BackHandler, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Dialog, Divider, FAB, Portal } from 'react-native-paper';
+import { ActivityIndicator, Dialog, Divider, FAB, Portal } from 'react-native-paper';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import CollectionItem from '../components/collectionItem';
-import { deleteCollection } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getUserCollections, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
 import { Collection, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -14,34 +14,45 @@ import useAppTheme from '../theme';
 const { height } = Dimensions.get('window');
 
 function orderCompletion(collections: Collection[]): Collection[] {
-  const lookupMap = new Map<number, Collection>();
+  const collectionData: { collection: Collection; averageProgress: number }[] = [];
+  
   for (const col of collections) {
-  let progressPercentages: number[] = [];
+    let progressPercentages: number[] = [];
     for (const uv of col.userVerses) {
       if (uv.progressPercent) {
         progressPercentages.push(uv.progressPercent || 0.0);
       }
     }
-    const percentageSum = progressPercentages.reduce((accumulator, currentValue) => {
-      return accumulator + currentValue;
-    });
-    const percentageAverage = percentageSum / progressPercentages.length;
-    lookupMap.set(percentageAverage, col);
+    
+    // Handle empty array case
+    if (progressPercentages.length === 0) {
+      collectionData.push({ collection: col, averageProgress: 0 });
+    } else {
+      const percentageSum = progressPercentages.reduce((accumulator, currentValue) => {
+        return accumulator + currentValue;
+      }, 0);
+      const percentageAverage = percentageSum / progressPercentages.length;
+      collectionData.push({ collection: col, averageProgress: percentageAverage });
+    }
   }
-  const reordered: [number, Collection][] | undefined = Array.from(lookupMap.entries())
-  .filter(([progressPercent, collection]) => progressPercent > 0)
-  .sort((a: [number, Collection], b: [number, Collection]) => a[0] - b[0]);
-  const reorderedCollections: Collection[] = reordered.map(([progressPercent, collection]) => collection);
-  return reorderedCollections;
+  
+  // Sort by average progress (lowest first)
+  collectionData.sort((a, b) => a.averageProgress - b.averageProgress);
+  
+  return collectionData.map(item => item.collection);
 }
 
 function orderNewest(collections: Collection[]): Collection[] {
-  const reordered = collections.filter(c => c.dateCreated).sort((a: Collection, b: Collection) => {
-    const dateA = new Date(a.dateCreated || '').getDate();
-    const dateB = new Date(b.dateCreated || '').getDate();
-    return dateA - dateB;
+  const withDates = collections.filter(c => c.dateCreated);
+  const withoutDates = collections.filter(c => !c.dateCreated);
+  
+  const sortedWithDates = withDates.sort((a: Collection, b: Collection) => {
+    const dateA = new Date(a.dateCreated || '').getTime();
+    const dateB = new Date(b.dateCreated || '').getTime();
+    return dateB - dateA; // Newest first (descending)
   });
-  return reordered.filter(r => !r.dateCreated);
+  
+  return [...sortedWithDates, ...withoutDates];
 }
 
 function orderCustom(array: Collection[], idString: string | undefined): Collection[] {
@@ -73,12 +84,15 @@ export default function Index() {
   const addCollection = useAppStore((state) => state.addCollection);
   const homePageStats = useAppStore((state) => state.homePageStats);
   const setCollections = useAppStore((state) => state.setCollections);
+  const setUser = useAppStore((state) => state.setUser);
   const [settingsCollection, setSettingsCollection] = useState<Collection | undefined>(undefined);
   const [isSettingsSheetOpen, setIsSettingsSheetOpen] = useState(false);
+  const [isCreatingCopy, setIsCreatingCopy] = useState(false);
+  const [isCollectionsSettingsSheetOpen, setIsCollectionsSettingsSheetOpen] = useState(false);
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [deleteDialogCollection, setDeleteDialogCollection] = useState<Collection | undefined>(undefined);
   const deleteCollectionStore = useAppStore((state) => state.removeCollection);
-  const [localSortBy, setLocalSortBy] = useState('');
+  const [localSortBy, setLocalSortBy] = useState(0);
   const [orderedCollections, setOrderedCollections] = useState<Collection[]>(collections);
 
   const [visible, setVisible] = React.useState(false);
@@ -86,18 +100,117 @@ export default function Index() {
   const hideDialog = () => setVisible(false);
   const hideDeleteDialog = () => setDeleteDialogVisible(false);
 
+  // Handle Android back button to close sheets
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isSettingsSheetOpen) {
+        closeSettingsSheet();
+        return true;
+      }
+      if (isCollectionsSettingsSheetOpen) {
+        closeCollectionsSettingsSheet();
+        return true;
+      }
+      if (deleteDialogVisible) {
+        setDeleteDialogVisible(false);
+        return true;
+      }
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [isSettingsSheetOpen, isCollectionsSettingsSheetOpen, deleteDialogVisible]);
+
   const deleteCollectionHandle = async () => {
-    deleteCollectionStore(deleteDialogCollection?.collectionId || -1);
+    const collectionId = deleteDialogCollection?.collectionId;
+    if (!collectionId) return;
+    
+    deleteCollectionStore(collectionId);
     await deleteCollection(deleteDialogCollection);
-    // In the future: update collectionsOrder
+    
+    // Remove collection ID from collections order
+    const currentOrder = user.collectionsOrder || '';
+    const orderArray = currentOrder.split(',').filter(id => id.trim() !== collectionId.toString()).join(',');
+    const updatedUser = { ...user, collectionsOrder: orderArray };
+    setUser(updatedUser);
+    
+    // Update in database
+    try {
+      await updateCollectionsOrderDB(orderArray, user.username);
+    } catch (error) {
+      console.error('Failed to update collections order:', error);
+    }
+    
+    // Fetch updated user from server
+    try {
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+    } catch (error) {
+      console.error('Failed to refresh user:', error);
+    }
+    
     hideDeleteDialog();
   }
 
-  useEffect(() => { // Apparently this runs even if the user is not logged in
+  const handleCreateCopy = async (collectionToCopy: Collection) => {
+    setIsCreatingCopy(true);
+    try {
+      // Create a duplicate collection
+      const duplicateCollection: Collection = {
+        ...collectionToCopy,
+        title: `${collectionToCopy.title} (Copy)`,
+        collectionId: undefined, // Will be assigned by API
+      };
+
+      // Create the collection in the database
+      await createCollectionDB(duplicateCollection, user.username);
+      const newCollectionId = await getMostRecentCollectionId(user.username);
+
+      // Add userVerses to the new collection
+      if (collectionToCopy.userVerses && collectionToCopy.userVerses.length > 0) {
+        await addUserVersesToNewCollection(collectionToCopy.userVerses, newCollectionId);
+      }
+
+      // Get updated collections list
+      const updatedCollections = await getUserCollections(user.username);
+      setCollections(updatedCollections);
+
+      // Add new collection ID to the collections order
+      const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
+      const newOrder = currentOrder ? `${currentOrder},${newCollectionId}` : newCollectionId.toString();
+      const updatedUser = { ...user, collectionsOrder: newOrder };
+      setUser(updatedUser);
+
+      // Update in database
+      try {
+        await updateCollectionsOrderDB(newOrder, user.username);
+      } catch (error) {
+        console.error('Failed to update collections order:', error);
+      }
+
+      // Fetch updated user from server
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+    } catch (error) {
+      console.error('Failed to create collection copy:', error);
+    } finally {
+      setIsCreatingCopy(false);
+    }
+  };
+
+useEffect(() => { // Apparently this runs even if the user is not logged in
     if (useAppStore.getState().user.username === 'Default User') {
       router.replace('/(auth)/createName');
     }
+    updateCollectionsOrder();
   }, [user]);
+
+  // Refresh collections order when returning from reorder page
+  useFocusEffect(
+    useCallback(() => {
+      updateCollectionsOrder();
+    }, [collections])
+  );
 
 
 
@@ -122,7 +235,94 @@ export default function Index() {
   const settingsStartY = useSharedValue(0);
 
   const collectionsSettingsTranslateY = useSharedValue(collectionsSettingsClosedPosition);
-  const collectionsSettingsStartY = useSharedValue(collectionsSettingsOpenPosition);
+  const collectionsSettingsStartY = useSharedValue(0);
+
+  const openCollectionsSettingsSheet = () => {
+    setIsCollectionsSettingsSheetOpen(true);
+    collectionsSettingsTranslateY.value = withSpring(collectionsSettingsOpenPosition, {
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,
+    });
+  }
+
+  const closeCollectionsSettingsSheet = (onCloseComplete?: () => void) => {
+    collectionsSettingsTranslateY.value = withSpring(collectionsSettingsClosedPosition, {       
+      stiffness: 900,
+      damping: 110,
+      mass: 2,
+      overshootClamping: true,
+      energyThreshold: 6e-9,
+    }, (isFinished) => {
+      'worklet';
+      if (isFinished) {
+        if (onCloseComplete) {
+          runOnJS(onCloseComplete)();
+        }
+        runOnJS(setIsCollectionsSettingsSheetOpen)(false);
+      }
+    });
+  }
+
+  const collectionsSettingsAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: collectionsSettingsTranslateY.value }],
+  }));
+
+  const collectionsBackdropAnimatedStyle = useAnimatedStyle(() => {
+    const sheetProgress =
+      (collectionsSettingsClosedPosition - collectionsSettingsTranslateY.value) / collectionSettingsSheetHeight;
+
+    const opacity = Math.min(1, Math.max(0, sheetProgress)) * 0.5;
+
+    return {
+      opacity,
+      pointerEvents: opacity > 0.001 ? 'auto' : 'none',
+    };
+  });
+
+  const collectionsSettingsPanGesture = Gesture.Pan()
+    .onStart(() => {
+      'worklet';
+      collectionsSettingsStartY.value = collectionsSettingsTranslateY.value;
+    })
+    .onUpdate(e => {
+      'worklet';
+      const newPosition = collectionsSettingsStartY.value + e.translationY;
+      collectionsSettingsTranslateY.value = Math.max(collectionsSettingsOpenPosition, newPosition);
+    })
+    .onEnd(e => {
+      'worklet';
+      const SWIPE_DISTANCE_THRESHOLD = 150;
+      const VELOCITY_THRESHOLD = 500;
+
+      const isDraggedDownFar = collectionsSettingsTranslateY.value > collectionsSettingsOpenPosition + SWIPE_DISTANCE_THRESHOLD;
+      const isFlickedDown = e.velocityY > VELOCITY_THRESHOLD;
+
+      if (isDraggedDownFar || isFlickedDown) {
+        collectionsSettingsTranslateY.value = withSpring(collectionsSettingsClosedPosition, {       
+          stiffness: 900,
+          damping: 110,
+          mass: 2,
+          overshootClamping: true,
+          energyThreshold: 6e-9,
+        }, (isFinished) => {
+          'worklet';
+          if (isFinished) {
+            runOnJS(closeCollectionsSettingsSheet)();
+          }
+        });
+      } else {
+        collectionsSettingsTranslateY.value = withSpring(collectionsSettingsOpenPosition, {       
+          stiffness: 900,
+          damping: 110,
+          mass: 2,
+          overshootClamping: true,
+          energyThreshold: 6e-9,
+        });
+      }
+    })
 
   const openSettingsSheet = () => {
     setIsSettingsSheetOpen(true);
@@ -244,20 +444,30 @@ export default function Index() {
 
 
   const updateCollectionsOrder = () => {
-    const orderBy = useAppStore((state) => state.user.collectionsSortBy);
+    const orderBy = useAppStore.getState().user.collectionsSortBy;
+    const allCollections = useAppStore.getState().collections;
+    const favorites = allCollections.filter(col => col.favorites || col.title === 'Favorites');
+    const nonFavorites = allCollections.filter(col => !col.favorites && col.title !== 'Favorites');
+    let ordered: Collection[] = [];
+    
     switch (orderBy) {
       case 0: // custom order
-        setOrderedCollections(orderCustom(useAppStore.getState().collections, user.collectionsOrder));
+        ordered = orderCustom(nonFavorites, user.collectionsOrder);
         break;
       case 1: // by newest modified
-        setOrderedCollections(orderNewest(useAppStore.getState().collections));
+        ordered = orderNewest(nonFavorites);
         break;
       case 2: // by percent memorized
-        setOrderedCollections(orderCompletion(useAppStore.getState().collections));
+        ordered = orderCompletion(nonFavorites);
         break;
       case 3: // most overdue
+        ordered = nonFavorites;
         break;
+      default:
+        ordered = nonFavorites;
     }
+    
+    setOrderedCollections([...favorites, ...ordered]);
   }
 
   return (
@@ -294,7 +504,7 @@ export default function Index() {
 
 
         <Text style={{ ...styles.subheading, marginTop: 20 }}>My Verses</Text>
-        <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}}>
+        <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}} onPress={() => openCollectionsSettingsSheet()}>
           <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
         </TouchableOpacity>
         <View style={styles.collectionsContainer}>
@@ -363,24 +573,61 @@ export default function Index() {
             style={sheetItemStyle.settingsItem}
             onPress={() => {
               closeSettingsSheet();
+              if (settingsCollection) {
+                const setEditingCollection = useAppStore.getState().setEditingCollection;
+                setEditingCollection(settingsCollection);
+                router.push('../collections/editCollection');
+              }
             }}>
             <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
-            onPress={() => {
+            onPress={async () => {
               closeSettingsSheet();
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
+              if (settingsCollection) {
+                await handleCreateCopy(settingsCollection);
+              }
+            }}
+            disabled={isCreatingCopy}>
+            {isCreatingCopy ? (
+              <ActivityIndicator size="small" color={theme.colors.onBackground} />
+            ) : (
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
+            )}
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
-            onPress={() => {
-              closeSettingsSheet();
+            onPress={async () => {
+              if (!settingsCollection) return;
+              
+              try {
+                const newVisibility = settingsCollection.visibility === 'Public' ? 'Private' : 'Public';
+                const updatedCollection = {
+                  ...settingsCollection,
+                  visibility: newVisibility
+                };
+                
+                // Update in database
+                await updateCollectionDB(updatedCollection);
+                
+                // Update in store
+                const updatedCollections = collections.map(c => 
+                  c.collectionId === settingsCollection.collectionId ? updatedCollection : c
+                );
+                setCollections(updatedCollections);
+                
+                closeSettingsSheet();
+              } catch (error) {
+                console.error('Failed to toggle visibility:', error);
+                alert('Failed to update collection visibility');
+              }
             }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Make Private</Text>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
+              {settingsCollection?.visibility === 'Public' ? 'Make Private' : 'Make Public'}
+            </Text>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
@@ -401,6 +648,114 @@ export default function Index() {
             <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
           </TouchableOpacity>
           <Divider />
+        </Animated.View>
+      </Portal>
+
+      <Portal>
+        <Animated.View
+          style={[
+            {
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: 0,
+              right: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 9998,
+            },
+            collectionsBackdropAnimatedStyle
+          ]}
+        >
+          <TouchableOpacity
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => closeCollectionsSettingsSheet()}
+          />
+        </Animated.View>
+
+        <Animated.View style={[{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          height: collectionSettingsSheetHeight,
+          backgroundColor: theme.colors.surface,
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          paddingTop: 20,
+          paddingBottom: 80,
+          zIndex: 9999,
+          boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
+        }, collectionsSettingsAnimatedStyle]}>
+          <GestureDetector gesture={collectionsSettingsPanGesture}>
+            <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
+              <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
+            </View>
+          </GestureDetector>
+
+          <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Collections By:</Text>
+          <Divider />
+          <TouchableOpacity
+            style={sheetItemStyle.settingsItem}
+            onPress={() => {
+              closeCollectionsSettingsSheet();
+              router.push('../collections/reorderCollections');
+            }}>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Custom Order (Reorder)</Text>
+          </TouchableOpacity>
+          <Divider />
+          <TouchableOpacity
+            style={sheetItemStyle.settingsItem}
+            onPress={async () => {
+              const updatedUser = { ...user, collectionsSortBy: 1 };
+              setUser(updatedUser);
+              closeCollectionsSettingsSheet();
+              updateCollectionsOrder();
+              
+              // Update in database
+              try {
+                await updateCollectionsSortBy(1, user.username);
+              } catch (error) {
+                console.error('Failed to update collections sort by:', error);
+              }
+            }}>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Newest Modified</Text>
+          </TouchableOpacity>
+          <Divider />
+          <TouchableOpacity
+            style={sheetItemStyle.settingsItem}
+            onPress={async () => {
+              const updatedUser = { ...user, collectionsSortBy: 2 };
+              setUser(updatedUser);
+              closeCollectionsSettingsSheet();
+              updateCollectionsOrder();
+              
+              // Update in database
+              try {
+                await updateCollectionsSortBy(2, user.username);
+              } catch (error) {
+                console.error('Failed to update collections sort by:', error);
+              }
+            }}>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Percent Memorized</Text>
+          </TouchableOpacity>
+          <Divider />
+          <TouchableOpacity
+            style={sheetItemStyle.settingsItem}
+            onPress={async () => {
+              const updatedUser = { ...user, collectionsSortBy: 3 };
+              setUser(updatedUser);
+              closeCollectionsSettingsSheet();
+              updateCollectionsOrder();
+              
+              // Update in database
+              try {
+                await updateCollectionsSortBy(3, user.username);
+              } catch (error) {
+                console.error('Failed to update collections sort by:', error);
+              }
+            }}>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Most Overdue</Text>
+          </TouchableOpacity>
         </Animated.View>
       </Portal>
       <Portal>

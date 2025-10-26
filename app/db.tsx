@@ -1,6 +1,6 @@
 import { Collection, SearchData, User, UserVerse } from "./store";
 
-const baseUrl = 'http://10.165.101.121:5160'
+const baseUrl = 'http://10.169.51.121:5160'
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
@@ -42,6 +42,20 @@ export async function loginUser(user: User): Promise<User> {
             return loggedInUser;
         } else {
             throw new Error('Login failed');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function refreshUser(username: string): Promise<User> {
+    try {
+        const response = await fetch(`${baseUrl}/users/${username}`);
+        if (response.ok) {
+            const user: User = await response.json();
+            return user;
+        } else {
+            throw new Error('Failed to refresh user');
         }
     } catch (error) {
         throw error;
@@ -207,10 +221,8 @@ export async function deleteCollection(collection: Collection | undefined) {
 }
 
 export async function updateCollectionsOrder(order: string, username: string) {
-        try {
-            if (order === '')
-                throw new Error('Error updating collections order: order was empty');
-            const response = await fetch(`${baseUrl}/users/order/${username}`, {
+    try {
+        const response = await fetch(`${baseUrl}/users/order/${username}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -223,6 +235,92 @@ export async function updateCollectionsOrder(order: string, username: string) {
         }
     }
     catch (error) {
+        throw error;
+    }
+}
+
+export async function updateCollectionsSortBy(sortBy: number, username: string) {
+    try {
+        const response = await fetch(`${baseUrl}/users/sortby/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(sortBy),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update collections sort by');
+        }
+    }
+    catch (error) {
+        throw error;
+    }
+}
+
+export async function updateCollectionDB(collection: Collection) {
+    try {
+        const response = await fetch(`${baseUrl}/collections`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(collection),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update collection');
+        }
+    } catch (error) {
+        alert(error);
+        throw error;
+    }
+}
+
+export async function deleteUserVersesFromCollection(collectionId: number) {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/collection/${collectionId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to delete user verses');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function updateUserVerse(userVerse: UserVerse) {
+    try {
+        const response = await fetch(`${baseUrl}/userverses`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userVerse),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update user verse');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function getAllUserVerses(username: string): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/user/${username}`);
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch all user verses');
+        }
+    } catch (error) {
+        console.error(error);
         throw error;
     }
 }

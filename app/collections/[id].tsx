@@ -1,24 +1,65 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
-import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useLayoutEffect, useState } from 'react';
-import { Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { ActivityIndicator, Divider, Portal, Surface, Text } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
-import { getUserVersesPopulated } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
 
+// Ordering functions for user verses
+function orderCustom(userVerses: UserVerse[], verseOrder?: string): UserVerse[] {
+  if (!verseOrder) return userVerses;
+  
+  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '');
+  const ordered: UserVerse[] = [];
+  const unordered: UserVerse[] = [];
+  
+  // Create a map for quick lookup
+  const verseMap = new Map<string, UserVerse>();
+  userVerses.forEach(uv => {
+    verseMap.set(uv.readableReference, uv);
+  });
+  
+  // First, add verses in the order specified
+  orderArray.forEach(ref => {
+    const verse = verseMap.get(ref.trim());
+    if (verse) {
+      ordered.push(verse);
+      verseMap.delete(ref.trim());
+    }
+  });
+  
+  // Then add any verses not in the order
+  verseMap.forEach(verse => {
+    unordered.push(verse);
+  });
+  
+  return [...ordered, ...unordered];
+}
+
+function orderByProgress(userVerses: UserVerse[]): UserVerse[] {
+  return [...userVerses].sort((a, b) => {
+    const aProgress = a.progressPercent || 0;
+    const bProgress = b.progressPercent || 0;
+    return aProgress - bProgress; // Sort ascending (lowest first)
+  });
+}
+
 export default function Index() {
   const styles = useStyles();
   const theme = useAppTheme();
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
+  const setCollections = useAppStore((state) => state.setCollections);
+  const setUser = useAppStore((state) => state.setUser);
   const updateCollection = useAppStore((state) => state.updateCollection);
   const params = useLocalSearchParams();
   const setCollectionsSheetControls = useAppStore((state) => state.setCollectionsSheetControls);
@@ -29,40 +70,123 @@ export default function Index() {
     
     const [loadingVerses, setLoadingVerses] = useState(false);
     const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
+    const [orderedUserVerses, setOrderedUserVerses] = useState<UserVerse[]>([]);
+    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order, 1 = progress
+    const [isVersesSettingsSheetOpen, setIsVersesSettingsSheetOpen] = useState(false);
+    const [isCreatingCopy, setIsCreatingCopy] = useState(false);
+    const isFetchingRef = useRef(false);
     
     const collection = useAppStore((state) =>
       state.collections.find((c) => c.collectionId?.toString() === params.id)
   );
 
+  const handleCreateCopy = async () => {
+    if (!collection) return;
+    
+    setIsCreatingCopy(true);
+    try {
+      // Create a duplicate collection
+      const duplicateCollection = {
+        ...collection,
+        title: `${collection.title} (Copy)`,
+        collectionId: undefined, // Will be assigned by API
+      };
+
+      // Create the collection in the database
+      await createCollectionDB(duplicateCollection, user.username);
+      const newCollectionId = await getMostRecentCollectionId(user.username);
+
+      // Add userVerses to the new collection
+      if (collection.userVerses && collection.userVerses.length > 0) {
+        await addUserVersesToNewCollection(collection.userVerses, newCollectionId);
+      }
+
+      // Get updated collections list
+      const updatedCollections = await getUserCollections(user.username);
+      setCollections(updatedCollections);
+
+      // Add new collection ID to the collections order
+      const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
+      const newOrder = currentOrder ? `${currentOrder},${newCollectionId}` : newCollectionId.toString();
+      const updatedUser = { ...user, collectionsOrder: newOrder };
+      setUser(updatedUser);
+
+      // Update in database
+      try {
+        await updateCollectionsOrder(newOrder, user.username);
+      } catch (error) {
+        console.error('Failed to update collections order:', error);
+      }
+
+      // Fetch updated user from server
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+    } catch (error) {
+      console.error('Failed to create collection copy:', error);
+    } finally {
+      setIsCreatingCopy(false);
+    }
+  };
+
+
 useEffect(() => {
-  setCollectionsSheetControls({ openSettingsSheet, collection })
+  if (collection) {
+    setCollectionsSheetControls({ openSettingsSheet, collection });
+  }
+}, [collection]);
 
-  if (!collection) return;
+useFocusEffect(
+  useCallback(() => {
+    if (!collection || isFetchingRef.current) return;
+    
+    console.log('Running fetchPopulated for collection:', collection.title, 'verseOrder:', collection.verseOrder);
+    
+    const fetchPopulated = async () => {
+      isFetchingRef.current = true;
+      setLoadingVerses(true);
+      try {
+        const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
+        console.log('Sending collection with verseOrder:', colToSend.verseOrder);
+        console.log('Sending collection userVerses order:', colToSend.UserVerses.map(uv => uv.readableReference));
+        const data = await getUserVersesPopulated(colToSend);
+        console.log('Received collection with verseOrder:', data.verseOrder);
+        console.log('Received collection userVerses order:', data.userVerses.map(uv => uv.readableReference));
+        setUserVerses(data.userVerses ?? []);
+        updateCollection(data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingVerses(false);
+        isFetchingRef.current = false;
+      }
+    };
+    
+    fetchPopulated();
+  }, [collection?.collectionId, collection?.verseOrder])
+);
 
-  if (collection.userVerses && collection.userVerses.every(uv => uv.verses?.length > 0)) {
-    setUserVerses(collection.userVerses);
+// Order verses based on sort setting
+useEffect(() => {
+  if (!userVerses || userVerses.length === 0) {
+    setOrderedUserVerses([]);
     return;
   }
   
-  console.log('Running fetchPopulated for collection:', collection.title);
+  let ordered: UserVerse[] = [];
   
-  const fetchPopulated = async () => {
-    setLoadingVerses(true);
-    try {
-      const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
-      const data = await getUserVersesPopulated(colToSend);
-      console.log(JSON.stringify(colToSend, null, 1));
-      setUserVerses(data.userVerses ?? []);
-      updateCollection(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingVerses(false);
-    }
-  };
+  if (versesSortBy === 0) {
+    console.log('Applying orderCustom with verseOrder:', collection?.verseOrder);
+    console.log('UserVerses before ordering:', userVerses.map(uv => uv.readableReference));
+    ordered = orderCustom(userVerses, collection?.verseOrder);
+    console.log('UserVerses after ordering:', ordered.map(uv => uv.readableReference));
+  } else if (versesSortBy === 1) {
+    ordered = orderByProgress(userVerses);
+  } else {
+    ordered = userVerses;
+  }
   
-  fetchPopulated();
-}, []);
+  setOrderedUserVerses(ordered);
+}, [userVerses, collection?.verseOrder, versesSortBy]);
 
 useLayoutEffect(() => {
   if (collection) {
@@ -76,7 +200,7 @@ useLayoutEffect(() => {
 // Animations
 
 
-  const [sheetVisible, setSheetVisible] = useState(false);
+    const [sheetVisible, setSheetVisible] = useState(false);
 
   const offset = .1;
    const sheetHeight = height * (.89 + offset);
@@ -93,6 +217,9 @@ useLayoutEffect(() => {
 
     const settingsTranslateY = useSharedValue(settingsClosedPosition);
     const settingsStartY = useSharedValue(0);
+    
+    const versesSettingsTranslateY = useSharedValue(settingsClosedPosition);
+    const versesSettingsStartY = useSharedValue(0);
 
       const sheetItemStyle = StyleSheet.create({
         settingsItem: {
@@ -214,6 +341,71 @@ useLayoutEffect(() => {
 
 // End animations
 
+const openVersesSettingsSheet = () => {
+  versesSettingsTranslateY.value = withSpring(settingsOpenPosition, {       
+  stiffness: 900,
+  damping: 110,
+  mass: 2,
+  overshootClamping: true,
+  energyThreshold: 6e-9,});
+  setIsVersesSettingsSheetOpen(true);
+  setSheetVisible(true);
+};
+
+const closeVersesSettingsSheet = () => {
+  versesSettingsTranslateY.value = withSpring(settingsClosedPosition, {       
+  stiffness: 900,
+  damping: 110,
+  mass: 2,
+  overshootClamping: true,
+  energyThreshold: 6e-9,});
+  setIsVersesSettingsSheetOpen(false);
+  setSheetVisible(false);
+};
+
+const versesSettingsAnimatedStyle = useAnimatedStyle(() => ({
+  transform: [{ translateY: versesSettingsTranslateY.value }],
+}));
+
+const versesBackdropAnimatedStyle = useAnimatedStyle(() => {
+  const sheetProgress =
+    (settingsClosedPosition - versesSettingsTranslateY.value) / settingsSheetHeight;
+
+  const opacity = Math.min(1, Math.max(0, sheetProgress)) * 0.5;
+
+  return {
+    opacity,
+    pointerEvents: opacity > 0.001 ? 'auto' : 'none',
+  };
+});
+
+const versesSettingsPanGesture = Gesture.Pan()
+  .onBegin(() => {
+    versesSettingsStartY.value = versesSettingsTranslateY.value;
+  })
+  .onUpdate(e => {
+    versesSettingsTranslateY.value = Math.max(settingsOpenPosition, versesSettingsStartY.value + e.translationY);
+  })
+  .onEnd(() => {
+    if (versesSettingsTranslateY.value > settingsOpenPosition + 50) {
+      versesSettingsTranslateY.value = withSpring(settingsClosedPosition, {       
+  stiffness: 900,
+  damping: 110,
+  mass: 2,
+  overshootClamping: true,
+  energyThreshold: 6e-9,});
+      setIsVersesSettingsSheetOpen(false);
+      setSheetVisible(false);
+    } else {
+      versesSettingsTranslateY.value = withSpring(settingsOpenPosition, {       
+  stiffness: 900,
+  damping: 110,
+  mass: 2,
+  overshootClamping: true,
+      energyThreshold: 6e-9,});
+    }
+  });
+
 const clickPlus = () => {
 
 }
@@ -222,6 +414,26 @@ const addPassage = () => {
   closeSheet();
 
 }
+
+// Handle Android back button to close sheets
+useEffect(() => {
+  const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+    if (sheetVisible) {
+      closeSheet();
+      closeSettingsSheet();
+      closeVersesSettingsSheet();
+      return true; // Prevent default back action
+    }
+    if (isVersesSettingsSheetOpen) {
+      closeVersesSettingsSheet();
+      return true; // Prevent default back action
+    }
+    // If no sheets are open, allow default back action to navigate away
+    return false;
+  });
+
+  return () => backHandler.remove();
+}, [sheetVisible, isVersesSettingsSheetOpen]);
 
     if (loadingVerses) {
         return (
@@ -243,15 +455,24 @@ const addPassage = () => {
                   width: '100%'
                 }}
               >
+          <TouchableOpacity 
+            style={{...styles.button_outlined, marginBottom: 10}}
+            onPress={openVersesSettingsSheet}
+          >
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
+              <Ionicons name="settings" size={20} color={theme.colors.onBackground} />
+              <Text style={{...styles.buttonText_outlined}}>Sort Passages</Text>
+            </View>
+          </TouchableOpacity>
           <View>
-            {userVerses.map((userVerse: UserVerse) => (
+            {(orderedUserVerses || []).map((userVerse: UserVerse) => (
 
                 <View key={userVerse.id} style={{minWidth: '100%', marginBottom: 20}}>
                     <Surface style={{minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
 
                         <View>
                           <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
-                          {userVerse.verses.map((verse) => (
+                          {(userVerse.verses || []).map((verse) => (
                               <View key={verse.verse_reference} style={{}}>
                                   <View>
                                       <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number}: {verse.text} </Text>
@@ -271,7 +492,13 @@ const addPassage = () => {
                                   <Text style={{...styles.tinyText, marginTop: -20}}>Memorized</Text>
                                 </View>
                               </View>
-                              <TouchableOpacity style={{...styles.button_outlined, height: 30, marginTop: 5}}>
+                              <TouchableOpacity 
+                                style={{...styles.button_outlined, height: 30, marginTop: 5}}
+                                onPress={() => {
+                                  useAppStore.getState().setEditingUserVerse(userVerse);
+                                  router.push('/practiceSession');
+                                }}
+                              >
                                 <Text style={{...styles.buttonText_outlined}}>Practice</Text>
                               </TouchableOpacity>
                             </View>
@@ -281,7 +508,7 @@ const addPassage = () => {
                               </TouchableOpacity>
                               <View style={{alignSelf: 'flex-end', marginTop: 15}}>
                                 <View style={{}}>
-                                  <Text style={{...styles.tinyText}}>{userVerse.dateAdded ? userVerse.dateAdded.slice(0, 10) : ''}</Text>
+                                  <Text style={{...styles.tinyText}}>{userVerse.dateAdded ? new Date(userVerse.dateAdded).toISOString().slice(0, 10) : ''}</Text>
                                 </View>
                               </View>
                             </View>
@@ -354,24 +581,52 @@ const addPassage = () => {
                           style={sheetItemStyle.settingsItem}
                           onPress={() => {
                             closeSettingsSheet();
+                            const setEditingCollection = useAppStore.getState().setEditingCollection;
+                            if (collection) {
+                              setEditingCollection(collection);
+                              router.push('../collections/editCollection');
+                            }
                           }}>
                           <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
                         </TouchableOpacity>
                         <Divider />
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
-                          onPress={() => {
+                          onPress={async () => {
                             closeSettingsSheet();
-                          }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
+                            await handleCreateCopy();
+                          }}
+                          disabled={isCreatingCopy}>
+                          {isCreatingCopy ? (
+                            <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                          ) : (
+                            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
+                          )}
                         </TouchableOpacity>
                         <Divider />
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
-                          onPress={() => {
-                            closeSettingsSheet();
+                          onPress={async () => {
+                            if (!collection) return;
+                            
+                            try {
+                              closeSettingsSheet();
+                              const newVisibility = collection.visibility === 'Public' ? 'Private' : 'Public';
+                              const updatedCollection = { ...collection, visibility: newVisibility };
+                              
+                              // Update in database
+                              await updateCollectionDB(updatedCollection);
+                              
+                              // Update in store
+                              updateCollection(updatedCollection);
+                            } catch (error) {
+                              console.error('Failed to toggle visibility:', error);
+                              alert('Failed to update collection visibility');
+                            }
                           }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Make Private</Text>
+                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
+                            {collection?.visibility === 'Public' ? 'Make Private' : 'Make Public'}
+                          </Text>
                         </TouchableOpacity>
                         <Divider />
                         <TouchableOpacity
@@ -427,6 +682,85 @@ const addPassage = () => {
               </GestureDetector>
               <AddPassage onAddPassage={addPassage} onClickPlus={clickPlus} />
             </Animated.View>
+
+            {/* Verses Settings Sheet */}
+            <Animated.View
+              style={[
+                {
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  height: settingsSheetHeight,
+                  backgroundColor: theme.colors.surface,
+                  borderTopLeftRadius: 16,
+                  borderTopRightRadius: 16,
+                  paddingTop: 20,
+                  paddingBottom: 80,
+                  zIndex: 21,
+                  elevation: 21,
+                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
+                },
+                versesSettingsAnimatedStyle,
+              ]}
+            >
+              <GestureDetector gesture={versesSettingsPanGesture}>
+                <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
+                  <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
+                </View>
+              </GestureDetector>
+              
+              <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Passages By:</Text>
+              <Divider />
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                onPress={() => {
+                  closeVersesSettingsSheet();
+                  // Navigate to reorder existing verses page
+                  const setEditingCollection = useAppStore.getState().setEditingCollection;
+                  if (collection) {
+                    setEditingCollection(collection);
+                    router.push('../collections/reorderExistingVerses');
+                  }
+                }}>
+                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Custom Order (Reorder)</Text>
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                onPress={() => {
+                  setVersesSortBy(1);
+                  closeVersesSettingsSheet();
+                }}>
+                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 1 ? '700' : '500' }}>Percent Memorized</Text>
+              </TouchableOpacity>
+              <Divider />
+            </Animated.View>
+
+            {isVersesSettingsSheetOpen && (
+              <Animated.View
+                style={[
+                  {
+                    position: 'absolute',
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    zIndex: 11,
+                  },
+                  versesBackdropAnimatedStyle,
+                ]}
+                pointerEvents="auto"
+              >
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  activeOpacity={1}
+                  onPress={() => {
+                    closeVersesSettingsSheet();
+                  }}
+                />
+              </Animated.View>
+            )}
           </Portal>
         </View>
       );

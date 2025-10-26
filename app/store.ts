@@ -152,6 +152,8 @@ interface AppState {
   sendStreakNotifications: boolean;
   sendVerseOfDayNotifications: boolean;
   newCollection: Collection;
+  editingCollection: Collection | undefined;
+  editingUserVerse: UserVerse | undefined;
   numNotifications: number;
   collectionsSheetControls: CollectionSheetControls;
 
@@ -169,6 +171,8 @@ interface AppState {
     resetNewCollection: () => void;
     setCollections: (collections: Collection[]) => void;
     setCollectionsSheetControls: (controls: CollectionSheetControls) => void;
+    setEditingCollection: (collection: Collection | undefined) => void;
+    setEditingUserVerse: (userVerse: UserVerse | undefined) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -180,6 +184,8 @@ export const useAppStore = create<AppState>((set) => ({
     sendStreakNotifications: true,
     sendVerseOfDayNotifications: true,
     newCollection: emptyNewCollection,
+    editingCollection: undefined,
+    editingUserVerse: undefined,
     numNotifications: 0,
     collectionsSheetControls: defaultCollectionsSheetControls,
 
@@ -219,4 +225,6 @@ export const useAppStore = create<AppState>((set) => ({
         }))
     },
     setCollectionsSheetControls: (controls: CollectionSheetControls) => set({collectionsSheetControls: controls}),
+    setEditingCollection: (collection: Collection | undefined) => set({editingCollection: collection}),
+    setEditingUserVerse: (userVerse: UserVerse | undefined) => set({editingUserVerse: userVerse}),
 }))
