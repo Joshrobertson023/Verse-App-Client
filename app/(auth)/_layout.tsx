@@ -1,15 +1,28 @@
 import { Stack } from 'expo-router';
 import React from 'react';
 import useAppTheme from '../theme';
+import * as SystemUI from 'expo-system-ui';
+
 
 export default function RootLayout() {
+
   const theme = useAppTheme();
+  SystemUI.setBackgroundColorAsync(theme.colors.background);
   return ( 
-    <Stack>
+    <Stack screenOptions={{
+      headerStyle: {
+        backgroundColor: theme.colors.background,
+      },
+      headerTintColor: theme.colors.onBackground,
+    }}>
         <Stack.Screen 
         name="createName"
         options={{ headerShown: false,
-              headerShadowVisible: false, }} 
+              headerShadowVisible: false,
+              headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+            }} 
         />
         <Stack.Screen 
         name="createUsername"

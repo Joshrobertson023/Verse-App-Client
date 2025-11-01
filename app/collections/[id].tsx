@@ -4,52 +4,32 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
-import { ActivityIndicator, Divider, Portal, Surface, Text } from 'react-native-paper';
+import { Divider, Portal, Snackbar, Surface, Text } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
+import ShareCollectionSheet from '../components/shareCollectionSheet';
+import { CollectionContentSkeleton } from '../components/skeleton';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, refreshUser, updateCollectionDB, updateCollectionsOrder, publishCollection, getPublishedInfo, notifyAuthorCollectionSaved, submitUserReport, unpublishCollection } from '../db';
+import PublishDialog from '../components/publishDialog';
 import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
 
-// Ordering functions for user verses
-function orderCustom(userVerses: UserVerse[], verseOrder?: string): UserVerse[] {
-  if (!verseOrder) return userVerses;
-  
-  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '');
-  const ordered: UserVerse[] = [];
-  const unordered: UserVerse[] = [];
-  
-  // Create a map for quick lookup
-  const verseMap = new Map<string, UserVerse>();
-  userVerses.forEach(uv => {
-    verseMap.set(uv.readableReference, uv);
+function orderByDateAdded(userVerses: UserVerse[]): UserVerse[] {
+  return [...userVerses].sort((a, b) => {
+    const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
+    const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+    return dateB - dateA;
   });
-  
-  // First, add verses in the order specified
-  orderArray.forEach(ref => {
-    const verse = verseMap.get(ref.trim());
-    if (verse) {
-      ordered.push(verse);
-      verseMap.delete(ref.trim());
-    }
-  });
-  
-  // Then add any verses not in the order
-  verseMap.forEach(verse => {
-    unordered.push(verse);
-  });
-  
-  return [...ordered, ...unordered];
 }
 
 function orderByProgress(userVerses: UserVerse[]): UserVerse[] {
   return [...userVerses].sort((a, b) => {
     const aProgress = a.progressPercent || 0;
     const bProgress = b.progressPercent || 0;
-    return aProgress - bProgress; // Sort ascending (lowest first)
+    return bProgress - aProgress;
   });
 }
 
@@ -71,56 +51,79 @@ export default function Index() {
     const [loadingVerses, setLoadingVerses] = useState(false);
     const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
     const [orderedUserVerses, setOrderedUserVerses] = useState<UserVerse[]>([]);
-    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order, 1 = progress
+    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = date added, 1 = progress
     const [isVersesSettingsSheetOpen, setIsVersesSettingsSheetOpen] = useState(false);
     const [isCreatingCopy, setIsCreatingCopy] = useState(false);
+    const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+    const [snackbarVisible, setSnackbarVisible] = useState(false);
+    const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [showPublish, setShowPublish] = useState(false);
+  const [publishedDescription, setPublishedDescription] = useState<string | null>(null);
     const isFetchingRef = useRef(false);
+    const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
     
     const collection = useAppStore((state) =>
       state.collections.find((c) => c.collectionId?.toString() === params.id)
   );
+  
+  useEffect(() => {
+    if (collection) {
+      console.log('Collection changed:', collection.title, 'has verses?', 
+        collection.userVerses?.[0]?.verses?.length > 0);
+    }
+  }, [collection]);
+
+  useEffect(() => {
+    (async () => {
+      if (!collection?.collectionId) return;
+      try {
+        const info = await getPublishedInfo(collection.collectionId);
+        setPublishedDescription(info?.description ?? null);
+      } catch {}
+    })();
+  }, [collection?.collectionId]);
 
   const handleCreateCopy = async () => {
     if (!collection) return;
     
     setIsCreatingCopy(true);
     try {
-      // Create a duplicate collection
       const duplicateCollection = {
         ...collection,
         title: `${collection.title} (Copy)`,
-        collectionId: undefined, // Will be assigned by API
+        collectionId: undefined,
       };
 
-      // Create the collection in the database
       await createCollectionDB(duplicateCollection, user.username);
       const newCollectionId = await getMostRecentCollectionId(user.username);
 
-      // Add userVerses to the new collection
       if (collection.userVerses && collection.userVerses.length > 0) {
         await addUserVersesToNewCollection(collection.userVerses, newCollectionId);
       }
 
-      // Get updated collections list
       const updatedCollections = await getUserCollections(user.username);
       setCollections(updatedCollections);
 
-      // Add new collection ID to the collections order
       const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
       const newOrder = currentOrder ? `${currentOrder},${newCollectionId}` : newCollectionId.toString();
       const updatedUser = { ...user, collectionsOrder: newOrder };
       setUser(updatedUser);
 
-      // Update in database
       try {
         await updateCollectionsOrder(newOrder, user.username);
       } catch (error) {
         console.error('Failed to update collections order:', error);
       }
 
-      // Fetch updated user from server
       const refreshedUser = await refreshUser(user.username);
       setUser(refreshedUser);
+
+      // If source collection is published, notify the author
+      try {
+        await notifyAuthorCollectionSaved(user.username, collection.collectionId!);
+      } catch (e) {
+        console.warn('Failed to notify author about save:', e);
+      }
     } catch (error) {
       console.error('Failed to create collection copy:', error);
     } finally {
@@ -135,22 +138,53 @@ useEffect(() => {
   }
 }, [collection]);
 
+useEffect(() => {
+  if (!collection || !shouldReloadPracticeList) return;
+  
+  const reloadCollection = async () => {
+    try {
+      console.log('🔄 Reloading collection after practice completion');
+      const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
+      const data = await getUserVersesPopulated(colToSend);
+      setUserVerses(data.userVerses ?? []);
+      updateCollection(data);
+      
+      const setShouldReloadPracticeList = useAppStore.getState().setShouldReloadPracticeList;
+      if (setShouldReloadPracticeList) {
+        setShouldReloadPracticeList(false);
+      }
+    } catch (err) {
+      console.error('Failed to reload collection after practice:', err);
+    }
+  };
+  
+  reloadCollection();
+}, [shouldReloadPracticeList, collection, updateCollection]);
+
 useFocusEffect(
   useCallback(() => {
-    if (!collection || isFetchingRef.current) return;
+    if (!collection) return;
     
-    console.log('Running fetchPopulated for collection:', collection.title, 'verseOrder:', collection.verseOrder);
+    const firstUserVerse = collection.userVerses && collection.userVerses.length > 0 ? collection.userVerses[0] : null;
+    const areVersesPopulated = firstUserVerse && firstUserVerse.verses && firstUserVerse.verses.length > 0;
+    
+    if (areVersesPopulated) {
+      console.log('✅ Using cached userVerses for collection:', collection.title);
+      setUserVerses(collection.userVerses);
+      return;
+    }
+    
+    if (isFetchingRef.current) return;
+    
+    console.log('🔄 Fetching populated userVerses for collection:', collection.title);
     
     const fetchPopulated = async () => {
       isFetchingRef.current = true;
       setLoadingVerses(true);
       try {
         const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
-        console.log('Sending collection with verseOrder:', colToSend.verseOrder);
-        console.log('Sending collection userVerses order:', colToSend.UserVerses.map(uv => uv.readableReference));
         const data = await getUserVersesPopulated(colToSend);
-        console.log('Received collection with verseOrder:', data.verseOrder);
-        console.log('Received collection userVerses order:', data.userVerses.map(uv => uv.readableReference));
+        console.log('✅ Fetched and cached userVerses for collection:', collection.title);
         setUserVerses(data.userVerses ?? []);
         updateCollection(data);
       } catch (err) {
@@ -162,31 +196,36 @@ useFocusEffect(
     };
     
     fetchPopulated();
-  }, [collection?.collectionId, collection?.verseOrder])
+  }, [collection?.collectionId, collection?.verseOrder, updateCollection])
 );
 
-// Order verses based on sort setting
 useEffect(() => {
   if (!userVerses || userVerses.length === 0) {
     setOrderedUserVerses([]);
     return;
   }
+  const seenReferences = new Set<string>();
+  const uniqueUserVerses = userVerses.filter((uv) => {
+    if (!uv.readableReference) return true;
+    if (seenReferences.has(uv.readableReference)) {
+      return false;
+    }
+    seenReferences.add(uv.readableReference);
+    return true;
+  });
   
   let ordered: UserVerse[] = [];
   
   if (versesSortBy === 0) {
-    console.log('Applying orderCustom with verseOrder:', collection?.verseOrder);
-    console.log('UserVerses before ordering:', userVerses.map(uv => uv.readableReference));
-    ordered = orderCustom(userVerses, collection?.verseOrder);
-    console.log('UserVerses after ordering:', ordered.map(uv => uv.readableReference));
+    ordered = orderByDateAdded(uniqueUserVerses);
   } else if (versesSortBy === 1) {
-    ordered = orderByProgress(userVerses);
+    ordered = orderByProgress(uniqueUserVerses);
   } else {
-    ordered = userVerses;
+    ordered = uniqueUserVerses;
   }
   
   setOrderedUserVerses(ordered);
-}, [userVerses, collection?.verseOrder, versesSortBy]);
+}, [userVerses, versesSortBy]);
 
 useLayoutEffect(() => {
   if (collection) {
@@ -208,7 +247,7 @@ useLayoutEffect(() => {
     const openPosition = height - sheetHeight + (height * offset);
     const peekPosition = height;
 
-  const settingsSheetHeight = height * (.40 + offset);
+  const settingsSheetHeight = height * (.50 + offset);
   const settingsClosedPosition = height;
   const settingsOpenPosition = height - settingsSheetHeight + (height * offset);
 
@@ -437,8 +476,10 @@ useEffect(() => {
 
     if (loadingVerses) {
         return (
-            <View style={{...styles.container, alignItems: 'center', justifyContent: 'center', marginTop: -100}}>
-                <ActivityIndicator size={70} animating={true} />
+            <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+                <ScrollView style={styles.scrollContainer} contentContainerStyle={{ padding: 20 }}>
+                    <CollectionContentSkeleton />
+                </ScrollView>
             </View>
         )
     } else {
@@ -455,6 +496,27 @@ useEffect(() => {
                   width: '100%'
                 }}
               >
+          {publishedDescription && (
+            <Surface style={{ minWidth: '100%', padding: 14, borderRadius: 6, backgroundColor: theme.colors.surface, marginBottom: 12 }} elevation={2}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ ...styles.text, flex: 1, marginRight: 10 }}>{publishedDescription}</Text>
+                <TouchableOpacity onPress={async () => {
+                  if (!collection?.collectionId) return;
+                  try {
+                    await submitUserReport(user.username, `COLLECTION:${collection.collectionId}`, 'Reported published collection');
+                    setSnackbarMessage('Report submitted');
+                    setSnackbarVisible(true);
+                  } catch (e) {
+                    setSnackbarMessage('Failed to submit report');
+                    setSnackbarVisible(true);
+                  }
+                }}>
+                  <Text style={{ ...styles.tinyText, color: theme.colors.error }}>Report</Text>
+                </TouchableOpacity>
+              </View>
+            </Surface>
+          )}
+
           <TouchableOpacity 
             style={{...styles.button_outlined, marginBottom: 10}}
             onPress={openVersesSettingsSheet}
@@ -465,15 +527,15 @@ useEffect(() => {
             </View>
           </TouchableOpacity>
           <View>
-            {(orderedUserVerses || []).map((userVerse: UserVerse) => (
+            {(orderedUserVerses || []).map((userVerse: UserVerse, userVerseIndex) => (
 
-                <View key={userVerse.id} style={{minWidth: '100%', marginBottom: 20}}>
+                <View key={userVerse.readableReference || `userVerse-${userVerseIndex}`} style={{minWidth: '100%', marginBottom: 20}}>
                     <Surface style={{minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
 
                         <View>
                           <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
-                          {(userVerse.verses || []).map((verse) => (
-                              <View key={verse.verse_reference} style={{}}>
+                          {(userVerse.verses || []).map((verse, verseIndex) => (
+                              <View key={verse.verse_reference || `${userVerse.readableReference}-verse-${verseIndex}`} style={{}}>
                                   <View>
                                       <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number}: {verse.text} </Text>
                                   </View>
@@ -488,7 +550,7 @@ useEffect(() => {
                                   <Ionicons name={"sync-circle-outline"} size={45} color={theme.colors.onBackground} />
                                 </View>
                                 <View style={{flexDirection: 'column', marginLeft: 5}}>
-                                  <Text style={{...styles.text, margin: 0}}>{userVerse.progressPercent || 0}%</Text>
+                                  <Text style={{...styles.text, margin: 0}}>{Math.floor(userVerse.progressPercent || 0)}%</Text>
                                   <Text style={{...styles.tinyText, marginTop: -20}}>Memorized</Text>
                                 </View>
                               </View>
@@ -577,6 +639,7 @@ useEffect(() => {
                         </GestureDetector>
               
                         <Divider />
+                        {(collection?.authorUsername === user.username) && (
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
                           onPress={() => {
@@ -589,6 +652,7 @@ useEffect(() => {
                           }}>
                           <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
                         </TouchableOpacity>
+                        )}
                         <Divider />
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
@@ -604,6 +668,7 @@ useEffect(() => {
                           )}
                         </TouchableOpacity>
                         <Divider />
+                        {(collection?.authorUsername === user.username) && (
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
                           onPress={async () => {
@@ -628,23 +693,61 @@ useEffect(() => {
                             {collection?.visibility === 'Public' ? 'Make Private' : 'Make Public'}
                           </Text>
                         </TouchableOpacity>
+                        )}
                         <Divider />
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
                           onPress={() => {
                             closeSettingsSheet();
+                            setIsShareSheetVisible(true);
                           }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                            <Ionicons name="share-social-outline" size={20} color={theme.colors.onBackground} />
+                            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
+                          </View>
                         </TouchableOpacity>
-                        <Divider />
-                        <TouchableOpacity
-                          style={sheetItemStyle.settingsItem}
-                          onPress={() => {
-                            closeSettingsSheet();
-                          }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
-                        </TouchableOpacity>
-                        <Divider />
+                        {(collection?.title !== 'Favorites' && collection?.authorUsername === user.username) && (
+                          <>
+                            <Divider />
+                            <TouchableOpacity
+                              style={sheetItemStyle.settingsItem}
+                              onPress={async () => {
+                                if (!collection?.collectionId) return;
+                                if (publishedDescription) {
+                                  // Unpublish
+                                  try {
+                                    await unpublishCollection(collection.collectionId);
+                                    setPublishedDescription(null);
+                                    setSnackbarMessage('Collection unpublished');
+                                    setSnackbarVisible(true);
+                                  } catch (e) {
+                                    console.error('Failed to unpublish collection', e);
+                                    setSnackbarMessage('Failed to unpublish collection');
+                                    setSnackbarVisible(true);
+                                  } finally {
+                                    closeSettingsSheet();
+                                  }
+                                } else {
+                                  closeSettingsSheet();
+                                  setShowPublish(true);
+                                }
+                              }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                                <Ionicons name="globe-outline" size={20} color={theme.colors.onBackground} />
+                                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>{publishedDescription ? 'Unpublish' : 'Publish'}</Text>
+                              </View>
+                            </TouchableOpacity>
+                            <Divider />
+                            <TouchableOpacity
+                              style={sheetItemStyle.settingsItem}
+                              onPress={() => {
+                                closeSettingsSheet();
+                              }}>
+                              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
+                            </TouchableOpacity>
+                            <Divider />
+                          </>
+                        )}
             </Animated.View>
 
             <Animated.View
@@ -680,7 +783,9 @@ useEffect(() => {
                   ></View>
                 </View>
               </GestureDetector>
-              <AddPassage onAddPassage={addPassage} onClickPlus={clickPlus} />
+              {(collection?.authorUsername === user.username) && (
+                <AddPassage onAddPassage={addPassage} onClickPlus={clickPlus} />
+              )}
             </Animated.View>
 
             {/* Verses Settings Sheet */}
@@ -714,15 +819,10 @@ useEffect(() => {
               <TouchableOpacity
                 style={sheetItemStyle.settingsItem}
                 onPress={() => {
+                  setVersesSortBy(0);
                   closeVersesSettingsSheet();
-                  // Navigate to reorder existing verses page
-                  const setEditingCollection = useAppStore.getState().setEditingCollection;
-                  if (collection) {
-                    setEditingCollection(collection);
-                    router.push('../collections/reorderExistingVerses');
-                  }
                 }}>
-                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Custom Order (Reorder)</Text>
+                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 0 ? '700' : '500' }}>Date Added</Text>
               </TouchableOpacity>
               <Divider />
               <TouchableOpacity
@@ -731,7 +831,7 @@ useEffect(() => {
                   setVersesSortBy(1);
                   closeVersesSettingsSheet();
                 }}>
-                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 1 ? '700' : '500' }}>Percent Memorized</Text>
+                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 1 ? '700' : '500' }}>Progress Percent</Text>
               </TouchableOpacity>
               <Divider />
             </Animated.View>
@@ -762,6 +862,53 @@ useEffect(() => {
               </Animated.View>
             )}
           </Portal>
+
+          <PublishDialog
+            visible={showPublish}
+            onDismiss={() => setShowPublish(false)}
+            onPublish={async (desc, categoryIds) => {
+              if (!collection?.collectionId) return;
+              await publishCollection(collection.collectionId, desc, categoryIds);
+              setPublishedDescription(desc || '');
+              // Ensure the collection is Public after publishing
+              try {
+                const updated = { ...collection, visibility: 'Public' } as any;
+                await updateCollectionDB(updated);
+                updateCollection(updated);
+              } catch (e) {
+                console.error('Failed to set visibility Public after publish', e);
+              }
+              setSnackbarMessage('Collection published');
+              setSnackbarVisible(true);
+            }}
+          />
+
+          {/* Share Collection Sheet */}
+          <ShareCollectionSheet
+            visible={isShareSheetVisible}
+            collection={collection}
+            onClose={() => setIsShareSheetVisible(false)}
+            onShareSuccess={(friendUsername) => {
+              setSnackbarMessage(`Collection shared with ${friendUsername}!`);
+              setSnackbarVisible(true);
+            }}
+            onShareError={() => {
+              setSnackbarMessage('Failed to share collection');
+              setSnackbarVisible(true);
+            }}
+          />
+          
+          {/* Snackbar */}
+          <Snackbar
+            visible={snackbarVisible}
+            onDismiss={() => setSnackbarVisible(false)}
+            duration={3000}
+            style={{ backgroundColor: theme.colors.surface }}
+          >
+            <Text style={{ color: theme.colors.onSurface, fontFamily: 'Inter' }}>
+              {snackbarMessage}
+            </Text>
+          </Snackbar>
         </View>
       );
     }

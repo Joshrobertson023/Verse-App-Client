@@ -2,7 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Collection } from '../store'; // Adjust the import path for your Collection type
+import { Button } from 'react-native-paper';
+import { Collection, useAppStore } from '../store'; // Adjust the import path for your Collection type
 import getStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -17,10 +18,20 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
   const [menuVisible, setMenuVisible] = useState(false);
   const openMenu = () => setMenuVisible(true);
   const closeMenu = () => setMenuVisible(false);
+  const user = useAppStore((state) => state.user);
 
   return (
-    <TouchableOpacity
+      <Button
+        mode="contained"
         key={collection.collectionId}
+        style={{
+          padding: 0,
+          marginBottom: 20,
+          borderRadius: 10,
+        }}
+        rippleColor={theme.colors.surface2}
+        
+        labelStyle={{marginLeft: -37, marginRight: -2, marginVertical: 0, paddingHorizontal: 0, paddingVertical: 0}}
         onPress={() => router.push(`../collections/${collection.collectionId}`)}>
       <View style={styles.collectionItem}>
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
@@ -31,7 +42,7 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
                 <Text 
                   numberOfLines={1} 
                   ellipsizeMode="tail"
-                  style={{...styles.text, marginBottom: 0, fontWeight: 800}}>
+                  style={{...styles.text, marginBottom: 0, fontWeight: 800, fontFamily: 'Inter'}}>
                   {collection.title}
                 </Text>
               </View>
@@ -63,13 +74,20 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
             <View>
 
               {/* author */}
-              {collection.title === 'Favorites' ? null : <Text style={styles.tinyText}>{collection.authorUsername ? collection.authorUsername : ''}</Text>}
-              
+              {collection.title === 'Favorites' ? (
+                null
+              ) : (
+                collection.authorUsername === user.username ? (
+                  null
+                ) : (
+                  <Text>{collection.authorUsername}</Text>
+                )
+              )}
             </View>
           </View>
           
         </View>
       </View>
-    </TouchableOpacity>
+    </Button>
   );
 }

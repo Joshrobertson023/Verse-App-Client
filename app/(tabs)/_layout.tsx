@@ -1,8 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { BottomTabBar, BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { BlurView } from 'expo-blur';
 import { router, Tabs, useRootNavigationState } from 'expo-router';
-import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect } from 'react';
+import { Platform, Pressable, Text, TouchableNativeFeedback, TouchableOpacity, View } from 'react-native';
 import { Badge } from 'react-native-paper';
+import { getUnreadNotificationCount } from '../db';
 import { useAppStore } from '../store';
 import useAppTheme from '../theme';
 
@@ -10,7 +13,32 @@ export default function TabLayout() {
   const theme = useAppTheme();
   const user = useAppStore((state) => state.user);
   const numNotifications = useAppStore((state) => state.numNotifications);
+  const setNumNotifications = useAppStore((state) => state.setNumNotifications);
   const rootNavigationState = useRootNavigationState();
+
+  // Check for notifications every minute
+  useEffect(() => {
+    if (user.username === 'Default User') return;
+
+    const checkNotifications = async () => {
+      try {
+        const count = await getUnreadNotificationCount(user.username);
+        if (setNumNotifications) {
+          setNumNotifications(count);
+        }
+      } catch (error) {
+        console.error('Failed to check notifications:', error);
+      }
+    };
+
+    // Check immediately
+    checkNotifications();
+
+    // Then check every minute
+    const interval = setInterval(checkNotifications, 60000);
+
+    return () => clearInterval(interval);
+  }, [user.username, setNumNotifications]);
 
 React.useEffect(() => {
   if (!rootNavigationState?.key) return; // ✅ Wait until ready
@@ -20,11 +48,72 @@ React.useEffect(() => {
   }
 }, [rootNavigationState?.key, user]);
 
+const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
+  return (
+    <BlurView intensity={80} 
+      tint="default"
+      style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0
+      }}>
+      <BottomTabBar {...props}
+        style={{
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          elevation: 0
+        }}
+      />
+    </BlurView>
+  )
+}
+
   return (
     <Tabs
+      tabBar={(props: BottomTabBarProps) => <CustomTabBar {...props} />}
       screenOptions={{
         tabBarActiveTintColor: theme.colors.onBackground,
         tabBarInactiveTintColor: theme.colors.onBackground,
+        tabBarLabelPosition: 'below-icon',
+        tabBarItemStyle: {
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 6,
+          paddingVertical: 6,
+        },
+        tabBarButton: (props) => (
+          Platform.OS === 'android' ? (
+            <View style={props.style}>
+              <TouchableNativeFeedback
+                useForeground
+                background={TouchableNativeFeedback.Ripple(theme.colors.outline, true, 34)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                onPress={props.onPress ?? undefined}
+                onLongPress={props.onLongPress ?? undefined}
+                accessibilityRole={props.accessibilityRole}
+                accessibilityState={props.accessibilityState}
+                accessibilityLabel={props.accessibilityLabel}
+                testID={props.testID}
+              >
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{props.children}</View>
+              </TouchableNativeFeedback>
+            </View>
+          ) : (
+            <Pressable
+              style={props.style}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              onPress={props.onPress ?? undefined}
+              onLongPress={props.onLongPress ?? undefined}
+              accessibilityRole={props.accessibilityRole}
+              accessibilityState={props.accessibilityState}
+              accessibilityLabel={props.accessibilityLabel}
+              testID={props.testID}
+            >
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{props.children}</View>
+            </Pressable>
+          )
+        ),
         headerShown: true,
         headerStyle: {
           backgroundColor: theme.colors.background,
@@ -43,7 +132,7 @@ React.useEffect(() => {
           paddingTop: 10,
           paddingLeft: 5,
           paddingRight: 5,
-          borderTopColor: theme.colors.outline,
+          borderTopColor: theme.colors.onBackground
         },
       }}>
         <Tabs.Screen 
@@ -87,9 +176,10 @@ React.useEffect(() => {
             <Text
               style={{
                 fontSize: 14,
-                fontWeight: focused ? '800' : '400',
+                fontWeight: '600',
                 color: color,
-                marginTop: 5,
+                marginTop: 0,
+                textAlign: 'center',
               }}
             > Home
             </Text>
@@ -100,7 +190,7 @@ React.useEffect(() => {
         name="practice" 
         options={{
           title: 'Practice',
-          headerTitle: 'Practice',
+          headerShown: false,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} color={color} size={28} />
           ),
@@ -108,9 +198,10 @@ React.useEffect(() => {
             <Text
               style={{
                 fontSize: 14,
-                fontWeight: focused ? '800' : '400',
+                fontWeight: '600',
                 color: color,
-                marginTop: 5,
+                marginTop: 0,
+                textAlign: 'center',
               }}
             > Practice
             </Text>
@@ -120,16 +211,46 @@ React.useEffect(() => {
           <Tabs.Screen 
             name="search" 
             options={{
+              headerShown: false,
               tabBarIcon: ({ color, focused }) => (
-                <Ionicons name={focused ? 'search' : 'search-outline'} color={color} size={28} />
+                <>{focused ? (
+                  <View style={{
+                      zIndex: 1000000,
+                      height: 67,
+                      width: 67,
+                      padding: 10,
+                      borderRadius: 100,
+                      top: -2,
+                      backgroundColor: theme.colors.surface
+                  }}>
+                    <Ionicons name={'search-outline'} color={color} size={45} style={{
+                    }} />
+                  </View>
+                ) : (
+                  <View style={{
+                      zIndex: 1000000,
+                      height: 67,
+                      width: 67,
+                      padding: 10,
+                      top: -2,
+                      borderRadius: 100,
+                  }}>
+                    <Ionicons name={'search-outline'} color={color} size={45} style={{
+                    }} />
+                  </View>
+                )}
+                </>
               ),
               tabBarLabel: ({ focused, color }) => (
                 <Text
                   style={{
                     fontSize: 14,
                     fontWeight: focused ? '800' : '400',
-                    color: color,
-                    marginTop: 5,
+                    color: 'transparent',
+                    marginTop: 0,
+                    textAlign: 'center',
+                    position: 'absolute',
+                    zIndex: 0,
                   }}
                 > Search
                 </Text>
@@ -147,9 +268,10 @@ React.useEffect(() => {
             <Text
               style={{
                 fontSize: 14,
-                fontWeight: focused ? '800' : '400',
+                fontWeight: '600',
                 color: color,
-                marginTop: 5,
+                marginTop: 0,
+                textAlign: 'center',
               }}
             > Bible
             </Text>
@@ -160,6 +282,7 @@ React.useEffect(() => {
         name="explore"
         options={{
           title: 'Explore',
+          headerShown: false,
           tabBarIcon: ({ color, focused }) => (
               <Ionicons name={focused ? 'planet' : 'planet-outline'} color={color} size={28}/>
           ),
@@ -167,9 +290,10 @@ React.useEffect(() => {
             <Text
               style={{
                 fontSize: 14,
-                fontWeight: focused ? '800' : '400',
+                fontWeight: '600',
                 color: color,
-                marginTop: 5,
+                marginTop: 0,
+                textAlign: 'center',
               }}
             > Explore
             </Text>

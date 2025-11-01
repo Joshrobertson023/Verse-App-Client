@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import checkUsernameAvailable, { getUserCollections, getUserPasswordHash, loginUser } from '../db';
+import checkUsernameAvailable, { getUserCollections, getUserPasswordHash, loginUser, getStreakLength } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -71,10 +71,14 @@ const nextClick = async () => {
         }
 
         const loggedInUser = await loginUser(newUser);
-        loggedInUser.streakLength = 0; // Change to functions in store that do it automatically on user set
-        loggedInUser.versesMemorized = 0;
-        loggedInUser.versesOverdue = 0;
-        loggedInUser.numberPublishedCollections = 0;
+        // Fetch streakLength from API
+        try {
+          loggedInUser.streakLength = await getStreakLength(loggedInUser.username);
+        } catch (error) {
+          console.error('Failed to fetch streak length:', error);
+          loggedInUser.streakLength = 0;
+        }
+        // versesMemorized, versesOverdue, and numberPublishedCollections come from the database
         setUser(loggedInUser);
         setCollections(await getUserCollections(loggedInUser.username));
         console.log(loggedInUser);

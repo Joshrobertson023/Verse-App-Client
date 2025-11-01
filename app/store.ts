@@ -35,6 +35,9 @@ export interface User {
     description?: string;
     profileVisibility?: number;
     subscribedVerseOfDay?: boolean;
+    pushNotificationsEnabled?: boolean;
+    activityNotificationsEnabled?: boolean;
+    isAdmin?: boolean;
     streak?: Streak[];
     streakLength: number;
     versesMemorized: number;
@@ -43,6 +46,7 @@ export interface User {
 }
 
 export interface UserVerse {
+    clientId?: string; // client-only unique id for list keys
     id?: number;
     username: string;
     collectionId?: number;
@@ -66,7 +70,7 @@ export interface Verse {
     text: string;
     users_Saved_Verse?: number;
     users_Memorized?: number;
-    verse_Number?: number;
+    verse_Number?: string | number;
 }
 
 export interface loginInfo {
@@ -88,6 +92,26 @@ export interface SearchData {
     searched_By_Passage: boolean;
     readable_Reference: string;
     verses: Verse[];
+}
+
+export interface Notification {
+    id: number;
+    username: string;
+    senderUsername: string;
+    message: string;
+    createdDate: string;
+    expirationDate?: string;
+    isRead: boolean;
+    notificationType: string;
+}
+
+export interface VerseOfDay {
+    id: number;
+    readableReference: string;
+    scheduledDate: string;
+    sentDate?: string;
+    isSent: boolean;
+    createdDate: string;
 }
 
 export interface CollectionSheetControls {
@@ -141,6 +165,8 @@ export const loggedOutUser: User = {
     versesOverdue: 0,
     numberPublishedCollections: 0,
     streakLength: 0,
+    subscribedVerseOfDay: true,
+    pushNotificationsEnabled: true,
 }
 
 interface AppState {
@@ -151,11 +177,13 @@ interface AppState {
   showStreakOnHomepage: boolean;
   sendStreakNotifications: boolean;
   sendVerseOfDayNotifications: boolean;
+  shouldReloadPracticeList: boolean;
   newCollection: Collection;
   editingCollection: Collection | undefined;
   editingUserVerse: UserVerse | undefined;
   numNotifications: number;
   collectionsSheetControls: CollectionSheetControls;
+  popularSearches: string[];
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -164,15 +192,18 @@ interface AppState {
   updateCollection: (updated: Collection) => void;
   setLoginInfo: (info: loginInfo) => void;
   setShowStreakOnHomepage?: (show: boolean) => void;
-    setSendStreakNotifications?: (send: boolean) => void;
-    setSendVerseOfDayNotifications?: (send: boolean) => void;
-    setNewCollection: (collection: Collection) => void;
-    addUserVerseToCollection: (userVerse: UserVerse) => void;
-    resetNewCollection: () => void;
-    setCollections: (collections: Collection[]) => void;
-    setCollectionsSheetControls: (controls: CollectionSheetControls) => void;
-    setEditingCollection: (collection: Collection | undefined) => void;
-    setEditingUserVerse: (userVerse: UserVerse | undefined) => void;
+  setSendStreakNotifications?: (send: boolean) => void;
+  setSendVerseOfDayNotifications?: (send: boolean) => void;
+  setShouldReloadPracticeList: (should: boolean) => void;
+  setNewCollection: (collection: Collection) => void;
+  addUserVerseToCollection: (userVerse: UserVerse) => void;
+  resetNewCollection: () => void;
+  setCollections: (collections: Collection[]) => void;
+  setCollectionsSheetControls: (controls: CollectionSheetControls) => void;
+  setEditingCollection: (collection: Collection | undefined) => void;
+  setEditingUserVerse: (userVerse: UserVerse | undefined) => void;
+  setNumNotifications?: (count: number) => void;
+  setPopularSearches: (searches: string[]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -183,11 +214,13 @@ export const useAppStore = create<AppState>((set) => ({
     showStreakOnHomepage: true,
     sendStreakNotifications: true,
     sendVerseOfDayNotifications: true,
+    shouldReloadPracticeList: false,
     newCollection: emptyNewCollection,
     editingCollection: undefined,
     editingUserVerse: undefined,
     numNotifications: 0,
     collectionsSheetControls: defaultCollectionsSheetControls,
+    popularSearches: [],
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -227,4 +260,7 @@ export const useAppStore = create<AppState>((set) => ({
     setCollectionsSheetControls: (controls: CollectionSheetControls) => set({collectionsSheetControls: controls}),
     setEditingCollection: (collection: Collection | undefined) => set({editingCollection: collection}),
     setEditingUserVerse: (userVerse: UserVerse | undefined) => set({editingUserVerse: userVerse}),
+    setNumNotifications: (count: number) => set({numNotifications: count}),
+    setShouldReloadPracticeList: (should: boolean) => set({shouldReloadPracticeList: should}),
+    setPopularSearches: (searches: string[]) => set({popularSearches: searches}),
 }))

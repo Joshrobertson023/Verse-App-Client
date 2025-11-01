@@ -32,6 +32,17 @@ export default function Index() {
     const addUserVerseToCollection = useAppStore((state) => state.addUserVerseToCollection)
     const setUser = useAppStore((state) => state.setUser);
 
+    // Initialize title and visibility if newCollection has data (e.g., from shared collection)
+    useEffect(() => {
+        if (newCollection) {
+            if (newCollection.title && newCollection.title !== 'New Collection') {
+                setTitle(newCollection.title);
+            }
+            if (newCollection.visibility) {
+                setVisibility(newCollection.visibility);
+            }
+        }
+    }, [newCollection]);
 
     const offset = .1;
    const sheetHeight = height * (.89 + offset);
@@ -295,21 +306,6 @@ export default function Index() {
         {/* User Verse Cards */}
         {newCollection?.userVerses.length > 0 && (
           <>
-            <TouchableOpacity 
-              style={{...styles.button_outlined, marginTop: 20, marginBottom: 10}} 
-              onPress={() => {
-                // Clear editingCollection to ensure we're in "new collection" mode
-                const setEditingCollection = useAppStore.getState().setEditingCollection;
-                setEditingCollection(undefined);
-                router.push('../collections/reorderVerses');
-              }}
-            >
-              <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-                <Ionicons name="reorder-three-outline" size={20} color={theme.colors.onBackground} />
-                <Text style={{...styles.buttonText_outlined}}>Reorder Passages</Text>
-              </View>
-            </TouchableOpacity>
-
             <View style={{marginTop: 20, width: '100%'}}>
               {(() => {
                 // Sort userVerses according to verseOrder if it exists

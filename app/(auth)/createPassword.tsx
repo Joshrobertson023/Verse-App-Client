@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Link, router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
@@ -111,6 +111,18 @@ const nextClick = async () => {
                         <Text style={styles.buttonText_filled}>Create Account</Text>
                     )}
                 </TouchableOpacity>
+                <Text style={{...styles.tinyText, marginTop: 12, textAlign: 'center', lineHeight: 26}}>
+                  By creating an account, you agree to our
+                  {' '}
+                  <Link href="/privacy" style={{ textDecorationLine: 'underline' }}>
+                    <Text style={{...styles.tinyText, color: theme.colors.primary}}>Privacy Policy</Text>
+                  </Link>
+                  {' '}and{' '}
+                  <Link href="/terms" style={{ textDecorationLine: 'underline' }}>
+                    <Text style={{...styles.tinyText, color: theme.colors.primary}}>Terms of Service</Text>
+                  </Link>
+                  .
+                </Text>
             </View>
         </SafeAreaView>
     )

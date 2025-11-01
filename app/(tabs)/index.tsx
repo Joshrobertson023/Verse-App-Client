@@ -1,12 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { BackHandler, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { ActivityIndicator, Dialog, Divider, FAB, Portal } from 'react-native-paper';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { ActivityIndicator, Button, Dialog, Divider, FAB, Portal, Snackbar } from 'react-native-paper';
+import Animated, { interpolate, runOnJS, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import CollectionItem from '../components/collectionItem';
-import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getUserCollections, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
+import PublishDialog from '../components/publishDialog';
+import ShareCollectionSheet from '../components/shareCollectionSheet';
+import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getPublishedInfo, getUserCollections, publishCollection, refreshUser, unpublishCollection, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
 import { Collection, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -24,7 +26,6 @@ function orderCompletion(collections: Collection[]): Collection[] {
       }
     }
     
-    // Handle empty array case
     if (progressPercentages.length === 0) {
       collectionData.push({ collection: col, averageProgress: 0 });
     } else {
@@ -49,7 +50,7 @@ function orderNewest(collections: Collection[]): Collection[] {
   const sortedWithDates = withDates.sort((a: Collection, b: Collection) => {
     const dateA = new Date(a.dateCreated || '').getTime();
     const dateB = new Date(b.dateCreated || '').getTime();
-    return dateB - dateA; // Newest first (descending)
+    return dateB - dateA;
   });
   
   return [...sortedWithDates, ...withoutDates];
@@ -91,16 +92,20 @@ export default function Index() {
   const [isCollectionsSettingsSheetOpen, setIsCollectionsSettingsSheetOpen] = useState(false);
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [deleteDialogCollection, setDeleteDialogCollection] = useState<Collection | undefined>(undefined);
+  const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [showPublish, setShowPublish] = useState(false);
   const deleteCollectionStore = useAppStore((state) => state.removeCollection);
   const [localSortBy, setLocalSortBy] = useState(0);
   const [orderedCollections, setOrderedCollections] = useState<Collection[]>(collections);
+  const [isSettingsCollectionPublished, setIsSettingsCollectionPublished] = useState<boolean | null>(null);
 
   const [visible, setVisible] = React.useState(false);
 
   const hideDialog = () => setVisible(false);
   const hideDeleteDialog = () => setDeleteDialogVisible(false);
 
-  // Handle Android back button to close sheets
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (isSettingsSheetOpen) {
@@ -128,20 +133,17 @@ export default function Index() {
     deleteCollectionStore(collectionId);
     await deleteCollection(deleteDialogCollection);
     
-    // Remove collection ID from collections order
     const currentOrder = user.collectionsOrder || '';
     const orderArray = currentOrder.split(',').filter(id => id.trim() !== collectionId.toString()).join(',');
     const updatedUser = { ...user, collectionsOrder: orderArray };
     setUser(updatedUser);
     
-    // Update in database
     try {
       await updateCollectionsOrderDB(orderArray, user.username);
     } catch (error) {
       console.error('Failed to update collections order:', error);
     }
     
-    // Fetch updated user from server
     try {
       const refreshedUser = await refreshUser(user.username);
       setUser(refreshedUser);
@@ -155,40 +157,33 @@ export default function Index() {
   const handleCreateCopy = async (collectionToCopy: Collection) => {
     setIsCreatingCopy(true);
     try {
-      // Create a duplicate collection
       const duplicateCollection: Collection = {
         ...collectionToCopy,
         title: `${collectionToCopy.title} (Copy)`,
-        collectionId: undefined, // Will be assigned by API
+        collectionId: undefined,
       };
 
-      // Create the collection in the database
       await createCollectionDB(duplicateCollection, user.username);
       const newCollectionId = await getMostRecentCollectionId(user.username);
 
-      // Add userVerses to the new collection
       if (collectionToCopy.userVerses && collectionToCopy.userVerses.length > 0) {
         await addUserVersesToNewCollection(collectionToCopy.userVerses, newCollectionId);
       }
 
-      // Get updated collections list
       const updatedCollections = await getUserCollections(user.username);
       setCollections(updatedCollections);
 
-      // Add new collection ID to the collections order
       const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
       const newOrder = currentOrder ? `${currentOrder},${newCollectionId}` : newCollectionId.toString();
       const updatedUser = { ...user, collectionsOrder: newOrder };
       setUser(updatedUser);
 
-      // Update in database
       try {
         await updateCollectionsOrderDB(newOrder, user.username);
       } catch (error) {
         console.error('Failed to update collections order:', error);
       }
 
-      // Fetch updated user from server
       const refreshedUser = await refreshUser(user.username);
       setUser(refreshedUser);
     } catch (error) {
@@ -223,7 +218,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
 
 
   const offset = .1;
-  const settingsSheetHeight = height * (.45 + offset);
+  const settingsSheetHeight = height * (.5 + offset);
   const settingsClosedPosition = height;
   const settingsOpenPosition = height - settingsSheetHeight + (height * offset);
 
@@ -426,6 +421,14 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
       setSettingsCollection(collection);
       openSettingsSheet();
     }
+    // Fetch published status
+    if (collection.collectionId) {
+      getPublishedInfo(collection.collectionId)
+        .then(info => setIsSettingsCollectionPublished(!!info))
+        .catch(() => setIsSettingsCollectionPublished(false));
+    } else {
+      setIsSettingsCollectionPublished(false);
+    }
   }
 
   const sheetItemStyle = StyleSheet.create({
@@ -470,9 +473,49 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
     setOrderedCollections([...favorites, ...ordered]);
   }
 
+  const scrollY = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler((event) => {
+    scrollY.value = event.contentOffset.y;
+  }); 
+
+  const AddButton = () => {
+      const animatedStyle = useAnimatedStyle(() => {
+      const translateY = interpolate(scrollY.value, [0, 150], [0, -100], 'clamp');
+    const opacity = interpolate(scrollY.value, [0, 150], [1, 0], 'clamp');
+      return {
+        opacity,
+        transform: [{ translateY }],
+      };
+    });
+
+    return (
+      <Animated.View
+      style={[
+        {
+          position: 'absolute',
+          top: 40,
+          right: 20,
+          zIndex: 10,
+        }, animatedStyle]}
+    >
+      <Button
+        style={{
+          backgroundColor: theme.colors.background
+        }}
+        onPress={() => router.push('../collections/addnew')}
+      >
+        <Ionicons name="add" size={32} color={theme.colors.onBackground} />
+      </Button>
+    </Animated.View>
+    )
+  }
+
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
         style={styles.scrollContainer}
         contentContainerStyle={{
           alignItems: 'center',
@@ -483,27 +526,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           width: '100%'
         }}
       >
-
-        <View style={{ height: 'auto', width: '100%' }}>
-
-          <TouchableOpacity style={{ width: '100%', height: 50, justifyContent: 'center' }}>
-            <View style={{ width: '100%', height: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {user.versesOverdue > 0 ? <Ionicons name='alert-circle' size={22} color={theme.colors.onBackground} /> : 
-                  <Ionicons name='checkmark-circle-outline' size={22} color={theme.colors.onBackground}/>}
-                  <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: user.versesOverdue > 0 ? 10 : 5 }}>{user.versesOverdue || 0}</Text>
-                </View>
-                <Text style={{ ...styles.tinyText, fontSize: 16, marginLeft: 5 }}>Verses Overdue</Text>
-              </View>
-              <Ionicons name='chevron-forward' size={20} color={'gray'} />
-            </View>
-          </TouchableOpacity>
-          <Divider style={{ marginBottom: 10, marginTop: 10 }} />
-        </View>
-
-
-        <Text style={{ ...styles.subheading, marginTop: 20 }}>My Verses</Text>
+        <Text style={{ ...styles.subheading }}>My Verses</Text>
         <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}} onPress={() => openCollectionsSettingsSheet()}>
           <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
         </TouchableOpacity>
@@ -514,18 +537,19 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           ))}
 
         </View>
-      </ScrollView>
-      <FAB
-        icon="plus"
-        style={{
-          position: 'absolute',
-          right: 20,
-          bottom: 20,
-          zIndex: 10,
-          backgroundColor: theme.colors.secondary,
-        }}
-        onPress={() => router.push('../collections/addnew')}
-      />
+        <View style={{height: 60}} />
+      </Animated.ScrollView>
+        
+        <FAB style={{
+            position: 'absolute',
+            bottom: 130,
+            right: 10
+          }}
+          icon="plus"
+          variant="secondary"
+          animated={true}
+          onPress={() => router.push('../collections/addnew')}
+        />
 
       <Portal>
         <Animated.View
@@ -568,7 +592,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             </View>
           </GestureDetector>
 
-          <Divider />
+          <Divider style={{margin: 0}} />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
             onPress={() => {
@@ -579,7 +603,9 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 router.push('../collections/editCollection');
               }
             }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', gap: 8 }}>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
+            </View>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
@@ -601,7 +627,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
             onPress={async () => {
-              if (!settingsCollection) return;
+              if (!settingsCollection?.collectionId) return;
               
               try {
                 const newVisibility = settingsCollection.visibility === 'Public' ? 'Private' : 'Public';
@@ -609,16 +635,11 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                   ...settingsCollection,
                   visibility: newVisibility
                 };
-                
-                // Update in database
                 await updateCollectionDB(updatedCollection);
-                
-                // Update in store
                 const updatedCollections = collections.map(c => 
                   c.collectionId === settingsCollection.collectionId ? updatedCollection : c
                 );
                 setCollections(updatedCollections);
-                
                 closeSettingsSheet();
               } catch (error) {
                 console.error('Failed to toggle visibility:', error);
@@ -634,9 +655,35 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             style={sheetItemStyle.settingsItem}
             onPress={() => {
               closeSettingsSheet();
+              setIsShareSheetVisible(true);
             }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
           </TouchableOpacity>
+          <Divider />
+          <TouchableOpacity
+            style={sheetItemStyle.settingsItem}
+            onPress={async () => {
+              if (!settingsCollection?.collectionId) return;
+              if (isSettingsCollectionPublished) {
+                try {
+                  await unpublishCollection(settingsCollection.collectionId);
+                  setIsSettingsCollectionPublished(false);
+                  setSnackbarMessage('Collection unpublished');
+                  setSnackbarVisible(true);
+                } catch (e) {
+                  console.error('Failed to unpublish collection', e);
+                  setSnackbarMessage('Failed to unpublish collection');
+                  setSnackbarVisible(true);
+                } finally {
+                  closeSettingsSheet();
+                }
+              } else {
+                closeSettingsSheet();
+                setShowPublish(true);
+              }
+            }}>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>{isSettingsCollectionPublished ? 'Unpublish' : 'Publish'}</Text>
+           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
@@ -694,8 +741,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
 
           <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Collections By:</Text>
           <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
+                <TouchableOpacity
             onPress={() => {
               closeCollectionsSettingsSheet();
               router.push('../collections/reorderCollections');
@@ -710,8 +756,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               setUser(updatedUser);
               closeCollectionsSettingsSheet();
               updateCollectionsOrder();
-              
-              // Update in database
               try {
                 await updateCollectionsSortBy(1, user.username);
               } catch (error) {
@@ -728,8 +772,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               setUser(updatedUser);
               closeCollectionsSettingsSheet();
               updateCollectionsOrder();
-              
-              // Update in database
               try {
                 await updateCollectionsSortBy(2, user.username);
               } catch (error) {
@@ -746,8 +788,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               setUser(updatedUser);
               closeCollectionsSettingsSheet();
               updateCollectionsOrder();
-              
-              // Update in database
               try {
                 await updateCollectionsSortBy(3, user.username);
               } catch (error) {
@@ -772,7 +812,54 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           </TouchableOpacity>
         </Dialog.Actions>
       </Dialog>
-    </Portal>
+      </Portal>
+      <PublishDialog
+        visible={showPublish}
+        onDismiss={() => setShowPublish(false)}
+        onPublish={async (desc, categoryIds) => {
+          if (!settingsCollection?.collectionId) return;
+          await publishCollection(settingsCollection.collectionId, desc, categoryIds);
+          setIsSettingsCollectionPublished(true);
+          // Ensure the collection is Public after publishing
+          try {
+            const updated = { ...settingsCollection, visibility: 'Public' } as Collection;
+            await updateCollectionDB(updated);
+            const updatedCollections = collections.map(c => 
+              c.collectionId === updated.collectionId ? updated : c
+            );
+            setCollections(updatedCollections);
+          } catch (e) {
+            console.error('Failed to set visibility Public after publish', e);
+          }
+          setSnackbarMessage('Collection published');
+          setSnackbarVisible(true);
+        }}
+      />
+      
+      <ShareCollectionSheet
+        visible={isShareSheetVisible}
+        collection={settingsCollection}
+        onClose={() => setIsShareSheetVisible(false)}
+        onShareSuccess={(friendUsername) => {
+          setSnackbarMessage(`Collection shared with ${friendUsername}!`);
+          setSnackbarVisible(true);
+        }}
+        onShareError={() => {
+          setSnackbarMessage('Failed to share collection');
+          setSnackbarVisible(true);
+        }}
+      />
+      
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        style={{ backgroundColor: theme.colors.surface }}
+      >
+        <Text style={{ color: theme.colors.onSurface, fontFamily: 'Inter' }}>
+          {snackbarMessage}
+        </Text>
+      </Snackbar>
     </View>
   );
 }

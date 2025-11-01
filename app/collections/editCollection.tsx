@@ -375,7 +375,14 @@ export default function EditCollection() {
           width: '100%'
         }}
       >
-        <TextInput label="Collection Title" value={title} onChangeText={setTitle} style={styles.input} mode='outlined' />
+        {editingCollection?.title === 'Favorites' ? (
+          <Surface style={{ ...styles.input, height: 70, justifyContent: 'center', paddingHorizontal: 12 }} elevation={1}>
+            <Text style={{ ...styles.tinyText, marginBottom: 4, opacity: 0.7 }}>Collection Title</Text>
+            <Text style={{ ...styles.text, color: theme.colors.onSurface, opacity: 0.5 }}>Favorites</Text>
+          </Surface>
+        ) : (
+          <TextInput label="Collection Title" value={title} onChangeText={setTitle} style={styles.input} mode='outlined' />
+        )}
 
         <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 15}}>
           <Text style={{...styles.tinyText, marginRight: 10}}>Visibility: {visibility}</Text>
@@ -393,26 +400,6 @@ export default function EditCollection() {
         {/* User Verse Cards */}
         {reorderedUserVerses.length > 0 && (
           <>
-            <TouchableOpacity 
-              style={{...styles.button_outlined, marginTop: 20, marginBottom: 10}} 
-              onPress={() => {
-                // Update editingCollection with current state before navigating
-                if (editingCollection) {
-                  const updatedCollection = {
-                    ...editingCollection,
-                    userVerses: reorderedUserVerses
-                  };
-                  setEditingCollection(updatedCollection);
-                  router.push('../collections/reorderExistingVerses');
-                }
-              }}
-            >
-              <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-                <Ionicons name="reorder-three-outline" size={20} color={theme.colors.onBackground} />
-                <Text style={{...styles.buttonText_outlined}}>Reorder Passages</Text>
-              </View>
-            </TouchableOpacity>
-
             <View style={{marginTop: 20, width: '100%'}}>
               {reorderedUserVerses.map((userVerse, i) => (
                 <View key={userVerse.readableReference} style={{width: '100%', marginBottom: 20}}>
