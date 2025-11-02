@@ -1,13 +1,11 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
-import { Surface } from 'react-native-paper';
+import { incrementVerseMemorized, incrementVersesMemorized, recordPractice, updateUserVerse as updateUserVerseAPI } from './db';
 import { useAppStore, UserVerse } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
-import { updateUserVerse as updateUserVerseAPI, recordPractice, incrementVerseMemorized, incrementVersesMemorized } from './db';
 
 interface WordDisplay {
   id: number;
@@ -42,7 +40,6 @@ export default function PracticeSessionScreen() {
       return;
     }
 
-    // Parse the reference to get book, chapter, verse
     const reference = editingUserVerse.readableReference || '';
     const referenceParts: string[] = [];
     
@@ -52,7 +49,6 @@ export default function PracticeSessionScreen() {
       const beforeColon = reference.substring(0, colonIndex).trim();
       const afterColon = reference.substring(colonIndex + 1).trim();
       
-      // Split before colon by spaces
       const beforeParts = beforeColon.split(' ');
       const book = beforeParts.slice(0, -1).join(' ');
       const chapter = beforeParts[beforeParts.length - 1];
@@ -64,20 +60,13 @@ export default function PracticeSessionScreen() {
       referenceParts.push(reference);
     }
 
-    // Combine all verse texts
     const fullText = editingUserVerse.verses.map(v => v.text).join(' ');
-    
-    // Split into words
     const wordArray = fullText.split(' ').filter(word => word.length > 0);
-    
-    // Combine reference with verse words
     const allWords = [...referenceParts, ...wordArray];
     
-    // Determine how many words to show initially based on current progress
     const progressPercent = editingUserVerse.progressPercent || 0;
     const totalWords = allWords.length;
-    const wordsToShow = Math.max(1, Math.floor(totalWords * (progressPercent / 100) * 0.80));
-    // if (progressPercent > 90)
+    const wordsToShow = Math.max(1, Math.floor(totalWords * (progressPercent / 100) * 0.50));
     
     // Calculate spacing to evenly distribute visible words
     const spacing = totalWords / wordsToShow;
@@ -105,7 +94,7 @@ export default function PracticeSessionScreen() {
   // Calculate how many words to hide based on progress (0% = all shown, 100% = almost all hidden)
   const getWordsToHideCount = () => {
     const total = visibleWords.length;
-    const hidePercent = currentProgress / 100;
+    const hidePercent = currentProgress / 95;
     const wordsToHide = Math.floor(total * hidePercent); // 95% max to keep some words visible
     return wordsToHide;
   };
@@ -158,7 +147,7 @@ export default function PracticeSessionScreen() {
 
     console.log('Current word:', currentWord.word);
     
-    const isNumber = /^\d+$/.test(currentWord.word);
+    const isNumber = typeof currentWord.word === "number";
     
     if (isNumber) {
       // For numbers, extract just the current word's input from text
@@ -431,7 +420,7 @@ export default function PracticeSessionScreen() {
         >
           {/* Input box for typing - two layers */}
           <View style={{ position: 'relative', marginBottom: 20, minHeight: 200, maxHeight: 400 }}>
-            <Surface style={{ padding: 20, borderRadius: 8, backgroundColor: theme.colors.surface, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} elevation={2}>
+            <View style={{ padding: 20, borderRadius: 8, backgroundColor: theme.colors.surface, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
               {/* Background layer - shows all upcoming words with transparency based on progress */}
               <Text style={{ 
                 ...styles.text, 
@@ -458,10 +447,10 @@ export default function PracticeSessionScreen() {
                   );
                 })}
               </Text>
-            </Surface>
+            </View>
             
             {/* Foreground layer - shows completed full words in green */}
-            <Surface style={{ padding: 20, borderRadius: 8, backgroundColor: 'transparent', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} elevation={0}>
+            <View style={{ padding: 20, borderRadius: 8, backgroundColor: 'transparent', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
               <TextInput
                 ref={inputRef}
                 value={getCompletedText() + (getCompletedText() ? ' ' : '') + userInput}
@@ -492,48 +481,9 @@ export default function PracticeSessionScreen() {
                 underlineColorAndroid="transparent"
                 spellCheck={false}
               />
-            </Surface>
+            </View>
           </View>
 
-          {/* Toggle for showing full text */}
-          <TouchableOpacity
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              marginBottom: 20,
-              padding: 10,
-              backgroundColor: theme.colors.surface,
-              borderRadius: 8,
-            }}
-            onPress={() => setShowReference(!showReference)}
-          >
-            <Ionicons
-              name={showReference ? 'eye-off' : 'eye'}
-              size={20}
-              color={theme.colors.onBackground}
-            />
-            <Text style={{ ...styles.tinyText, marginLeft: 10 }}>
-              {showReference ? 'Hide' : 'Show'} Full Text
-            </Text>
-          </TouchableOpacity>
-
-          {/* Full text reference (toggleable) */}
-          {showReference && (
-            <Surface style={{ padding: 20, borderRadius: 8, marginBottom: 30, backgroundColor: theme.colors.surface, opacity: 0.6 }} elevation={1}>
-              <Text style={{ ...styles.text, fontFamily: 'Noto Serif', fontSize: 16, opacity: 0.7 }}>
-                {getFullText()}
-              </Text>
-            </Surface>
-          )}
-
-          {/* Instructions */}
-          <View style={{ marginTop: 30 }}>
-            <Text style={{ ...styles.tinyText, opacity: 0.7, textAlign: 'center' }}>
-              Type the first letter of each word. For numbers (chapter/verse), type the full number.{'\n'}
-              Correct inputs turn green, incorrect turn red.{'\n'}
-              Complete all words to advance to the next level!
-            </Text>
-          </View>
         </ScrollView>
         <Snackbar
           visible={snackbarVisible}

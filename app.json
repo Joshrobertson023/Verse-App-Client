@@ -2,7 +2,6 @@
   "expo": {
     "name": "VerseMemorization",
     "slug": "VerseMemorization",
-    "projectId": "your-project-id-here",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/Logo.png",

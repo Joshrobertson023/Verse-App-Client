@@ -196,6 +196,54 @@ export async function getMemorizedUserVerses(username: string): Promise<UserVers
     }
 }
 
+export async function getUnpopulatedMemorizedUserVerses(username: string): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/memorized/unpopulated/${username}`);
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch user verses');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getUserVersesInProgress(username: string): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/inprogress/${username}`);
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch user verses');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getUserVersesNotStarted(username: string): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/notstarted/${username}`);
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch user verses');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function getCollectionById(collectionId: number): Promise<Collection> {
     try {
         const response = await fetch(`${baseUrl}/collections/byId/${collectionId}`);

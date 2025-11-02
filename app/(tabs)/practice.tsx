@@ -3,12 +3,11 @@ import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Surface } from 'react-native-paper';
-import { UserVerse, useAppStore } from '../store';
+import { VerseItemSkeleton } from '../components/skeleton';
+import { getUnpopulatedMemorizedUserVerses, getUserVersesInProgress, getUserVersesNotStarted, getUserVersesPopulated } from '../db';
+import { Collection, UserVerse, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { getAllUserVerses } from '../db';
-import { VerseItemSkeleton } from '../components/skeleton';
 
 const baseUrl = 'http://10.169.51.121:5160';
 
@@ -19,6 +18,8 @@ export default function PracticeScreen() {
   const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
   const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
   const [versesInProgress, setVersesInProgress] = useState<UserVerse[]>([]);
+  const [versesMemorized, setVersesMemorized] = useState<UserVerse[]>([]);
+  const [versesNotStarted, setVersesNotStarted] = useState<UserVerse[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchUserVerses = useCallback(async () => {
@@ -30,49 +31,24 @@ export default function PracticeScreen() {
         return;
       }
       
-      // Fetch all user verses from the database
-      const allPassages = await getAllUserVerses(user.username);
-      
-      console.log('Fetched passages:', allPassages.length);
-      console.log('Sample passage:', JSON.stringify(allPassages[0], null, 2));
-      console.log('Sample readableReference:', allPassages[0]?.readableReference);
-      
-      // Sort: memorized verses (100%) first, then in progress by progress percent (highest first)
-      const sorted = allPassages.sort((a, b) => {
-        const aProgress = a.progressPercent || 0;
-        const bProgress = b.progressPercent || 0;
-        const aMemorized = aProgress === 100 ? 1 : 0;
-        const bMemorized = bProgress === 100 ? 1 : 0;
-        
-        // Memorized verses first (descending)
-        if (aMemorized !== bMemorized) {
-          return bMemorized - aMemorized;
-        }
-        
-        // Then sort by progress percent (highest first)
-        return bProgress - aProgress;
-      });
-      
-      setVersesInProgress(sorted);
+      setVersesMemorized(await getUnpopulatedMemorizedUserVerses(user.username));
+      setVersesInProgress(await getUserVersesInProgress(user.username));
+      setVersesNotStarted(await getUserVersesNotStarted(user.username));
     } catch (error) {
       console.error('Failed to fetch user verses:', error);
-      setVersesInProgress([]);
     } finally {
       setLoading(false);
     }
   }, [user.username]);
 
-  // Initial load on mount and when username changes
   useEffect(() => {
     fetchUserVerses();
   }, [fetchUserVerses]);
 
-  // Refresh when tab comes into focus, but only if flag is set
   useFocusEffect(
     useCallback(() => {
       if (shouldReloadPracticeList) {
         fetchUserVerses().finally(() => {
-          // Clear the flag after reloading
           setShouldReloadPracticeList(false);
         });
       }
@@ -81,53 +57,35 @@ export default function PracticeScreen() {
 
   const handlePractice = async (userVerse: UserVerse) => {
     try {
-      // If verses are not populated, fetch them first
       if (!userVerse.verses || userVerse.verses.length === 0) {
-        console.log('Fetching verse details for:', userVerse.readableReference);
-        
         if (!userVerse.id) {
-          console.error('UserVerse ID is missing:', userVerse);
           alert('Error: Missing passage ID');
           return;
         }
         
-        const response = await fetch(`${baseUrl}/userverses/${userVerse.id}`);
-        if (response.ok) {
-          const populatedUserVerse = await response.json();
-          
-          // Check if we got verses back
-          if (!populatedUserVerse.verses || populatedUserVerse.verses.length === 0) {
-            console.error('No verses found for:', userVerse.readableReference);
+        const collection: Collection = {
+          title: '',
+          collectionId: 0,
+          favorites: false,
+          userVerses: [userVerse]
+        }
+        const result = await getUserVersesPopulated(collection);
+        
+          if (!result.userVerses.at(0)?.verses || result.userVerses.at(0)?.verses.length === 0) {
             alert('Error: Could not load verse text for ' + userVerse.readableReference);
             return;
           }
           
           const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-          setEditingUserVerse(populatedUserVerse);
+          setEditingUserVerse(result.userVerses.at(0));
           router.push('/practiceSession');
         } else {
-          const errorText = await response.text();
-          console.error('Failed to fetch verse details:', response.status, errorText);
           alert('Error: Failed to load verse details');
         }
-      } else {
-        const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-        setEditingUserVerse(userVerse);
-        router.push('/practiceSession');
+      } catch (error) {
+        alert('Error: ' + (error as Error).message);
       }
-    } catch (error) {
-      console.error('Error fetching verse details:', error);
-      alert('Error: ' + (error as Error).message);
-    }
   };
-
-  // Filter verses into three categories
-  const memorized = versesInProgress.filter((uv) => (uv.progressPercent || 0) === 100);
-  const inProgress = versesInProgress.filter((uv) => {
-    const progress = uv.progressPercent || 0;
-    return progress > 0 && progress < 100;
-  });
-  const notStarted = versesInProgress.filter((uv) => (uv.progressPercent || 0) === 0);
 
   const renderVerseItem = (userVerse: UserVerse, index: number, section: string) => (
     <TouchableOpacity
@@ -147,11 +105,6 @@ export default function PracticeScreen() {
             {userVerse.verses && userVerse.verses.length > 0 && (
               <Text style={{ fontFamily: 'Noto Serif', fontSize: 16, marginTop: 5, opacity: 0.7, color: theme.colors.onBackground }}>
                 {userVerse.verses[0].text.substring(0, 50)}{userVerse.verses[0].text.length > 50 ? '...' : ''}
-              </Text>
-            )}
-            {(!userVerse.verses || userVerse.verses.length === 0) && section === 'notStarted' && (
-              <Text style={{ ...styles.tinyText, marginTop: 5, opacity: 0.5, color: theme.colors.onBackground }}>
-                Tap to load verse details
               </Text>
             )}
           </View>
@@ -195,41 +148,38 @@ export default function PracticeScreen() {
             <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 100, width: '100%' }}>
               <Ionicons name="book-outline" size={80} color={theme.colors.onSurface} />
               <Text style={{ ...styles.text, fontSize: 20, fontWeight: '600', marginTop: 20, textAlign: 'center' }}>
-                No Passages Yet
-              </Text>
-              <Text style={{ ...styles.tinyText, marginTop: 10, textAlign: 'center', color: theme.colors.onSurface }}>
-                Add passages to your collections to start practicing
+                No Saved Passages Yet
               </Text>
             </View>
           ) : (
             <View style={{ width: '100%' }}>
               {/* Memorized Section */}
-              {memorized.length > 0 && (
+              {versesMemorized.length > 0 && (
                 <View style={{ width: '100%', marginBottom: 30 }}>
                   <Text style={{ ...styles.subheading, marginBottom: 15 }}>
-                    Memorized ({memorized.length})
+                    Memorized ({versesMemorized.length})
                   </Text>
-                  {memorized.map((userVerse, index) => renderVerseItem(userVerse, index, 'memorized'))}
+                  {versesMemorized.map((userVerse, index) => renderVerseItem(userVerse, index, 'memorized'))}
                 </View>
               )}
 
               {/* In Progress Section */}
-              {inProgress.length > 0 && (
+              {versesInProgress.length > 0 && (
                 <View style={{ width: '100%', marginBottom: 30 }}>
                   <Text style={{ ...styles.subheading, marginBottom: 15 }}>
-                    In Progress ({inProgress.length})
+                    In Progress ({versesInProgress.length})
                   </Text>
-                  {inProgress.map((userVerse, index) => renderVerseItem(userVerse, index, 'inProgress'))}
+                  {versesInProgress.map((userVerse, index) => renderVerseItem(userVerse, index, 'inProgress'))}
                 </View>
               )}
 
               {/* Not Started Section */}
-              {notStarted.length > 0 && (
+              {versesNotStarted.length > 0 && (
                 <View style={{ width: '100%', marginBottom: 30 }}>
                   <Text style={{ ...styles.subheading, marginBottom: 15 }}>
-                    Not Started ({notStarted.length})
+                    Not Started ({versesNotStarted.length})
                   </Text>
-                  {notStarted.map((userVerse, index) => renderVerseItem(userVerse, index, 'notStarted'))}
+                  {versesNotStarted.map((userVerse, index) => renderVerseItem(userVerse, index, 'notStarted'))}
                 </View>
               )}
             </View>
