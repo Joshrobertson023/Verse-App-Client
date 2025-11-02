@@ -403,7 +403,7 @@ export default function EditCollection() {
             <View style={{marginTop: 20, width: '100%'}}>
               {reorderedUserVerses.map((userVerse, i) => (
                 <View key={userVerse.readableReference} style={{width: '100%', marginBottom: 20}}>
-                  <Surface style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
+                  <View style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}}>
                     <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
                       <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
                       <TouchableOpacity onPress={() => {handleDeleteUV(userVerse)}}>
@@ -415,24 +415,17 @@ export default function EditCollection() {
                         <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number ? verse.verse_Number + ": " : ''}{verse.text}</Text>
                       </View>
                     ))}
-                  </Surface>
+                  </View>
                 </View>
               ))}
             </View>
           </>
         )}
-
-        {reorderedUserVerses.length === 0 && (
-          <Text style={{...styles.tinyText, textAlign: 'center', color: theme.colors.onSurface, marginTop: 20}}>
-            No passages added yet. Tap "Add Passage" to get started.
-          </Text>
-        )}
-
         <View style={{height: 120}}></View>
       </ScrollView>
 
           <View style={{...styles.button_filled, position: 'absolute', bottom: 60, width: '90%', zIndex: 10, alignSelf: 'center', backgroundColor: theme.colors.onPrimary,
-          boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)'
+          boxShadow: '0px 0px 23px 10px rgba(0,0,0,.2)'
           }}></View>
 
           <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, marginHorizontal: 20, width: '90%', alignSelf: 'center'

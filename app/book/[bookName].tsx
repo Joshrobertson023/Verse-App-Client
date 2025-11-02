@@ -1,12 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useEffect, useState, useRef } from 'react';
-import { ScrollView, Text, TouchableOpacity, View, Dimensions, Switch, Pressable } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Portal } from 'react-native-paper';
-import AnimatedReanimated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withRepeat, withTiming } from 'react-native-reanimated';
+import { Animated, ScrollView, Text, TouchableOpacity, View, Pressable } from 'react-native';
 import { router, Stack, useLocalSearchParams, useGlobalSearchParams } from 'expo-router';
 import { getChapterVerses } from '../db';
-import { Verse, useAppStore } from '../store';
+import { Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 import { getChaptersForBook } from '../bibleData';
@@ -15,39 +12,44 @@ import VerseSheet from '../components/verseSheet';
 // Skeleton Loader Component
 const SkeletonLoader = () => {
   const theme = useAppTheme();
-  const opacity = useSharedValue(0.3);
+  const opacity = useRef(new Animated.Value(0.3)).current;
 
   React.useEffect(() => {
-    opacity.value = withRepeat(
-      withTiming(0.7, { duration: 1000 }),
-      -1,
-      true
-    );
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.7,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, []);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
 
   return (
     <View style={{ marginBottom: 20 }}>
-      <AnimatedReanimated.View style={[
+      <Animated.View style={[
         {
           height: 20,
           backgroundColor: theme.colors.onBackground,
           borderRadius: 4,
           marginBottom: 8,
         },
-        animatedStyle
+        { opacity }
       ]} />
-      <AnimatedReanimated.View style={[
+      <Animated.View style={[
         {
           height: 16,
           backgroundColor: theme.colors.onBackground,
           borderRadius: 4,
           width: '85%',
         },
-        animatedStyle
+        { opacity }
       ]} />
     </View>
   );
@@ -59,9 +61,6 @@ export default function ChapterReadingPage() {
   const { bookName } = useLocalSearchParams<{ bookName: string }>();
   const { chapter } = useGlobalSearchParams<{ chapter?: string }>();
   
-  const showMetadata = useAppStore((state) => state.showVerseMetadata);
-  const setShowMetadata = useAppStore((state) => state.setShowVerseMetadata);
-  
   const decodedBookName = bookName ? decodeURIComponent(bookName) : '';
   const maxChapters = getChaptersForBook(decodedBookName);
   const initialChapter = chapter ? parseInt(chapter) : 1;
@@ -72,36 +71,12 @@ export default function ChapterReadingPage() {
   const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
   const [selectedVerseIndex, setSelectedVerseIndex] = useState<number>(0);
   const [sheetVisible, setSheetVisible] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
   
-  // Animation for floating buttons (using Reanimated for 120fps)
-  const translateY = useSharedValue(0);
-  const settingsIconTranslateY = useSharedValue(0);
+  // Animation for floating buttons
+  const translateY = useRef(new Animated.Value(0)).current;
+  const backIconTranslateY = useRef(new Animated.Value(0)).current;
   const lastScrollPosition = useRef(0);
   const scrollDirection = useRef<'up' | 'down'>('up');
-  
-  // Settings sheet animation
-  const { height } = Dimensions.get('window');
-  const offset = 0.1;
-  const settingsSheetHeight = height * (0.35 + offset);
-  const settingsClosedPosition = height;
-  const settingsOpenPosition = height - settingsSheetHeight + (height * offset);
-  
-  const settingsTranslateY = useSharedValue(settingsClosedPosition);
-  const settingsStartY = useSharedValue(0);
-
-  // Animated styles for floating buttons (120fps)
-  const buttonsAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  const backIconAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: settingsIconTranslateY.value }],
-  }));
-
-  const settingsIconAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: settingsIconTranslateY.value }],
-  }));
 
   // Update local chapter state when URL parameter changes
   useEffect(() => {
@@ -131,110 +106,30 @@ export default function ChapterReadingPage() {
     const currentDirection = currentScrollPosition > lastScrollPosition.current ? 'down' : 'up';
     
     // Only update if scroll changed at least 2px to avoid jitter
-    if (Math.abs(currentScrollPosition - lastScrollPosition.current) > 2) {
+    if (Math.abs(currentScrollPosition - lastScrollPosition.current) > 50) {
       // Animate on any scroll direction change
       if (currentDirection !== scrollDirection.current) {
         scrollDirection.current = currentDirection;
         
-        // Animate bottom buttons down when scrolling down, up when scrolling up (120fps with Reanimated)
-        translateY.value = withTiming(
-          currentDirection === 'down' ? 150 : 0,
-          { duration: 200 }
-        );
+        // Animate bottom buttons down when scrolling down, up when scrolling up
+        Animated.timing(translateY, {
+          toValue: currentDirection === 'down' ? 150 : 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
         
-        // Animate settings icon up when scrolling down, down when scrolling up (120fps with Reanimated)
-        settingsIconTranslateY.value = withTiming(
-          currentDirection === 'down' ? -110 : 0,
-          { duration: 200 }
-        );
+        // Animate back icon up when scrolling down, down when scrolling up
+        Animated.timing(backIconTranslateY, {
+          toValue: currentDirection === 'down' ? -110 : 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
       }
       
       lastScrollPosition.current = currentScrollPosition;
     }
   };
   
-  // Settings sheet functions
-  const openSettingsSheet = () => {
-    setSettingsVisible(true);
-    settingsTranslateY.value = withSpring(settingsOpenPosition, {
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,
-    });
-  };
-  
-  const closeSettingsSheet = () => {
-    settingsTranslateY.value = withSpring(settingsClosedPosition, {
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,
-    }, (isFinished) => {
-      'worklet';
-      if (isFinished) {
-        runOnJS(() => setSettingsVisible(false))();
-      }
-    });
-  };
-  
-  const settingsAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: settingsTranslateY.value }],
-  }));
-  
-  const settingsBackdropStyle = useAnimatedStyle(() => {
-    const sheetProgress = (settingsClosedPosition - settingsTranslateY.value) / settingsSheetHeight;
-    const opacity = Math.min(1, Math.max(0, sheetProgress)) * 0.5;
-    return {
-      opacity,
-      pointerEvents: opacity > 0.001 ? 'auto' : 'none',
-    };
-  });
-  
-  const settingsPanGesture = Gesture.Pan()
-    .onStart(() => {
-      'worklet';
-      settingsStartY.value = settingsTranslateY.value;
-    })
-    .onUpdate(e => {
-      'worklet';
-      const newPosition = settingsStartY.value + e.translationY;
-      settingsTranslateY.value = Math.max(settingsOpenPosition, newPosition);
-    })
-    .onEnd(e => {
-      'worklet';
-      const SWIPE_DISTANCE_THRESHOLD = 150;
-      const VELOCITY_THRESHOLD = 500;
-      
-      const isDraggedDownFar = settingsTranslateY.value > settingsOpenPosition + SWIPE_DISTANCE_THRESHOLD;
-      const isFlickedDown = e.velocityY > VELOCITY_THRESHOLD;
-      
-      if (isDraggedDownFar || isFlickedDown) {
-        settingsTranslateY.value = withSpring(settingsClosedPosition, {
-          stiffness: 900,
-          damping: 110,
-          mass: 2,
-          overshootClamping: true,
-          energyThreshold: 6e-9,
-        }, (isFinished) => {
-          'worklet';
-          if (isFinished) {
-            runOnJS(closeSettingsSheet)();
-          }
-        });
-      } else {
-        settingsTranslateY.value = withSpring(settingsOpenPosition, {
-          stiffness: 900,
-          damping: 110,
-          mass: 2,
-          overshootClamping: true,
-          energyThreshold: 6e-9,
-        });
-      }
-    });
-
   useEffect(() => {
     const loadChapter = async () => {
       if (!bookName) return;
@@ -256,12 +151,6 @@ export default function ChapterReadingPage() {
     loadChapter();
   }, [bookName, currentChapter]);
 
-  // Build the display title: "Book ChapterNumber" (e.g., "Genesis 1")
-  const displayTitle = React.useMemo(() => {
-    if (!bookName) return 'Reading';
-    return `${decodedBookName} ${currentChapter}`;
-  }, [bookName, currentChapter, decodedBookName]);
-
   return (
     <>
       <Stack.Screen 
@@ -271,7 +160,7 @@ export default function ChapterReadingPage() {
       />
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
         {/* Back to Books Icon */}
-        <AnimatedReanimated.View
+        <Animated.View
           style={[
             {
               position: 'absolute',
@@ -279,7 +168,7 @@ export default function ChapterReadingPage() {
               left: 20,
               zIndex: 1000,
             },
-            backIconAnimatedStyle
+            { transform: [{ translateY: backIconTranslateY }] }
           ]}
         >
           <TouchableOpacity
@@ -300,39 +189,7 @@ export default function ChapterReadingPage() {
           >
             <Ionicons name="chevron-back" size={24} color={theme.colors.primary} />
           </TouchableOpacity>
-        </AnimatedReanimated.View>
-
-        {/* Settings Icon */}
-        <AnimatedReanimated.View
-          style={[
-            {
-              position: 'absolute',
-              top: 50,
-              right: 20,
-              zIndex: 1000,
-            },
-            settingsIconAnimatedStyle
-          ]}
-        >
-          <TouchableOpacity
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: theme.colors.surface,
-              justifyContent: 'center',
-              alignItems: 'center',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.25,
-              shadowRadius: 4,
-              elevation: 5,
-            }}
-            onPress={openSettingsSheet}
-          >
-            <Ionicons name="settings" size={24} color={theme.colors.primary} />
-          </TouchableOpacity>
-        </AnimatedReanimated.View>
+        </Animated.View>
 
         <ScrollView 
           style={{ flex: 1 }} 
@@ -352,13 +209,12 @@ export default function ChapterReadingPage() {
                 {decodedBookName}
               </Text>
               <Text style={{
-                fontFamily: 'Inter',
-                fontSize: 14,
-                color: '#fff',
-                fontWeight: '600',
+                fontFamily: 'Noto Serif bold',
+                fontSize: 44,
+                color: theme.colors.onBackground,
                 letterSpacing: 1,
               }}>
-                CHAPTER {currentChapter}
+                {currentChapter}
               </Text>
             </View>
           )}
@@ -383,7 +239,7 @@ export default function ChapterReadingPage() {
               {verses.map((verse, index) => (
                 <Pressable 
                   key={verse.id || index} 
-                  style={{ marginBottom: 20 }}
+                  style={{ marginBottom: 8 }}
                   onPress={() => {
                     setSelectedVerse(verse);
                     setSelectedVerseIndex(index);
@@ -395,41 +251,19 @@ export default function ChapterReadingPage() {
                     marginBottom: 0,
                     fontFamily: 'Noto Serif',
                     fontSize: 18,
-                    lineHeight: 28,
+                    lineHeight: 24,
                   }}>
                     <Text style={{ 
                       fontWeight: '600',
-                      color: '#fff',
+                      color: theme.colors.onBackground,
                       fontSize: 16,
                     }}>
-                      {verse.verse_Number || index + 1}{' '}
+                      {index + 1}{' '}
                     </Text>
                     <Text style={{ color: theme.colors.onBackground }}>
                       {verse.text}
                     </Text>
                   </Text>
-                  
-                  {/* Metadata - Only show if counts are not 0 and showMetadata is true */}
-                  {showMetadata && verse && typeof verse.users_Saved_Verse === 'number' && typeof verse.users_Memorized === 'number' && (verse.users_Saved_Verse > 0 || verse.users_Memorized > 0) ? (
-                    <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
-                      {verse.users_Saved_Verse > 0 ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginRight: 20 }}>
-                          <Ionicons name="people" size={18} color={theme.colors.onBackground} />
-                          <Text style={{ ...styles.tinyText, fontSize: 12, marginLeft: 5, marginBottom: 0 }}>
-                            {verse.users_Saved_Verse} saves
-                          </Text>
-                        </View>
-                      ) : null}
-                      {verse.users_Memorized > 0 ? (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start' }}>
-                          <Ionicons name="checkmark-done" size={18} color={theme.colors.onBackground} />
-                          <Text style={{ ...styles.tinyText, fontSize: 12, marginLeft: 5, marginBottom: 0 }}>
-                            {verse.users_Memorized} memorized
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
                 </Pressable>
               ))}
             </View>
@@ -437,7 +271,7 @@ export default function ChapterReadingPage() {
         </ScrollView>
         
         {/* Floating Navigation Buttons */}
-        <AnimatedReanimated.View style={[
+        <Animated.View style={[
           {
             position: 'absolute',
             bottom: 70,
@@ -448,7 +282,7 @@ export default function ChapterReadingPage() {
             alignItems: 'center',
             paddingHorizontal: 20,
           },
-          buttonsAnimatedStyle
+          { transform: [{ translateY }] }
         ]}>
           {/* Previous Chapter Button */}
           <TouchableOpacity
@@ -491,94 +325,7 @@ export default function ChapterReadingPage() {
               color="#fff" 
             />
           </TouchableOpacity>
-        </AnimatedReanimated.View>
-
-        {/* Settings Sheet */}
-        {settingsVisible && (
-          <Portal>
-            <AnimatedReanimated.View
-              style={[{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: 0,
-                right: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                zIndex: 9998,
-              }, settingsBackdropStyle]}
-            >
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                activeOpacity={0.5}
-                onPress={closeSettingsSheet}
-              />
-            </AnimatedReanimated.View>
-
-            <AnimatedReanimated.View style={[{
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              height: settingsSheetHeight,
-              backgroundColor: theme.colors.surface,
-              borderTopLeftRadius: 16,
-              borderTopRightRadius: 16,
-              paddingTop: 20,
-              paddingBottom: 80,
-              zIndex: 9999,
-            }, settingsAnimatedStyle]}>
-              <GestureDetector gesture={settingsPanGesture}>
-                <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
-                  <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
-                </View>
-              </GestureDetector>
-
-              <View style={{ paddingHorizontal: 20 }}>
-                <Text style={{
-                  fontFamily: 'Noto Serif bold',
-                  fontSize: 24,
-                  color: theme.colors.onBackground,
-                  marginBottom: 25,
-                }}>
-                  Reading Settings
-                </Text>
-
-                {/* Toggle for showing metadata */}
-                <View style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  paddingVertical: 15,
-                  borderBottomWidth: 1,
-                  borderBottomColor: theme.colors.onBackground + '20',
-                }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{
-                      fontFamily: 'Noto Serif',
-                      fontSize: 16,
-                      color: theme.colors.onBackground,
-                      marginBottom: 4,
-                    }}>
-                      Show Verse Metadata
-                    </Text>
-                    <Text style={{
-                      ...styles.tinyText,
-                      fontSize: 12,
-                      color: theme.colors.onBackground + '80',
-                    }}>
-                      Display saves and memorized counts
-                    </Text>
-                  </View>
-                  <Switch
-                    value={showMetadata}
-                    onValueChange={setShowMetadata}
-                    trackColor={{ false: theme.colors.surface, true: theme.colors.primary + '80' }}
-                    thumbColor={showMetadata ? theme.colors.primary : theme.colors.onBackground}
-                  />
-                </View>
-              </View>
-            </AnimatedReanimated.View>
-          </Portal>
-        )}
+        </Animated.View>
 
         {/* Verse Sheet */}
         {bookName && (

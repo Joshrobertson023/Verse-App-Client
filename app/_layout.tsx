@@ -1,17 +1,17 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import { Stack } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
-import React, { useState, useEffect, useRef } from 'react';
-import { Image, Text, TouchableOpacity, View, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Image, Platform, Text, TouchableOpacity, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, Portal } from 'react-native-paper';
-import { getUserCollections, loginUserWithToken, getStreakLength, updateLastSeen, getPopularSearches } from './db';
+import { getPopularSearches, getStreakLength, getUserCollections, loginUserWithToken, updateLastSeen } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -396,6 +396,7 @@ export default function RootLayout() {
                 headerStyle: {
                   backgroundColor: theme.colors.background,
                 },
+                headerShadowVisible: false,
                 headerTitleStyle: {
                   color: theme.colors.onBackground,
                 },

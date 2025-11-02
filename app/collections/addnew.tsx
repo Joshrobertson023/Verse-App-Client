@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { BackHandler, Dimensions, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { ActivityIndicator, Divider, Portal, Surface, TextInput } from 'react-native-paper';
+import { ActivityIndicator, Divider, Portal, TextInput } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
 import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, refreshUser, updateCollectionsOrder } from '../db';
@@ -332,7 +332,7 @@ export default function Index() {
                 
                 return sortedUserVerses.map((userVerse, i) => (
                   <View key={userVerse.readableReference} style={{width: '100%', marginBottom: 20}}>
-                    <Surface style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
+                    <View style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}}>
                       <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
                         <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
                         <TouchableOpacity onPress={() => {handleDeleteUV(userVerse)}}>
@@ -344,7 +344,7 @@ export default function Index() {
                           <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number ? verse.verse_Number + ": " : ''}{verse.text}</Text>
                         </View>
                       ))}
-                    </Surface>
+                    </View>
                   </View>
                 ));
               })()}
@@ -352,17 +352,11 @@ export default function Index() {
           </>
         )}
 
-        {newCollection?.userVerses.length === 0 && (
-          <Text style={{...styles.tinyText, textAlign: 'center', color: theme.colors.onSurface, marginTop: 20}}>
-            No passages added yet. Tap "Add Passage" to get started.
-          </Text>
-        )}
-
         <View style={{height: 120}}></View>
       </ScrollView>
 
           <View style={{...styles.button_filled, position: 'absolute', bottom: 60, width: '90%', zIndex: 10, alignSelf: 'center', backgroundColor: theme.colors.onPrimary,
-          boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)'
+          boxShadow: '0px 0px 23px 10px rgba(0,0,0,.2)'
           }}></View>
 
           <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, marginHorizontal: 20, width: '90%', alignSelf: 'center'

@@ -4,13 +4,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
-import { Divider, Portal, Snackbar, Surface, Text } from 'react-native-paper';
+import { Divider, Portal, Snackbar, Text } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
+import PublishDialog from '../components/publishDialog';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, refreshUser, updateCollectionDB, updateCollectionsOrder, publishCollection, getPublishedInfo, notifyAuthorCollectionSaved, submitUserReport, unpublishCollection } from '../db';
-import PublishDialog from '../components/publishDialog';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedInfo, getUserCollections, getUserVersesPopulated, notifyAuthorCollectionSaved, publishCollection, refreshUser, unpublishCollection, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -497,28 +497,16 @@ useEffect(() => {
                 }}
               >
           {publishedDescription && (
-            <Surface style={{ minWidth: '100%', padding: 14, borderRadius: 6, backgroundColor: theme.colors.surface, marginBottom: 12 }} elevation={2}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ ...styles.text, flex: 1, marginRight: 10 }}>{publishedDescription}</Text>
-                <TouchableOpacity onPress={async () => {
-                  if (!collection?.collectionId) return;
-                  try {
-                    await submitUserReport(user.username, `COLLECTION:${collection.collectionId}`, 'Reported published collection');
-                    setSnackbarMessage('Report submitted');
-                    setSnackbarVisible(true);
-                  } catch (e) {
-                    setSnackbarMessage('Failed to submit report');
-                    setSnackbarVisible(true);
-                  }
-                }}>
-                  <Text style={{ ...styles.tinyText, color: theme.colors.error }}>Report</Text>
-                </TouchableOpacity>
+            <View style={{ minWidth: '100%', padding: 14, borderRadius: 6, marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{ ...styles.tinyText, flex: 1, marginRight: 10 }}>{publishedDescription}</Text>
               </View>
-            </Surface>
+              <Divider />
+            </View>
           )}
 
           <TouchableOpacity 
-            style={{...styles.button_outlined, marginBottom: 10}}
+            style={{...styles.button_outlined, marginBottom: 30}}
             onPress={openVersesSettingsSheet}
           >
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
@@ -530,7 +518,7 @@ useEffect(() => {
             {(orderedUserVerses || []).map((userVerse: UserVerse, userVerseIndex) => (
 
                 <View key={userVerse.readableReference || `userVerse-${userVerseIndex}`} style={{minWidth: '100%', marginBottom: 20}}>
-                    <Surface style={{minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}} elevation={4}>
+                    <View style={{minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}}>
 
                         <View>
                           <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
@@ -577,7 +565,7 @@ useEffect(() => {
                           </View>
                         </View>
 
-                    </Surface>
+                    </View>
                 </View>
 
             ))}
@@ -702,7 +690,6 @@ useEffect(() => {
                             setIsShareSheetVisible(true);
                           }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                            <Ionicons name="share-social-outline" size={20} color={theme.colors.onBackground} />
                             <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
                           </View>
                         </TouchableOpacity>
@@ -733,7 +720,6 @@ useEffect(() => {
                                 }
                               }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                <Ionicons name="globe-outline" size={20} color={theme.colors.onBackground} />
                                 <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>{publishedDescription ? 'Unpublish' : 'Publish'}</Text>
                               </View>
                             </TouchableOpacity>

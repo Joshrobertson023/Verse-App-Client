@@ -33,17 +33,35 @@ export default function FriendCollectionScreen() {
 
   if (loading) {
     return (
+    <>
+      <Stack.Screen
+        options={{
+          title: '',
+          headerBackVisible: true,
+          headerShadowVisible: false,
+        }}
+      />
       <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
+    </>
     );
   }
 
   if (!collection) {
     return (
+    <>
+      <Stack.Screen
+        options={{
+          title: '',
+          headerBackVisible: true,
+          headerShadowVisible: false,
+        }}
+      />
       <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }}>
         <Text style={{ color: theme.colors.onBackground, fontSize: 16 }}>Collection not found</Text>
       </View>
+    </>
     );
   }
 

@@ -15,6 +15,7 @@ export default function TabLayout() {
   const numNotifications = useAppStore((state) => state.numNotifications);
   const setNumNotifications = useAppStore((state) => state.setNumNotifications);
   const rootNavigationState = useRootNavigationState();
+  const inactiveColor = '#3e3e3e88';
 
   // Check for notifications every minute
   useEffect(() => {
@@ -141,7 +142,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           tabBarIcon: ({ color, focused }) => (
             <Ionicons 
               name={focused ? 'home' : 'home-outline'} 
-              color={focused ? theme.colors.primary : '#88888888'} 
+              color={focused ? theme.colors.primary : inactiveColor} 
               size={28} 
             />
           ),
@@ -150,7 +151,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: focused ? theme.colors.primary : '#88888888',
+                color: focused ? theme.colors.primary : inactiveColor,
                 marginTop: 0,
                 textAlign: 'center',
               }}
@@ -167,7 +168,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           tabBarIcon: ({ focused }) => (
             <Ionicons 
               name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} 
-              color={focused ? theme.colors.primary : '#88888888'} 
+              color={focused ? theme.colors.primary : inactiveColor} 
               size={28} 
             />
           ),
@@ -176,7 +177,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: focused ? theme.colors.primary : '#88888888',
+                color: focused ? theme.colors.primary : inactiveColor,
                 marginTop: 0,
                 textAlign: 'center',
               }}
@@ -196,12 +197,12 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
                     width: 67,
                     padding: 10,
                     borderRadius: 100,
-                    marginBottom: -5,
+                    marginBottom: -10,
                     backgroundColor: focused ? theme.colors.surface : theme.colors.background
                 }}>
                   <Ionicons 
                     name={'search-outline'} 
-                    color={focused ? theme.colors.primary : '#88888888'} 
+                    color={focused ? theme.colors.primary : inactiveColor} 
                     size={45} 
                   />
                 </View>
@@ -231,7 +232,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           tabBarIcon: ({ focused }) => (
             <Ionicons 
               name={focused ? 'book-sharp' : 'book-outline'} 
-              color={focused ? theme.colors.primary : '#88888888'} 
+              color={focused ? theme.colors.primary : inactiveColor} 
               size={28}
             />
           ),
@@ -240,7 +241,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: focused ? theme.colors.primary : '#88888888',
+                color: focused ? theme.colors.primary : inactiveColor,
                 marginTop: 0,
                 textAlign: 'center',
               }}
@@ -257,7 +258,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           tabBarIcon: ({ focused }) => (
               <Ionicons 
                 name={focused ? 'planet' : 'planet-outline'} 
-                color={focused ? theme.colors.primary : '#88888888'} 
+                color={focused ? theme.colors.primary : inactiveColor} 
                 size={28}
               />
           ),
@@ -266,7 +267,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: focused ? theme.colors.primary : '#88888888',
+                color: focused ? theme.colors.primary : inactiveColor,
                 marginTop: 0,
                 textAlign: 'center',
               }}

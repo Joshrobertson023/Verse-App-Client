@@ -2,12 +2,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useState } from 'react';
 import { ActivityIndicator, Dimensions, Linking, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Portal } from 'react-native-paper';
+import { Portal, Snackbar } from 'react-native-paper';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { addUserVersesToNewCollection, updateCollectionDB } from '../db';
 import { Collection, UserVerse, Verse, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { addUserVersesToNewCollection, updateCollectionDB } from '../db';
+import ShareVerseSheet from './shareVerseSheet';
 
 const { height } = Dimensions.get('window');
 
@@ -28,8 +29,12 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
     const setCollections = useAppStore((state) => state.setCollections);
 
     const [showCollectionPicker, setShowCollectionPicker] = useState(false);
+    const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
     const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
     const [isAddingToCollection, setIsAddingToCollection] = useState(false);
+    const [snackbarVisible, setSnackbarVisible] = useState(false);
+    const [snackbarMessage, setSnackbarMessage] = useState('');
+    const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
 
     // Get the verse number, falling back to index + 1 if verse_Number is null
     const verseNumber = verse?.verse_Number ? (typeof verse.verse_Number === 'string' ? parseInt(verse.verse_Number) : verse.verse_Number) : verseIndex + 1;
@@ -128,10 +133,25 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
         };
     });
 
-    const handleAddToCollection = async () => {
-        if (!pickedCollection || !verse || !user.username || isAddingToCollection) return;
-
+    const handleSaveVerse = () => {
+        if (!verse) return;
+        
         const readableRef = `${bookName} ${chapter}:${verseNumber}`;
+        const formattedVerse: Verse = {
+            ...verse,
+            verse_reference: verse.verse_reference || readableRef,
+            verse_Number: verse.verse_Number ?? verseNumber.toString(),
+        };
+        
+        setSelectedVerse(formattedVerse);
+        setPickedCollection(undefined);
+        setShowCollectionPicker(true);
+    };
+
+    const handleAddToCollection = async () => {
+        if (!pickedCollection || !selectedVerse || !user.username || isAddingToCollection) return;
+
+        const readableRef = selectedVerse.verse_reference || `${bookName} ${chapter}:${verseNumber}`;
         
         // Check if verse already exists in collection
         const alreadyExists = pickedCollection.userVerses.some(
@@ -139,25 +159,20 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
         );
 
         if (alreadyExists) {
-            console.log('Verse already in collection');
+            setSnackbarMessage('This passage is already in the collection');
+            setSnackbarVisible(true);
             setShowCollectionPicker(false);
-            closeSheet();
+            setSelectedVerse(null);
+            setPickedCollection(undefined);
             return;
         }
 
         setIsAddingToCollection(true);
 
-        // Create a properly formatted verse object with verse_reference
-        const formattedVerse: Verse = {
-            ...verse,
-            verse_reference: verse.verse_reference || readableRef, // Use existing or set to readableRef
-            verse_Number: verse.verse_Number ?? verseNumber.toString(),
-        };
-
         const userVerse: UserVerse = {
             username: user.username,
             readableReference: readableRef,
-            verses: [formattedVerse],
+            verses: [selectedVerse],
         };
 
         try {
@@ -182,10 +197,15 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
             ));
 
             setShowCollectionPicker(false);
-            closeSheet();
+            setSelectedVerse(null);
+            setPickedCollection(undefined);
+            setIsAddingToCollection(false);
+            setSnackbarMessage('Verse added to collection!');
+            setSnackbarVisible(true);
         } catch (error) {
             console.error('Error adding to collection:', error);
-        } finally {
+            setSnackbarMessage('Failed to add verse to collection');
+            setSnackbarVisible(true);
             setIsAddingToCollection(false);
         }
     };
@@ -215,7 +235,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    backgroundColor: theme.colors.onBackground,
                     zIndex: 9998,
                 },
                 backdropStyle]}
@@ -232,16 +252,15 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                 left: 0,
                 right: 0,
                 height: sheetHeight,
-                backgroundColor: '#1a1a1a',
+                backgroundColor: theme.colors.background,
                 borderTopLeftRadius: 16,
                 borderTopRightRadius: 16,
                 paddingTop: 20,
-                paddingBottom: 80,
                 zIndex: 9999,
             }, animatedStyle]}>
                 <GestureDetector gesture={panGesture}>
                     <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
-                        <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: '#666' }} />
+                        <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
                     </View>
                 </GestureDetector>
 
@@ -250,7 +269,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                     <Text style={{
                         fontFamily: 'Noto Serif bold',
                         fontSize: 28,
-                        color: '#fff',
+                        color: theme.colors.onBackground,
                         marginBottom: 10,
                     }}>
                         {bookName} {chapter}:{verseNumber}
@@ -260,7 +279,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                     <Text style={{
                         fontFamily: 'Noto Serif',
                         fontSize: 18,
-                        color: '#fff',
+                        color: theme.colors.onBackground,
                         lineHeight: 28,
                         marginBottom: 20,
                     }}>
@@ -270,7 +289,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                     {/* Commentary Button */}
                     <TouchableOpacity
                         style={{
-                            backgroundColor: '#3a3a3a',
+                            backgroundColor: theme.colors.surface,
                             paddingVertical: 12,
                             paddingHorizontal: 16,
                             borderRadius: 12,
@@ -282,12 +301,12 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                         onPress={handleOpenCommentary}
                     >
                         <Text style={{
-                            color: '#fff',
+                            color: theme.colors.onBackground,
                             fontSize: 14,
                         }}>
                             Commentary on {bookName} {chapter}:{verseNumber}
                         </Text>
-                        <Ionicons name="open-outline" size={20} color="#fff" />
+                        <Ionicons name="open-outline" size={20} color={theme.colors.onBackground} />
                     </TouchableOpacity>
 
                     {/* Metadata Section */}
@@ -297,9 +316,9 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                             alignItems: 'center',
                             marginBottom: 12,
                         }}>
-                            <Ionicons name="people" size={18} color="#fff" />
+                            <Ionicons name="people" size={18} color={theme.colors.onBackground} />
                             <Text style={{
-                                color: '#fff',
+                                color: theme.colors.onBackground,
                                 fontSize: 14,
                                 marginLeft: 10,
                             }}>
@@ -310,11 +329,10 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                         <View style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            marginBottom: 12,
                         }}>
-                            <Ionicons name="checkmark-done" size={18} color="#fff" />
+                            <Ionicons name="checkmark-done" size={18} color={theme.colors.onBackground}/>
                             <Text style={{
-                                color: '#fff',
+                                color: theme.colors.onBackground,
                                 fontSize: 14,
                                 marginLeft: 10,
                             }}>
@@ -324,28 +342,32 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                     </View>
 
                     {/* Action Buttons */}
-                    <View style={{ marginTop: 30, gap: 12 }}>
-                        {/* Add to Collection Button */}
-                        <TouchableOpacity
-                            style={{
-                                backgroundColor: theme.colors.primary,
-                                borderColor: theme.colors.primary,
-                                borderWidth: 2,
-                                borderRadius: 20,
-                                height: 40,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                            }}
-                            onPress={() => setShowCollectionPicker(true)}
+                    <View style={{ flexDirection: 'row', marginTop: 0, gap: 16, marginBottom: 20 }}>
+                        <TouchableOpacity 
+                            onPress={handleSaveVerse}
+                            activeOpacity={0.1}
+                            style={{ flexDirection: 'row', alignItems: 'center' }}
                         >
-                            <Text style={{
-                                color: theme.colors.background,
-                                fontSize: 16,
-                                fontWeight: '600',
-                                fontFamily: 'Inter',
-                            }}>
-                                Add to Collection
-                            </Text>
+                            <Ionicons name="bookmark-outline" size={18} color={theme.colors.onBackground} />
+                            <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Save</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            style={{ flexDirection: 'row', alignItems: 'center' }} 
+                            activeOpacity={0.1} 
+                            onPress={() => {
+                                if (verse) {
+                                    const readableRef = `${bookName} ${chapter}:${verseNumber}`;
+                                    const formattedVerse: Verse = {
+                                        ...verse,
+                                        verse_reference: verse.verse_reference || readableRef,
+                                        verse_Number: verse.verse_Number ?? verseNumber.toString(),
+                                    };
+                                    setVerseToShare(formattedVerse);
+                                }
+                            }}
+                        >
+                            <Ionicons name="share-social-outline" size={18} color={theme.colors.onBackground} />
+                            <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Share</Text>
                         </TouchableOpacity>
                     </View>
                 </ScrollView>
@@ -505,6 +527,32 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                     </View>
                 </View>
             </Modal>
+
+            <Snackbar
+                visible={snackbarVisible}
+                onDismiss={() => setSnackbarVisible(false)}
+                duration={3000}
+                style={{ backgroundColor: theme.colors.surface }}
+            >
+                <Text style={{ color: theme.colors.onSurface }}>
+                    {snackbarMessage}
+                </Text>
+            </Snackbar>
+
+            <ShareVerseSheet
+                visible={!!verseToShare}
+                verseReference={verseToShare?.verse_reference || null}
+                onClose={() => setVerseToShare(null)}
+                onShareSuccess={(friend) => { 
+                    setVerseToShare(null); 
+                    setSnackbarMessage(`Verse shared with ${friend}`); 
+                    setSnackbarVisible(true); 
+                }}
+                onShareError={() => { 
+                    setSnackbarMessage('Failed to share verse'); 
+                    setSnackbarVisible(true); 
+                }}
+            />
         </Portal>
     );
 }

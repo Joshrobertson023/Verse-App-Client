@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, View } from 'react-native';
 import useAppTheme from '../theme';
 
 interface SkeletonProps {
@@ -158,7 +158,7 @@ export const SearchResultSkeleton = () => {
 // Collection content skeleton (for loading verses in a collection)
 export const CollectionContentSkeleton = () => {
   return (
-    <View style={{ padding: 20 }}>
+    <View style={{ padding: 20, width: '100%' }}>
       {[1, 2, 3].map((i) => (
         <Skeleton key={i} width="100%" height={100} borderRadius={12} style={{ marginBottom: 12 }} />
       ))}

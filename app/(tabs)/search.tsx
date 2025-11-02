@@ -4,9 +4,9 @@ import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Chip, Searchbar, Snackbar } from 'react-native-paper';
+import ShareVerseSheet from '../components/shareVerseSheet';
 import { SearchResultSkeleton } from '../components/skeleton';
 import { addUserVersesToNewCollection, checkRelationship, getVerseSearchResult, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB } from '../db';
-import ShareVerseSheet from '../components/shareVerseSheet';
 import { Collection, useAppStore, User, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -243,10 +243,9 @@ export default function SearchScreen() {
 
   const renderPassageResult = ({ item }: { item: Verse }) => (
     <View style={{
-      backgroundColor: theme.colors.surface,
-      padding: 16,
-      marginBottom: 12,
-      borderRadius: 12
+      marginVertical: 12,
+      borderRadius: 12,
+      marginBottom: 25
     }}>
       <Text style={{
         fontSize: 18,
@@ -330,9 +329,8 @@ export default function SearchScreen() {
     
     return (
       <View style={{
-        backgroundColor: theme.colors.surface,
-        padding: 16,
-        paddingTop: 0,
+        paddingVertical: 16,
+        marginTop: 10,
         borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center'
@@ -382,7 +380,7 @@ export default function SearchScreen() {
           }}
         >
           <Text style={{
-            color: textColor,
+            color: theme.colors.background,
             fontFamily: 'Inter',
             fontWeight: '600'
           }}>
@@ -548,16 +546,16 @@ export default function SearchScreen() {
                 icon={() => null}
                 style={{
                   backgroundColor: activeTab === 'passages' 
-                    ? '#fff'
-                    : 'rgba(255, 255, 255, 0.1)',
-                  borderColor: '#fff',
-                  borderWidth: 1,
+                    ? theme.colors.primary
+                    : theme.colors.background,
+                  borderColor: activeTab === 'passages' ? theme.colors.primary : theme.colors.onBackground,
+                  borderWidth: 1.5,
                   borderRadius: 20
                 }}
                 textStyle={{
                   color: activeTab === 'passages' 
                     ? theme.colors.background
-                    : '#fff',
+                    : theme.colors.onBackground,
                   fontFamily: 'Inter'
                 }}
               >
@@ -569,14 +567,17 @@ export default function SearchScreen() {
                 disabled={true}
                 icon={() => null}
                 style={{
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  borderColor: '#fff',
-                  borderWidth: 1,
-                  opacity: 0.5,
+                  backgroundColor: activeTab === 'collections' 
+                    ? theme.colors.primary
+                    : theme.colors.background,
+                  borderColor: activeTab === 'collections' ? theme.colors.primary : theme.colors.onBackground,
+                  borderWidth: 1.5,
                   borderRadius: 20
                 }}
                 textStyle={{
-                  color: '#fff',
+                  color: activeTab === 'collections' 
+                    ? theme.colors.background
+                    : theme.colors.onBackground,
                   fontFamily: 'Inter'
                 }}
               >
@@ -588,16 +589,16 @@ export default function SearchScreen() {
                 icon={() => null}
                 style={{
                   backgroundColor: activeTab === 'people' 
-                    ? '#fff'
-                    : 'rgba(255, 255, 255, 0.1)',
-                  borderColor: '#fff',
-                  borderWidth: 1,
+                    ? theme.colors.primary
+                    : theme.colors.background,
+                  borderColor: activeTab === 'people' ? theme.colors.primary : theme.colors.onBackground,
+                  borderWidth: 1.5,
                   borderRadius: 20
                 }}
                 textStyle={{
                   color: activeTab === 'people' 
                     ? theme.colors.background
-                    : '#fff',
+                    : theme.colors.onBackground,
                   fontFamily: 'Inter'
                 }}
               >

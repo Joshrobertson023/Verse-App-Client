@@ -1,12 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Stack } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { getPracticeHistory } from '../db';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { getPracticeHistory } from '../db';
 
 export default function StreakCalendarScreen() {
   const styles = useStyles();
@@ -147,14 +146,13 @@ export default function StreakCalendarScreen() {
             {/* Streak Length */}
             <View style={{
               flex: 1,
-              backgroundColor: theme.colors.surface,
               borderRadius: 16,
               padding: 20,
               alignItems: 'center'
             }}>
-              <Ionicons name="flame" size={32} color="#FF6B35" />
+              <Ionicons name="flame" size={52} color="#FF6B35" />
               <Text style={{
-                fontSize: 32,
+                fontSize: 42,
                 fontWeight: 'bold',
                 color: theme.colors.onBackground,
                 marginTop: 8,
@@ -163,7 +161,7 @@ export default function StreakCalendarScreen() {
                 {streakLength}
               </Text>
               <Text style={{
-                fontSize: 14,
+                fontSize: 18,
                 color: theme.colors.onSurfaceVariant,
                 marginTop: 4,
                 fontFamily: 'Inter'
@@ -175,14 +173,13 @@ export default function StreakCalendarScreen() {
             {/* Total Practice Days */}
             <View style={{
               flex: 1,
-              backgroundColor: theme.colors.surface,
               borderRadius: 16,
               padding: 20,
               alignItems: 'center'
             }}>
-              <Ionicons name="calendar" size={32} color={theme.colors.primary} />
+              <Ionicons name="calendar" size={52} color={theme.colors.primary} />
               <Text style={{
-                fontSize: 32,
+                fontSize: 42,
                 fontWeight: 'bold',
                 color: theme.colors.onBackground,
                 marginTop: 8,
@@ -191,12 +188,12 @@ export default function StreakCalendarScreen() {
                 {totalPractices}
               </Text>
               <Text style={{
-                fontSize: 14,
+                fontSize: 18,
                 color: theme.colors.onSurfaceVariant,
                 marginTop: 4,
                 fontFamily: 'Inter'
               }}>
-                Total Practice Days
+                Days Practiced
               </Text>
             </View>
           </View>

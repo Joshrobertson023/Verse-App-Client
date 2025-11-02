@@ -1,7 +1,6 @@
 import { Stack } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
-import { Surface } from 'react-native-paper';
 import { getAllUserVerses, populateVersesForUserVerses } from '../db';
 import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
@@ -22,6 +21,10 @@ export default function MemorizedVersesScreen() {
     try {
       setLoading(true);
       
+      // *********************************************
+      // WARNING: CHANGE TO CHECK FOR MEMORIZED IN SQL
+      // *********************************************
+
       // Fetch all userVerses for the user
       const allUserVerses = await getAllUserVerses(user.username);
       
@@ -61,9 +64,18 @@ export default function MemorizedVersesScreen() {
 
   if (loading) {
     return (
+    <>
+      <Stack.Screen
+        options={{
+          title: 'Memorized Verses',
+          headerStyle: { backgroundColor: theme.colors.background },
+          headerTintColor: theme.colors.onBackground,
+        }}
+      />
       <View style={{ flex: 1, backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
+    </>
     );
   }
 
@@ -95,14 +107,13 @@ export default function MemorizedVersesScreen() {
                 key={userVerse.clientId || `memorized-${index}`} 
                 style={{ width: '100%', marginBottom: 20 }}
               >
-                <Surface 
+                <View 
                   style={{ 
                     width: '100%', 
                     padding: 20, 
                     borderRadius: 3, 
                     backgroundColor: theme.colors.surface 
-                  }} 
-                  elevation={4}
+                  }}
                 >
                   <View>
                     <Text style={{
@@ -139,7 +150,7 @@ export default function MemorizedVersesScreen() {
                       })()}
                     </Text>
                   </View>
-                </Surface>
+                </View>
               </View>
             ))
           )}

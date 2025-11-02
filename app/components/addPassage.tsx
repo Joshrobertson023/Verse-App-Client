@@ -105,7 +105,7 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
                     setSearchLoading(true);
                     handleSearch();
                 }}
-                style={{marginBottom: 10, backgroundColor: theme.colors.surface2}}
+                style={{marginBottom: 10, backgroundColor: theme.colors.surface, borderColor: theme.colors.surface2, borderWidth: 1.5}}
                 />
 
             {showAddPassage ? 
