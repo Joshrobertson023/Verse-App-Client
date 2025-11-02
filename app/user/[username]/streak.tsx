@@ -1,10 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Stack } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { getPracticeHistory, getUserProfile, getStreakLength } from '../../db';
-import { useAppStore } from '../../store';
+import { getPracticeHistory } from '../../db';
 import useStyles from '../../styles';
 import useAppTheme from '../../theme';
 
@@ -16,38 +14,23 @@ export default function FriendStreakCalendarScreen() {
   const [practiceDates, setPracticeDates] = useState<Set<string>>(new Set());
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [totalPractices, setTotalPractices] = useState(0);
-  const [streakLength, setStreakLength] = useState(0);
 
   useEffect(() => {
     loadPracticeHistory();
-    loadStreakLength();
   }, [selectedMonth]);
-
-  const loadStreakLength = async () => {
-    try {
-      const streak = await getStreakLength(username);
-      setStreakLength(streak);
-    } catch (error) {
-      console.error('Failed to fetch streak length:', error);
-      setStreakLength(0);
-    }
-  };
 
   const loadPracticeHistory = async () => {
     try {
       const history = await getPracticeHistory(username);
-      // Normalize server dates (assumed UTC) to local YYYY-MM-DD
-      const toLocalYMD = (s: string) => {
-        const ymd = s.slice(0, 10);
-        const [y, m, d] = ymd.split('-').map(Number);
-        const dt = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
-        const year = dt.getFullYear();
-        const month = String(dt.getMonth() + 1).padStart(2, '0');
-        const day = String(dt.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
-
-      const dateSet = new Set(history.map(toLocalYMD));
+      const dateSet = new Set(
+        history.map(dateString => {
+          const date = new Date(dateString);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        })
+      );
       console.log('Practice dates loaded:', Array.from(dateSet));
       setPracticeDates(dateSet);
       setTotalPractices(dateSet.size);
@@ -131,63 +114,31 @@ export default function FriendStreakCalendarScreen() {
       />
       <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <View style={{ padding: 20 }}>
-          {/* Streak Display */}
-          <View style={{ flexDirection: 'row', marginBottom: 24, gap: 20 }}>
-            {/* Streak Length */}
-            <View style={{
-              flex: 1,
-              backgroundColor: theme.colors.surface,
-              borderRadius: 16,
-              padding: 20,
-              alignItems: 'center'
+          {/* Current Streak Display */}
+          <View style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            marginBottom: 24,
+            alignItems: 'center'
+          }}>
+            <Ionicons name="flame" size={48} color="#FF6B35" />
+            <Text style={{
+              fontSize: 48,
+              fontWeight: 'bold',
+              color: theme.colors.onBackground,
+              marginTop: 12,
+              fontFamily: 'Inter'
             }}>
-              <Ionicons name="flame" size={32} color="#FF6B35" />
-              <Text style={{
-                fontSize: 32,
-                fontWeight: 'bold',
-                color: theme.colors.onBackground,
-                marginTop: 8,
-                fontFamily: 'Inter'
-              }}>
-                {streakLength}
-              </Text>
-              <Text style={{
-                fontSize: 14,
-                color: theme.colors.onSurfaceVariant,
-                marginTop: 4,
-                fontFamily: 'Inter'
-              }}>
-                Day Streak
-              </Text>
-            </View>
-
-            {/* Total Practice Days */}
-            <View style={{
-              flex: 1,
-              backgroundColor: theme.colors.surface,
-              borderRadius: 16,
-              padding: 20,
-              alignItems: 'center'
+              {totalPractices}
+            </Text>
+            <Text style={{
+              fontSize: 16,
+              color: theme.colors.onSurfaceVariant,
+              fontFamily: 'Inter'
             }}>
-              <Ionicons name="calendar" size={32} color={theme.colors.primary} />
-              <Text style={{
-                fontSize: 32,
-                fontWeight: 'bold',
-                color: theme.colors.onBackground,
-                marginTop: 8,
-                fontFamily: 'Inter'
-              }}>
-                {totalPractices}
-              </Text>
-              <Text style={{
-                fontSize: 14,
-                color: theme.colors.onSurfaceVariant,
-                marginTop: 4,
-                fontFamily: 'Inter'
-              }}>
-                Total Practice Days
-              </Text>
-            </View>
+              Total Practice Days
+            </Text>
           </View>
 
           {/* Calendar */}
@@ -300,6 +251,40 @@ export default function FriendStreakCalendarScreen() {
                   fontFamily: 'Inter'
                 }}>
                   Practiced
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 4,
+                  borderWidth: 3,
+                  borderColor: theme.colors.primary,
+                  marginRight: 8
+                }} />
+                <Text style={{
+                  fontSize: 12,
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter'
+                }}>
+                  Today
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{
+                  width: 16,
+                  height: 16,
+                  borderRadius: 4,
+                  borderWidth: 1,
+                  borderColor: theme.colors.onSurfaceVariant,
+                  marginRight: 8
+                }} />
+                <Text style={{
+                  fontSize: 12,
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter'
+                }}>
+                  No practice
                 </Text>
               </View>
             </View>
