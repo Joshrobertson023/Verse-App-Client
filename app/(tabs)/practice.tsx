@@ -135,7 +135,7 @@ export default function PracticeScreen() {
       onPress={() => handlePractice(userVerse)}
       style={{ width: '100%', marginBottom: 15 }}
     >
-      <Surface style={{ width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface }} elevation={4}>
+      <View style={{ width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flex: 1 }}>
             <Text style={{ ...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600, fontSize: 18, color: theme.colors.onBackground }}>
@@ -163,7 +163,7 @@ export default function PracticeScreen() {
             )}
           </View>
         </View>
-      </Surface>
+      </View>
     </TouchableOpacity>
   );
 
@@ -184,9 +184,9 @@ export default function PracticeScreen() {
           <View style={{ width: '100%' }}>
             {[1, 2, 3].map((i) => (
               <View key={i} style={{ marginBottom: 15 }}>
-                <Surface style={{ width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface }} elevation={4}>
+                <View style={{ width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface }}>
                   <VerseItemSkeleton />
-                </Surface>
+                </View>
               </View>
             ))}
           </View>

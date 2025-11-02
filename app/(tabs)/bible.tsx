@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { Stack } from 'expo-router';
-import { Divider, Surface } from 'react-native-paper';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Divider, Surface } from 'react-native-paper';
 import { bibleBooks } from '../bibleData';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -13,6 +12,7 @@ function CustomBackButton({ onPress }: { onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
+      activeOpacity={0.1}
       style={{
         marginLeft: 10,
         padding: 5,
@@ -64,7 +64,7 @@ export default function BibleScreen() {
           ) : undefined,
         }} 
       />
-      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <View style={{ flex: 1, backgroundColor: theme.colors.background, marginTop: 30 }}>
         <ScrollView 
           ref={scrollViewRef}
           style={{ flex: 1 }} 
@@ -82,7 +82,7 @@ export default function BibleScreen() {
                         fontSize: 22,
                         marginTop: 10,
                         marginBottom: 15,
-                        color: '#fff',
+                        color: theme.colors.onBackground,
                       }}>
                         Old Testament
                       </Text>
@@ -95,7 +95,7 @@ export default function BibleScreen() {
                         fontSize: 22,
                         marginTop: 50,
                         marginBottom: 15,
-                        color: '#fff',
+                        color: theme.colors.onBackground,
                       }}>
                         New Testament
                       </Text>
@@ -104,6 +104,7 @@ export default function BibleScreen() {
                   
                   <TouchableOpacity
                     onPress={() => handleBookSelect(book.name)}
+                    activeOpacity={0.1}
                     style={{
                       paddingVertical: 16,
                       paddingHorizontal: 20,
@@ -123,24 +124,24 @@ export default function BibleScreen() {
             </>
           ) : (
             <>
-              <Text style={{ ...styles.subheading, marginBottom: 20 }}>Select a Chapter</Text>
-              
               <View style={{ 
                 flexDirection: 'row', 
                 flexWrap: 'wrap', 
                 justifyContent: 'flex-start',
                 width: '100%',
+                marginTop: 50
               }}>
                 {Array.from({ length: selectedBookData?.chapters || 0 }, (_, i) => i + 1).map((chapterNum) => (
                   <TouchableOpacity
                     key={chapterNum}
                     onPress={() => handleChapterSelect(selectedBook, chapterNum)}
+                    activeOpacity={0.1}
                     style={{
                       width: '25%',
                       padding: 5,
                     }}
                   >
-                    <Surface style={{ 
+                    <View style={{ 
                       padding: 15, 
                       borderRadius: 10, 
                       backgroundColor: theme.colors.surface,
@@ -156,13 +157,29 @@ export default function BibleScreen() {
                       }}>
                         {chapterNum}
                       </Text>
-                    </Surface>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
             </>
           )}
         </ScrollView>
+          {selectedBook ? (
+            <Surface style={{
+                position: 'absolute',
+                top: 10,
+                left: 25,
+                backgroundColor: theme.colors.surface,
+                borderRadius: 5000,
+                padding: 5
+            }} elevation={4}>
+              <TouchableOpacity style={{
+                marginRight: 2
+              }} onPress={() => setSelectedBook(null)}>
+                <Ionicons name="chevron-back" size={32} color={theme.colors.onBackground} />
+              </TouchableOpacity>
+            </Surface>
+          ) : (null)}
       </View>
     </>
   );

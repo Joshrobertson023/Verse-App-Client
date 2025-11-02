@@ -53,6 +53,7 @@ export default function FriendCollectionScreen() {
         options={{
           title: collection.title,
           headerBackVisible: true,
+          headerShadowVisible: false,
         }}
       />
       <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }}>

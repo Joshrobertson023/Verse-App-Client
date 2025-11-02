@@ -2,7 +2,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Button } from 'react-native-paper';
 import { Collection, useAppStore } from '../store'; // Adjust the import path for your Collection type
 import getStyles from '../styles';
 import useAppTheme from '../theme';
@@ -21,17 +20,13 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
   const user = useAppStore((state) => state.user);
 
   return (
-      <Button
-        mode="contained"
+      <TouchableOpacity
         key={collection.collectionId}
         style={{
           padding: 0,
-          marginBottom: 20,
           borderRadius: 10,
         }}
-        rippleColor={theme.colors.surface2}
-        
-        labelStyle={{marginLeft: -37, marginRight: -2, marginVertical: 0, paddingHorizontal: 0, paddingVertical: 0}}
+        activeOpacity={0.1}
         onPress={() => router.push(`../collections/${collection.collectionId}`)}>
       <View style={styles.collectionItem}>
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
@@ -49,7 +44,7 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
               <View>
 
                 {/* number of verses */}
-                <Text style={styles.tinyText}>{collection.userVerses.length} {collection.userVerses.length === 1 ? 'passage' : 'passages'}</Text>
+                <Text style={{...styles.tinyText, color: theme.colors.primary}}>{collection.userVerses.length} {collection.userVerses.length === 1 ? 'passage' : 'passages'}</Text>
               </View>
             </View>
             <View>
@@ -66,6 +61,7 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
               <Ionicons name='star' size={22} color={theme.colors.onBackground} style={{marginTop: 2, marginRight: 2}} />
               : 
                   <TouchableOpacity 
+                    activeOpacity={0.1}
                     onPress={() => onMenuPress(collection)}>
                     <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
                   </TouchableOpacity>}
@@ -88,6 +84,6 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
           
         </View>
       </View>
-    </Button>
+    </TouchableOpacity>
   );
 }

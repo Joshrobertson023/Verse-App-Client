@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { BackHandler, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { ActivityIndicator, Button, Dialog, Divider, FAB, Portal, Snackbar } from 'react-native-paper';
-import Animated, { interpolate, runOnJS, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { ActivityIndicator, Button, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
+import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import CollectionItem from '../components/collectionItem';
 import PublishDialog from '../components/publishDialog';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
@@ -474,10 +474,26 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
   }
 
   const scrollY = useSharedValue(0);
+  const [headerShadowOpacity, setHeaderShadowOpacity] = useState(0);
 
   const scrollHandler = useAnimatedScrollHandler((event) => {
     scrollY.value = event.contentOffset.y;
-  }); 
+  });
+
+  useAnimatedReaction(
+    () => scrollY.value,
+    (value) => {
+      // Interpolate scroll position to shadow opacity (0 to 1)
+      // Fade in shadow as user scrolls down from 0 to 20 pixels
+      const opacity = interpolate(
+        value,
+        [0, 20],
+        [0, 1],
+        'clamp'
+      );
+      runOnJS(setHeaderShadowOpacity)(opacity);
+    }
+  ); 
 
   const AddButton = () => {
       const animatedStyle = useAnimatedStyle(() => {
@@ -512,7 +528,22 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <>
+      <Stack.Screen
+        options={{
+          headerShadowVisible: headerShadowOpacity > 0.1,
+          headerStyle: {
+            backgroundColor: theme.colors.background,
+            // Animate shadow properties for smooth fade
+            elevation: headerShadowOpacity > 0.1 ? 4 * headerShadowOpacity : 0,
+            shadowOpacity: headerShadowOpacity,
+            shadowOffset: { width: 0, height: headerShadowOpacity > 0.1 ? 2 : 0 },
+            shadowRadius: headerShadowOpacity > 0.1 ? 4 : 0,
+            shadowColor: '#000',
+          } as any,
+        }}
+      />
+      <View style={{ flex: 1 }}>
       <Animated.ScrollView
         onScroll={scrollHandler}
         scrollEventThrottle={16}
@@ -527,7 +558,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         }}
       >
         <Text style={{ ...styles.subheading }}>My Verses</Text>
-        <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}} onPress={() => openCollectionsSettingsSheet()}>
+        <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}} activeOpacity={0.1} onPress={() => openCollectionsSettingsSheet()}>
           <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
         </TouchableOpacity>
         <View style={styles.collectionsContainer}>
@@ -540,16 +571,29 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         <View style={{height: 60}} />
       </Animated.ScrollView>
         
-        <FAB style={{
+        <TouchableOpacity
+          style={{
             position: 'absolute',
-            bottom: 130,
-            right: 10
+            bottom: 20,
+            right: 10,
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: theme.colors.primary,
+            justifyContent: 'center',
+            alignItems: 'center',
+            elevation: 4,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 3.84,
+            zIndex: 10,
           }}
-          icon="plus"
-          variant="secondary"
-          animated={true}
+          activeOpacity={0.1}
           onPress={() => router.push('../collections/addnew')}
-        />
+        >
+          <Ionicons name="add" size={42} color={theme.colors.background} />
+        </TouchableOpacity>
 
       <Portal>
         <Animated.View
@@ -568,7 +612,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         >
           <TouchableOpacity
             style={{ flex: 1 }}
-            activeOpacity={1}
+            activeOpacity={0.5}
             onPress={() => closeSettingsSheet()}
           />
         </Animated.View>
@@ -595,6 +639,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider style={{margin: 0}} />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={() => {
               closeSettingsSheet();
               if (settingsCollection) {
@@ -610,6 +655,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={async () => {
               closeSettingsSheet();
               if (settingsCollection) {
@@ -626,6 +672,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={async () => {
               if (!settingsCollection?.collectionId) return;
               
@@ -653,6 +700,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={() => {
               closeSettingsSheet();
               setIsShareSheetVisible(true);
@@ -662,6 +710,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={async () => {
               if (!settingsCollection?.collectionId) return;
               if (isSettingsCollectionPublished) {
@@ -687,6 +736,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={() => {
               closeSettingsSheet();
               setDeleteDialogVisible(true);
@@ -715,7 +765,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         >
           <TouchableOpacity
             style={{ flex: 1 }}
-            activeOpacity={1}
+            activeOpacity={0.5}
             onPress={() => closeCollectionsSettingsSheet()}
           />
         </Animated.View>
@@ -742,6 +792,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Collections By:</Text>
           <Divider />
                 <TouchableOpacity
+            activeOpacity={0.1}
             onPress={() => {
               closeCollectionsSettingsSheet();
               router.push('../collections/reorderCollections');
@@ -751,6 +802,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={async () => {
               const updatedUser = { ...user, collectionsSortBy: 1 };
               setUser(updatedUser);
@@ -767,6 +819,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={async () => {
               const updatedUser = { ...user, collectionsSortBy: 2 };
               setUser(updatedUser);
@@ -783,6 +836,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Divider />
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
             onPress={async () => {
               const updatedUser = { ...user, collectionsSortBy: 3 };
               setUser(updatedUser);
@@ -804,10 +858,10 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Text style={{...styles.tinyText}}>Are you sure you want to delete the collection "{settingsCollection?.title}"?</Text>
         </Dialog.Content>
         <Dialog.Actions>
-          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} onPress={() => hideDeleteDialog()}>
+          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} activeOpacity={0.1} onPress={() => hideDeleteDialog()}>
             <Text style={{...styles.buttonText_outlined}}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} onPress={() => deleteCollectionHandle()}>
+          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} activeOpacity={0.1} onPress={() => deleteCollectionHandle()}>
             <Text style={{...styles.buttonText_outlined, color: theme.colors.error}}>Delete</Text>
           </TouchableOpacity>
         </Dialog.Actions>
@@ -861,5 +915,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         </Text>
       </Snackbar>
     </View>
+    </>
   );
 }

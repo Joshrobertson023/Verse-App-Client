@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
@@ -76,7 +76,7 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <View style={{ padding: 20 }}>
+      <View style={{ padding: 20, paddingTop: 0 }}>
       {/* Profile Section */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30, marginTop: 20 }}>
           <View style={{ position: 'relative' }}>
@@ -127,143 +127,203 @@ export default function ProfileScreen() {
         </View>
 
         {/* Description Section */}
-        <View style={{ marginBottom: 30 }}>
+        <View style={{ marginBottom: 30, marginTop: -20 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <Text style={{ 
-              fontSize: 16, 
-              fontWeight: '600', 
-              color: theme.colors.onBackground,
-              fontFamily: 'Inter'
-            }}>
-              About
-            </Text>
-            <TouchableOpacity onPress={() => setShowDescriptionEdit(true)}>
+            {/* <TouchableOpacity activeOpacity={0.1} onPress={() => setShowDescriptionEdit(true)}>
               <Ionicons name="pencil" size={20} color={theme.colors.onBackground} />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
           {user.description && (
-            <View style={{ 
-              backgroundColor: theme.colors.surface, 
-              borderRadius: 12, 
-              padding: 12 
+            <Text style={{ 
+              fontSize: 14, 
+              color: theme.colors.onBackground,
+              fontFamily: 'Inter',
+              lineHeight: 20
             }}>
-              <Text style={{ 
-                fontSize: 14, 
-                color: theme.colors.onBackground,
-                fontFamily: 'Inter',
-                lineHeight: 20
-              }}>
-                {user.description}
-              </Text>
-            </View>
+              {user.description}
+            </Text>
           )}
         </View>
 
         {/* Stats Row */}
-        <View style={{ flexDirection: 'row', marginBottom: 30, gap: 20 }}>
+        <View style={{ 
+          flexDirection: 'row', 
+          marginBottom: 10,
+          width: '100%',
+        }}>
           {/* Day Streak */}
-          <TouchableOpacity 
-            style={{ 
-              flex: 1, 
-              backgroundColor: theme.colors.surface, 
-              borderRadius: 12, 
-              padding: 20,
-              alignItems: 'center' 
-            }}
-            onPress={() => router.push('/user/streak')}
-          >
-            <Ionicons name="flame" size={32} color="#FF6B35" />
-            <Text style={{ 
-              fontSize: 32, 
-              fontWeight: 'bold', 
-              color: theme.colors.onBackground,
-              marginTop: 8,
-              fontFamily: 'Inter'
+          <View style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}>
+            <View style={{
+              justifyContent: 'center',
+              marginTop: -10
             }}>
-              {user.streakLength || 0}
-            </Text>
-            <Text style={{ 
-              fontSize: 14, 
-              color: theme.colors.onSurfaceVariant,
-              marginTop: 4,
-              fontFamily: 'Inter'
+              <Ionicons name="flame" size={52} color={theme.colors.onBackground} />
+            </View>
+            <View style={{
+              flexDirection: 'column',
+              justifyContent: 'center',
             }}>
-              Day Streak
-            </Text>
-          </TouchableOpacity>
+              <Text style={{
+                  ...styles.text, 
+                  marginBottom: -7,
+                  marginTop: -5,
+                  fontSize: 36,
+                  fontWeight: 800,
+                  color: theme.colors.onBackground,
+                }}>
+                {user.streakLength || 0}
+              </Text>
+              <Text style={{
+                ...styles.text, 
+                margin: 0, 
+                fontSize: 14,
+                color: theme.colors.onSurfaceVariant,
+              }}>
+                Day Streak
+              </Text>
+            </View>
+          </View>
 
           {/* Verses in Memory */}
-          <TouchableOpacity 
-            style={{ 
-              flex: 1, 
-              backgroundColor: theme.colors.surface, 
-              borderRadius: 12, 
-              padding: 20,
-              alignItems: 'center' 
-            }}
-            onPress={() => router.push('/user/memorizedVerses')}
-          >
-            <Ionicons name="checkmark-circle" size={32} color={theme.colors.primary} />
-            <Text style={{ 
-              fontSize: 32, 
-              fontWeight: 'bold', 
-              color: theme.colors.onBackground,
-              marginTop: 8,
-              fontFamily: 'Inter'
+          <View style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 15,
+          }}>
+            <View style={{
+              justifyContent: 'center',
+              marginTop: -18,
+              marginRight: 5
             }}>
-              {getVersesMemorized()}
-            </Text>
-            <Text style={{ 
-              fontSize: 14, 
-              color: theme.colors.onSurfaceVariant,
-              marginTop: 4,
-              fontFamily: 'Inter'
+              <Ionicons name="checkmark-done" size={58} color={theme.colors.onBackground} />
+            </View>
+            <View style={{
+              flexDirection: 'column',
+              justifyContent: 'center',
             }}>
-              Verses in Memory
-            </Text>
-          </TouchableOpacity>
+              <Text style={{
+                  ...styles.text, 
+                  marginBottom: -7,
+                  marginTop: -5,
+                  fontSize: 36,
+                  fontWeight: 800,
+                  color: theme.colors.onBackground,
+                }}>
+                {getVersesMemorized()}
+              </Text>
+              <Text style={{
+                ...styles.text, 
+                margin: 0, 
+                fontSize: 14,
+                color: theme.colors.onSurfaceVariant,
+              }}>
+                Memorized
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Buttons */}
+
         
         <TouchableOpacity 
           style={{ 
-            ...styles.button_outlined, 
-            marginBottom: 15,
-            borderColor: theme.colors.onSurface,
-            borderWidth: 1 
+            ...styles.button_outlined
           }}
+          activeOpacity={0.1}
           onPress={() => router.push('/user/friends')}
         >
           <Text style={styles.buttonText_outlined}>Friends</Text>
         </TouchableOpacity>
 
+        <View style={{
+          marginTop: 20,
+          paddingTop: 20,
+        }}>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
+              activeOpacity={0.1}
+              onPress={() => router.push('/user/streak')}
+            >
+              <Ionicons name="calendar" size={24} color={theme.colors.onBackground} />
+              <Text style={{ 
+                ...styles.tinyText, 
+                alignSelf: 'flex-start',
+                marginLeft: 15,
+                fontSize: 16,
+                color: theme.colors.onBackground,
+                fontWeight: 400
+              }}>Streak Calendar</Text>
+            </TouchableOpacity>
+
+          <TouchableOpacity style={{
+            flexDirection: 'row', alignItems: 'center', paddingVertical: 12
+          }}
+          onPress={() => router.push('/user/memorizedVerses')}>
+              <Ionicons name="checkmark-done" size={24} color={theme.colors.onBackground} />
+            <Text style={{
+                ...styles.tinyText, 
+                alignSelf: 'flex-start',
+                marginLeft: 15,
+                fontSize: 16,
+                color: theme.colors.onBackground,
+                fontWeight: 400
+            }}>Memorized Passages</Text>
+          </TouchableOpacity>
+        </View>
         {/* Footer Navigation */}
-        <View style={{ marginTop: 40, paddingTop: 20, borderTopWidth: 1, borderTopColor: theme.colors.onSurfaceVariant }}>
+        <View style={{ marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: theme.colors.onSurfaceVariant }}>
           <TouchableOpacity 
             style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
+            activeOpacity={0.1}
             onPress={() => router.push('/settings')}
           >
             <Ionicons name="settings" size={24} color={theme.colors.onBackground} />
             <Text style={{ 
-              ...styles.tinyText, 
-              marginLeft: 15,
-              fontSize: 18 
+                ...styles.tinyText, 
+                alignSelf: 'flex-start',
+                marginLeft: 15,
+                fontSize: 16,
+                color: theme.colors.onBackground,
+                fontWeight: 400
             }}>Settings</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
+            activeOpacity={0.1}
+            onPress={() => router.push('/settings')}
+          >
+            <Ionicons name="information" size={24} color={theme.colors.onBackground} />
+            <Text style={{ 
+                ...styles.tinyText, 
+                alignSelf: 'flex-start',
+                marginLeft: 15,
+                fontSize: 16,
+                color: theme.colors.onBackground,
+                fontWeight: 400
+            }}>About</Text>
           </TouchableOpacity>
 
           {isAdmin && (
             <TouchableOpacity 
               style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12 }}
+              activeOpacity={0.1}
               onPress={() => router.push('/admin')}
             >
               <Ionicons name="shield" size={24} color={theme.colors.primary} />
               <Text style={{ 
                 ...styles.tinyText, 
+                alignSelf: 'flex-start',
                 marginLeft: 15,
-                fontSize: 18,
-                color: theme.colors.primary,
-                fontWeight: '600'
+                fontSize: 16,
+                color: theme.colors.onBackground,
+                fontWeight: 400
               }}>Admin Panel</Text>
             </TouchableOpacity>
           )}
@@ -277,13 +337,11 @@ export default function ProfileScreen() {
             borderColor: theme.colors.error,
             borderWidth: 1 
           }}
+          activeOpacity={0.1}
           onPress={logoutClick}
         >
           <Text style={[styles.buttonText_outlined, { color: theme.colors.error }]}>Logout</Text>
         </TouchableOpacity>
-
-        {/* Bottom padding */}
-        <View style={{ height: 100 }} />
       </View>
 
       {/* Edit Description Modal */}

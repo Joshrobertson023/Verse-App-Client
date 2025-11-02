@@ -284,6 +284,7 @@ export default function SearchScreen() {
       <View style={{ flexDirection: 'row', marginTop: 12, gap: 16 }}>
         <TouchableOpacity 
           onPress={() => handleSaveVerse(item)}
+          activeOpacity={0.1}
           style={{ flexDirection: 'row', alignItems: 'center' }}
         >
           <Ionicons name="bookmark-outline" size={18} color={theme.colors.onBackground} />
@@ -291,12 +292,13 @@ export default function SearchScreen() {
         </TouchableOpacity>
         <TouchableOpacity 
           onPress={() => handleReadVerse(item)}
+          activeOpacity={0.1}
           style={{ flexDirection: 'row', alignItems: 'center' }}
         >
           <Ionicons name="library-outline" size={18} color={theme.colors.onBackground} />
           <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Read</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} onPress={() => setVerseToShare(item)}>
+        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} activeOpacity={0.1} onPress={() => setVerseToShare(item)}>
           <Ionicons name="share-social-outline" size={18} color={theme.colors.onBackground} />
           <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Share</Text>
         </TouchableOpacity>
@@ -330,7 +332,7 @@ export default function SearchScreen() {
       <View style={{
         backgroundColor: theme.colors.surface,
         padding: 16,
-        marginBottom: 12,
+        paddingTop: 0,
         borderRadius: 12,
         flexDirection: 'row',
         alignItems: 'center'
@@ -370,6 +372,7 @@ export default function SearchScreen() {
         <TouchableOpacity
           onPress={() => handleSendFriendRequest(item.username)}
           disabled={relationshipStatus === 1 || relationshipStatus === 0}
+          activeOpacity={0.1}
           style={{
             paddingHorizontal: 16,
             paddingVertical: 8,
@@ -392,7 +395,7 @@ export default function SearchScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <View style={{ flex: 1, marginTop: 40 }}>
+      <View style={{ flex: 1, marginTop: 30 }}>
         <View style={{ padding: 20 }}>
           <Searchbar
             placeholder="Search"
@@ -417,6 +420,7 @@ export default function SearchScreen() {
           <TouchableOpacity
             onPress={() => handleSearch()}
             disabled={loading || !searchQuery.trim()}
+            activeOpacity={0.1}
             style={{
               ...styles.button_outlined,
               marginBottom: 8,
@@ -464,6 +468,7 @@ export default function SearchScreen() {
                   {recentSearches.map((search, index) => (
                     <TouchableOpacity
                       key={index}
+                      activeOpacity={0.1}
                       onPress={() => {
                         setSearchQuery(search);
                         handleSearch(search);
@@ -503,6 +508,7 @@ export default function SearchScreen() {
                   {popularSearches.map((search, index) => (
                     <TouchableOpacity
                       key={index}
+                      activeOpacity={0.1}
                       onPress={() => {
                         setSearchQuery(search);
                         handleSearch(search);
@@ -687,6 +693,7 @@ export default function SearchScreen() {
                     {favorites.map((collection) => (
                       <TouchableOpacity
                         key={collection.collectionId}
+                        activeOpacity={0.1}
                         style={{
                           paddingVertical: 12,
                           paddingHorizontal: 16,
@@ -722,6 +729,7 @@ export default function SearchScreen() {
                     {nonFavorites.map((collection) => (
                       <TouchableOpacity
                         key={collection.collectionId}
+                        activeOpacity={0.1}
                         style={{
                           paddingVertical: 12,
                           paddingHorizontal: 16,
@@ -760,6 +768,7 @@ export default function SearchScreen() {
                   paddingHorizontal: 24,
                   borderRadius: 8
                 }}
+                activeOpacity={0.1}
                 onPress={() => {
                   setPickedCollection(undefined);
                   setShowCollectionPicker(false);
@@ -782,6 +791,7 @@ export default function SearchScreen() {
                   borderRadius: 8,
                   opacity: (!pickedCollection || isAddingToCollection) ? 0.5 : 1
                 }}
+                activeOpacity={0.1}
                 onPress={handleAddToCollection}
                 disabled={!pickedCollection || isAddingToCollection}
               >

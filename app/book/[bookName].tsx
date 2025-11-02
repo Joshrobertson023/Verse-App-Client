@@ -509,7 +509,7 @@ export default function ChapterReadingPage() {
             >
               <TouchableOpacity
                 style={{ flex: 1 }}
-                activeOpacity={1}
+                activeOpacity={0.5}
                 onPress={closeSettingsSheet}
               />
             </AnimatedReanimated.View>

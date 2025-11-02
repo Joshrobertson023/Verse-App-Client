@@ -3,7 +3,7 @@ import { BottomTabBar, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { router, Tabs, useRootNavigationState } from 'expo-router';
 import React, { useEffect } from 'react';
-import { Platform, Pressable, Text, TouchableNativeFeedback, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Badge } from 'react-native-paper';
 import { getUnreadNotificationCount } from '../db';
 import { useAppStore } from '../store';
@@ -53,10 +53,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
     <BlurView intensity={80} 
       tint="default"
       style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0
+        borderTopWidth: 0
       }}>
       <BottomTabBar {...props}
         style={{
@@ -73,8 +70,8 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
     <Tabs
       tabBar={(props: BottomTabBarProps) => <CustomTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: theme.colors.onBackground,
-        tabBarInactiveTintColor: theme.colors.onBackground,
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: '#88888888',
         tabBarLabelPosition: 'below-icon',
         tabBarItemStyle: {
           alignItems: 'center',
@@ -82,45 +79,16 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           paddingHorizontal: 6,
           paddingVertical: 6,
         },
-        tabBarButton: (props) => (
-          Platform.OS === 'android' ? (
-            <View style={props.style}>
-              <TouchableNativeFeedback
-                useForeground
-                background={TouchableNativeFeedback.Ripple(theme.colors.outline, true, 34)}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                onPress={props.onPress ?? undefined}
-                onLongPress={props.onLongPress ?? undefined}
-                accessibilityRole={props.accessibilityRole}
-                accessibilityState={props.accessibilityState}
-                accessibilityLabel={props.accessibilityLabel}
-                testID={props.testID}
-              >
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{props.children}</View>
-              </TouchableNativeFeedback>
-            </View>
-          ) : (
-            <Pressable
-              style={props.style}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-              onPress={props.onPress ?? undefined}
-              onLongPress={props.onLongPress ?? undefined}
-              accessibilityRole={props.accessibilityRole}
-              accessibilityState={props.accessibilityState}
-              accessibilityLabel={props.accessibilityLabel}
-              testID={props.testID}
-            >
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>{props.children}</View>
-            </Pressable>
-          )
-        ),
+        animation: 'fade',
+        sceneStyle: {
+          backgroundColor: theme.colors.background,
+        },
         headerShown: true,
         headerStyle: {
           backgroundColor: theme.colors.background,
           borderBottomWidth: 0,
-          borderBottomColor: 'transparent'
+          borderBottomColor: 'transparent',
         },
-        headerShadowVisible: false,
         headerTitleStyle: {
           color: theme.colors.onBackground,
         },
@@ -132,7 +100,8 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           paddingTop: 10,
           paddingLeft: 5,
           paddingRight: 5,
-          borderTopColor: theme.colors.onBackground
+          borderTopColor: theme.colors.surface2,
+          borderTopWidth: .2,          
         },
       }}>
         <Tabs.Screen 
@@ -170,14 +139,18 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
             </View>
           ),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} color={color} size={28} />
+            <Ionicons 
+              name={focused ? 'home' : 'home-outline'} 
+              color={focused ? theme.colors.primary : '#88888888'} 
+              size={28} 
+            />
           ),
-          tabBarLabel: ({ focused, color }) => (
+          tabBarLabel: ({ focused }) => (
             <Text
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: color,
+                color: focused ? theme.colors.primary : '#88888888',
                 marginTop: 0,
                 textAlign: 'center',
               }}
@@ -191,15 +164,19 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
         options={{
           title: 'Practice',
           headerShown: false,
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} color={color} size={28} />
+          tabBarIcon: ({ focused }) => (
+            <Ionicons 
+              name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} 
+              color={focused ? theme.colors.primary : '#88888888'} 
+              size={28} 
+            />
           ),
-          tabBarLabel: ({ focused, color }) => (
+          tabBarLabel: ({ focused }) => (
             <Text
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: color,
+                color: focused ? theme.colors.primary : '#88888888',
                 marginTop: 0,
                 textAlign: 'center',
               }}
@@ -212,36 +189,24 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
             name="search" 
             options={{
               headerShown: false,
-              tabBarIcon: ({ color, focused }) => (
-                <>{focused ? (
-                  <View style={{
-                      zIndex: 1000000,
-                      height: 67,
-                      width: 67,
-                      padding: 10,
-                      borderRadius: 100,
-                      top: -2,
-                      backgroundColor: theme.colors.surface
-                  }}>
-                    <Ionicons name={'search-outline'} color={color} size={45} style={{
-                    }} />
-                  </View>
-                ) : (
-                  <View style={{
-                      zIndex: 1000000,
-                      height: 67,
-                      width: 67,
-                      padding: 10,
-                      top: -2,
-                      borderRadius: 100,
-                  }}>
-                    <Ionicons name={'search-outline'} color={color} size={45} style={{
-                    }} />
-                  </View>
-                )}
-                </>
+              tabBarIcon: ({ focused }) => (
+                <View style={{
+                    zIndex: 1000000,
+                    height: 67,
+                    width: 67,
+                    padding: 10,
+                    borderRadius: 100,
+                    marginBottom: -5,
+                    backgroundColor: focused ? theme.colors.surface : theme.colors.background
+                }}>
+                  <Ionicons 
+                    name={'search-outline'} 
+                    color={focused ? theme.colors.primary : '#88888888'} 
+                    size={45} 
+                  />
+                </View>
               ),
-              tabBarLabel: ({ focused, color }) => (
+              tabBarLabel: ({ focused }) => (
                 <Text
                   style={{
                     fontSize: 14,
@@ -259,17 +224,23 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
       />
       <Tabs.Screen
         name="bible"
+        
         options={{
           title: 'Bible',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'book-sharp' : 'book-outline'} color={color} size={28}/>
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <Ionicons 
+              name={focused ? 'book-sharp' : 'book-outline'} 
+              color={focused ? theme.colors.primary : '#88888888'} 
+              size={28}
+            />
           ),
-          tabBarLabel: ({ focused, color }) => (
+          tabBarLabel: ({ focused }) => (
             <Text
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: color,
+                color: focused ? theme.colors.primary : '#88888888',
                 marginTop: 0,
                 textAlign: 'center',
               }}
@@ -283,15 +254,19 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
         options={{
           title: 'Explore',
           headerShown: false,
-          tabBarIcon: ({ color, focused }) => (
-              <Ionicons name={focused ? 'planet' : 'planet-outline'} color={color} size={28}/>
+          tabBarIcon: ({ focused }) => (
+              <Ionicons 
+                name={focused ? 'planet' : 'planet-outline'} 
+                color={focused ? theme.colors.primary : '#88888888'} 
+                size={28}
+              />
           ),
-          tabBarLabel: ({ focused, color }) => (
+          tabBarLabel: ({ focused }) => (
             <Text
               style={{
                 fontSize: 14,
                 fontWeight: '600',
-                color: color,
+                color: focused ? theme.colors.primary : '#88888888',
                 marginTop: 0,
                 textAlign: 'center',
               }}

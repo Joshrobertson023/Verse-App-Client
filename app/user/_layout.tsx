@@ -15,6 +15,7 @@ export default function UserLayout() {
           backgroundColor: theme.colors.background,
         },
         headerTintColor: theme.colors.onBackground,
+        headerShadowVisible: false,
         contentStyle: {
           backgroundColor: theme.colors.background,
         },

@@ -273,10 +273,19 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{flex: 1}}>
         <PaperProvider theme={theme}>
           <Portal.Host>
-          <Stack>
+          <Stack
+            screenOptions={{
+              contentStyle: {
+                backgroundColor: theme.colors.background,
+              },
+            }}
+          >
             <Stack.Screen 
               name="(tabs)"
-              options={{ headerShown: false }} 
+              options={{ 
+                headerShown: false,
+                animation: 'fade'
+              }} 
             />
             <Stack.Screen 
               name="(auth)"
@@ -293,7 +302,6 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-                headerShadowVisible: false,
               }} 
             />
             <Stack.Screen 
@@ -307,7 +315,6 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-                headerShadowVisible: false,
               }} 
             />
             <Stack.Screen 
@@ -321,7 +328,6 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-                headerShadowVisible: false,
               }} 
             />
             <Stack.Screen 
@@ -339,7 +345,7 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-          headerShadowVisible: false,
+                headerShadowVisible: false,
               }} 
             />
             <Stack.Screen
@@ -353,7 +359,6 @@ export default function RootLayout() {
               color: theme.colors.onBackground,
             },
             headerTintColor: theme.colors.onBackground,
-          headerShadowVisible: false,
               }}
             />
             <Stack.Screen
@@ -367,7 +372,6 @@ export default function RootLayout() {
               color: theme.colors.onBackground,
             },
             headerTintColor: theme.colors.onBackground,
-            headerShadowVisible: false,
               }}
             />
             <Stack.Screen
@@ -388,6 +392,7 @@ export default function RootLayout() {
               name="collections/[id]"
               options={{
                 title: '',
+                animation: 'fade_from_bottom',
                 headerStyle: {
                   backgroundColor: theme.colors.background,
                 },
@@ -402,7 +407,6 @@ export default function RootLayout() {
               </TouchableOpacity>
             </View>
           ),
-          headerShadowVisible: false,
               }} 
             />
             <Stack.Screen
@@ -416,7 +420,7 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-          headerShadowVisible: false,
+                headerShadowVisible: false,
               }} 
             />
             <Stack.Screen
@@ -430,7 +434,7 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-          headerShadowVisible: false,
+                headerShadowVisible: false,
               }} 
             />
             <Stack.Screen
@@ -444,7 +448,7 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-          headerShadowVisible: false,
+                headerShadowVisible: false,
               }} 
             />
             <Stack.Screen
@@ -458,7 +462,6 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-          headerShadowVisible: false,
               }} 
             />
             <Stack.Screen
@@ -476,7 +479,6 @@ export default function RootLayout() {
                   color: theme.colors.onBackground,
                 },
                 headerTintColor: theme.colors.onBackground,
-                headerShadowVisible: false,
               }}
             />
         </Stack>

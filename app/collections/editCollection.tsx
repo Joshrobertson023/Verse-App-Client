@@ -436,7 +436,7 @@ export default function EditCollection() {
           }}></View>
 
           <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, marginHorizontal: 20, width: '90%', alignSelf: 'center'
-          }} activeOpacity={.2} onPress={handleCreateCollection}>
+          }} activeOpacity={0.1} onPress={handleCreateCollection}>
             {creatingCollection ? (
                         <Text style={styles.buttonText_filled}>
                             <ActivityIndicator animating={true} color={theme.colors.background} />
@@ -465,7 +465,7 @@ export default function EditCollection() {
               >
                 <TouchableOpacity
                   style={{ flex: 1 }}
-                  activeOpacity={1}
+                  activeOpacity={0.5}
                   onPress={() => {
                     closeSettingsSheet();
                     closeSheet();

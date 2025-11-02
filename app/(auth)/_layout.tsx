@@ -18,7 +18,6 @@ export default function RootLayout() {
         <Stack.Screen 
         name="createName"
         options={{ headerShown: false,
-              headerShadowVisible: false,
               headerStyle: {
                 backgroundColor: theme.colors.background,
               },
@@ -34,7 +33,6 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
-              headerShadowVisible: false,
              }} 
         />
         <Stack.Screen 
@@ -47,7 +45,6 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
-              headerShadowVisible: false,
              }} 
         />
         <Stack.Screen
@@ -60,7 +57,6 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
-              headerShadowVisible: false,
              }} 
         />
         <Stack.Screen 
@@ -73,7 +69,6 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
-              headerShadowVisible: false,
              }} 
         />
     </Stack>

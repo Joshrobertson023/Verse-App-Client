@@ -99,7 +99,7 @@ export default function useStyles() {
     },
     button_outlined: {
       backgroundColor: 'transparent',
-      borderColor: colors.primaryWhite,
+      borderColor: theme.colors.onBackground,
       borderWidth: 1,
       borderRadius: 20,
       height: 40,
@@ -109,8 +109,6 @@ export default function useStyles() {
     },
     button_filled: {
       backgroundColor: theme.colors.primary,
-      borderColor: theme.colors.primary,
-      borderWidth: 2,
       borderRadius: 20,
       height: 40,
       width: '100%',
@@ -132,7 +130,7 @@ export default function useStyles() {
       fontFamily: 'Inter',
     },
     buttonText_outlined: {
-      color: colors.primaryWhite,
+      color: theme.colors.onBackground,
       fontSize: 16,
       fontWeight: 600,
       fontFamily: 'Inter',

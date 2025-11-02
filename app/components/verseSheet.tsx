@@ -222,7 +222,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
             >
                 <TouchableOpacity
                     style={{ flex: 1 }}
-                    activeOpacity={1}
+                    activeOpacity={0.5}
                     onPress={closeSheet}
                 />
             </Animated.View>

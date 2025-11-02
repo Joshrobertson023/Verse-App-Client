@@ -381,6 +381,7 @@ export default function NotificationsScreen() {
                 <>
                   <TouchableOpacity
                     onPress={() => handleRespondToFriendRequest(item, true)}
+                    activeOpacity={0.1}
                     style={{
                       flex: 1,
                       paddingVertical: 8,
@@ -399,6 +400,7 @@ export default function NotificationsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleRespondToFriendRequest(item, false)}
+                    activeOpacity={0.1}
                     style={{
                       flex: 1,
                       paddingVertical: 8,
@@ -425,6 +427,7 @@ export default function NotificationsScreen() {
             <View style={{ marginTop: 12 }}>
               <TouchableOpacity
                 onPress={() => handleViewSharedCollection(item)}
+                activeOpacity={0.1}
                 style={{
                   paddingVertical: 8,
                   borderRadius: 8,
@@ -457,6 +460,7 @@ export default function NotificationsScreen() {
                 </Text>
               )}
               <TouchableOpacity
+                activeOpacity={0.1}
                 onPress={() => {
                   const ref = verseRefMatch ? verseRefMatch[1] : '';
                   const text = verseTextMatch ? verseTextMatch[1] : '';

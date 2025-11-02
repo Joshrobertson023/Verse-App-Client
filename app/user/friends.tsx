@@ -143,7 +143,7 @@ export default function FriendsScreen() {
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
         onPress={() => router.push(`/user/${item.username}`)}
-        activeOpacity={0.7}
+        activeOpacity={0.35}
       >
         <View style={{
           width: 48,
@@ -232,7 +232,7 @@ export default function FriendsScreen() {
             zIndex: 9998,
           }, backdropAnimatedStyle]}
         >
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { setSelectedFriend(null); closeSettingsSheet(); }} />
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.5} onPress={() => { setSelectedFriend(null); closeSettingsSheet(); }} />
         </Animated.View>
 
         <Animated.View style={[{
