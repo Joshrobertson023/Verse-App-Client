@@ -1,416 +1,578 @@
+import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
-import { incrementVerseMemorized, incrementVersesMemorized, recordPractice, updateUserVerse as updateUserVerseAPI } from './db';
-import { useAppStore, UserVerse } from './store';
+import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
 
-interface WordDisplay {
+/*
+  IMPORTANT: A CHUNK OF THE CODE ON THIS PAGE WAS FINISHED WITH AI HELP TO SPEED UP DEVELOPMENT
+*/
+
+const TOTAL_STAGES = 5;
+const HIDE_PERCENTAGE_PER_STAGE = 0.25;
+const MIN_STAGE_HEIGHT = 200;
+
+interface Word {
   id: number;
   word: string;
   isVisible: boolean;
-  typedLetter: string | null;
+  isNumber: boolean;
+  showSpace: boolean;
   isCorrect: boolean | null;
+}
+
+interface ProgressBarProps {
+  currentStage: number;
+  totalStages: number;
+  progressPercent: number;
+  highestCompletedStage: number;
+  theme: ReturnType<typeof useAppTheme>;
+}
+
+function ProgressBar({ currentStage, totalStages, progressPercent, highestCompletedStage, theme }: ProgressBarProps) {
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <View style={{ 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        marginBottom: 8 
+      }}>
+        <Text style={{ 
+          fontSize: 16, 
+          fontWeight: '600', 
+          color: theme.colors.onBackground 
+        }}>
+          Stage {currentStage} / {totalStages}
+        </Text>
+        <Text style={{ 
+          fontSize: 16, 
+          fontWeight: '600', 
+          color: theme.colors.onBackground 
+        }}>
+          {Math.round(progressPercent)}%
+        </Text>
+      </View>
+      
+      <View style={{
+        height: 8,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 4,
+        overflow: 'hidden'
+      }}>
+        <View style={{
+          height: '100%',
+          width: `${progressPercent}%`,
+          backgroundColor: theme.colors.primary,
+          borderRadius: 4,
+        }} />
+      </View>
+      
+      <View style={{ 
+        flexDirection: 'row', 
+        justifyContent: 'space-between',
+        marginTop: 8,
+      }}>
+        {Array.from({ length: totalStages }).map((_, index) => {
+          const stageNum = index + 1;
+          const isCompleted = stageNum <= highestCompletedStage;
+          const isCurrent = stageNum === currentStage;
+          
+          let backgroundColor = theme.colors.surface;
+          if (isCurrent || isCompleted) {
+            backgroundColor = theme.colors.primary;
+          }
+          
+          return (
+            <View
+              key={stageNum}
+              style={{
+                flex: 1,
+                height: isCurrent ? 6 : 4,
+                backgroundColor: backgroundColor,
+                opacity: isCurrent ? 1 : (isCompleted ? 0.5 : 0.3),
+                borderRadius: 2,
+                marginRight: index < totalStages - 1 ? 4 : 0,
+                borderWidth: isCurrent ? 1 : 0,
+                borderColor: theme.colors.primary,
+              }}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 export default function PracticeSessionScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
   const editingUserVerse = useAppStore((state) => state.editingUserVerse);
-  const user = useAppStore((state) => state.user);
-  const setUser = useAppStore((state) => state.setUser);
-  const collections = useAppStore((state) => state.collections);
-  const updateCollection = useAppStore((state) => state.updateCollection);
-  const [words, setWords] = useState<WordDisplay[]>([]);
-  const [currentProgress, setCurrentProgress] = useState(0);
-  const [isComplete, setIsComplete] = useState(false);
-  const [showReference, setShowReference] = useState(false);
+  
+  const [allWords, setAllWords] = useState<Word[]>([]);
+  const [displayWords, setDisplayWords] = useState<Word[]>([]);
+  const [currentStage, setCurrentStage] = useState(1);
+  const [highestCompletedStage, setHighestCompletedStage] = useState(1);
+  const [stageHistory, setStageHistory] = useState<number[]>([]);
   const [userInput, setUserInput] = useState('');
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
+  const [typedWords, setTypedWords] = useState<string[]>([]);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const inputRef = useRef<TextInput>(null);
 
+  const createWord = (id: number, word: string, isNumber: boolean, showSpace: boolean): Word => ({
+    id,
+    word,
+    isVisible: true,
+    isNumber,
+    showSpace,
+    isCorrect: null,
+  });
+
+  const parseBookAndChapter = (text: string): { book?: Word; chapter?: Word } => {
+    const parts = text.split(/\s+/).filter(p => p.length > 0);
+    
+    if (parts.length >= 2) {
+      return {
+        book: createWord(0, parts.slice(0, -1).join(' '), false, true),
+        chapter: createWord(1, parts[parts.length - 1], true, true),
+      };
+    }
+    
+    if (parts.length === 1 && /^\d+$/.test(parts[0])) {
+      return { chapter: createWord(1, parts[0], true, false) };
+    }
+    
+    return {};
+  };
+
+  const parseVerseReference = (verseText: string): Word[] => {
+    const words: Word[] = [createWord(2, ':', false, false)];
+    
+    if (!verseText.trim()) return words;
+    
+    const trimmed = verseText.trim();
+    const elements: Array<{ text: string; isNumber: boolean; needsSpaceAfter: boolean }> = [];
+    let isFirstElement = true; // Track if this is the first element after colon
+    
+    let i = 0;
+    while (i < trimmed.length) {
+      const char = trimmed[i];
+      
+      if (char === ' ') {
+        if (elements.length > 0 && elements[elements.length - 1].text !== ',') {
+          elements[elements.length - 1].needsSpaceAfter = true;
+        }
+        i++;
+        continue;
+      }
+      
+      if (char === ',') {
+        if (elements.length > 0) {
+          elements[elements.length - 1].needsSpaceAfter = false;
+        }
+        elements.push({ text: ',', isNumber: false, needsSpaceAfter: false });
+        isFirstElement = false;
+        i++;
+        continue;
+      }
+      
+      if (/^\d$/.test(char)) {
+        let number = '';
+        while (i < trimmed.length && /^\d$/.test(trimmed[i])) {
+          number += trimmed[i];
+          i++;
+        }
+        const isLast = i >= trimmed.length;
+        const prevWasComma = elements.length > 0 && elements[elements.length - 1].text === ',';
+        const needsSpace = !isFirstElement && !prevWasComma && isLast;
+        elements.push({ 
+          text: number, 
+          isNumber: true, 
+          needsSpaceAfter: needsSpace 
+        });
+        isFirstElement = false;
+      } else {
+        const isLast = i === trimmed.length - 1;
+        const prevWasComma = elements.length > 0 && elements[elements.length - 1].text === ',';
+        const needsSpace = !isFirstElement && ((!prevWasComma && isLast) || (prevWasComma && !isLast));
+        elements.push({ 
+          text: char, 
+          isNumber: false, 
+          needsSpaceAfter: needsSpace
+        });
+        isFirstElement = false;
+        i++;
+      }
+    }
+    
+    if (elements.length > 0 && elements[elements.length - 1].text !== ',' && elements.length > 1) {
+      elements[elements.length - 1].needsSpaceAfter = true;
+    }
+    
+    let wordId = 3;
+    for (const element of elements) {
+      words.push(createWord(
+        wordId++,
+        element.text,
+        element.isNumber,
+        element.needsSpaceAfter
+      ));
+    }
+    
+    if (words.length === 1 && trimmed.length > 0) {
+      words.push(createWord(3, trimmed, true, true));
+    }
+    
+    return words;
+  };
+
+  const parseReference = (reference: string): Word[] => {
+    if (!reference.trim()) return [];
+    
+    const colonIndex = reference.indexOf(':');
+    
+    if (colonIndex > 0) {
+      const { book, chapter } = parseBookAndChapter(reference.substring(0, colonIndex).trim());
+      const referenceWords: Word[] = [];
+      if (book) referenceWords.push(book);
+      if (chapter) referenceWords.push(chapter);
+      if (reference.substring(colonIndex + 1).trim()) {
+        referenceWords.push(...parseVerseReference(reference.substring(colonIndex + 1).trim()));
+      }
+      return referenceWords;
+    }
+    
+    const { book, chapter } = parseBookAndChapter(reference);
+    const referenceWords: Word[] = [];
+    if (book) referenceWords.push(book);
+    if (chapter) referenceWords.push(chapter);
+    if (referenceWords.length === 0) {
+      referenceWords.push(createWord(0, reference.trim(), false, true));
+    }
+    return referenceWords;
+  };
+
+  const parseVerseText = (verses: Array<{ text: string }>): Word[] => {
+    const fullText = verses.map(v => v.text).join(' ');
+    return fullText.split(' ').filter(w => w.length > 0).map((word, i) => 
+      createWord(i + 1000, word, false, true)
+    );
+  };
+
+  // Hide words for current stage
+  const hideWordsForStage = (words: Word[], stage: number): Word[] => {
+    if (stage === 1) {
+      return words.map(w => ({ ...w, isVisible: true }));
+    }
+
+    const totalHidePercent = (stage - 1) * HIDE_PERCENTAGE_PER_STAGE;
+    const verseTextStartIndex = words.findIndex(w => w.id >= 1000);
+    if (verseTextStartIndex === -1) return words;
+    
+    const verseWords = words.slice(verseTextStartIndex);
+    const referenceWords = words.slice(0, verseTextStartIndex);
+    
+    // Calculate total words (reference + verse) for percentage calculation
+    const totalWords = words.length;
+    const totalWordsToHide = Math.floor(totalWords * totalHidePercent);
+    
+    // Create a combined pool of all available visible word indices
+    // Each index is mapped to include whether it's a reference or verse word
+    const availableIndices: Array<{ type: 'reference' | 'verse'; index: number; wordIndex: number }> = [];
+    
+    // Add reference word indices (wordIndex is the position in the referenceWords array)
+    referenceWords.forEach((word, refIndex) => {
+      if (word.isVisible) {
+        availableIndices.push({ type: 'reference', index: refIndex, wordIndex: refIndex });
+      }
+    });
+    
+    // Add verse word indices (wordIndex is the position in the verseWords array)
+    verseWords.forEach((word, verseIndex) => {
+      if (word.isVisible) {
+        availableIndices.push({ type: 'verse', index: verseIndex, wordIndex: verseIndex });
+      }
+    });
+    
+    // Randomly shuffle all available indices together
+    const shuffled = [...availableIndices].sort(() => Math.random() - 0.5);
+    
+    // Select words to hide from the combined pool
+    const indicesToHide = shuffled.slice(0, Math.min(totalWordsToHide, availableIndices.length));
+    
+    // Separate the indices back into reference and verse
+    const referenceIndicesToHide = new Set<number>();
+    const verseIndicesToHide = new Set<number>();
+    
+    indicesToHide.forEach(item => {
+      if (item.type === 'reference') {
+        referenceIndicesToHide.add(item.wordIndex);
+      } else {
+        verseIndicesToHide.add(item.wordIndex);
+      }
+    });
+    
+    // Update verse words
+    const updatedVerseWords = verseWords.map((word, index) => ({
+      ...word,
+      isVisible: !verseIndicesToHide.has(index),
+    }));
+    
+    // Update reference words
+    const updatedReferenceWords = referenceWords.map((word, index) => ({
+      ...word,
+      isVisible: !referenceIndicesToHide.has(index),
+    }));
+    
+    return [...updatedReferenceWords, ...updatedVerseWords];
+  };
+
+  // Initialize
   useEffect(() => {
-    if (!editingUserVerse || !editingUserVerse.verses || editingUserVerse.verses.length === 0) {
+    if (!editingUserVerse?.verses?.length) {
       Alert.alert('Error', 'No passage to practice');
       router.back();
       return;
     }
 
     const reference = editingUserVerse.readableReference || '';
-    const referenceParts: string[] = [];
+    const referenceWords = parseReference(reference);
+    const verseTextWords = parseVerseText(editingUserVerse.verses);
+    const all = [...referenceWords, ...verseTextWords];
     
-    // Parse "Book Chapter:Verse" format
-    const colonIndex = reference.indexOf(':');
-    if (colonIndex > 0) {
-      const beforeColon = reference.substring(0, colonIndex).trim();
-      const afterColon = reference.substring(colonIndex + 1).trim();
-      
-      const beforeParts = beforeColon.split(' ');
-      const book = beforeParts.slice(0, -1).join(' ');
-      const chapter = beforeParts[beforeParts.length - 1];
-      
-      if (book) referenceParts.push(book);
-      if (chapter) referenceParts.push(chapter);
-      if (afterColon) referenceParts.push(afterColon);
-    } else {
-      referenceParts.push(reference);
-    }
-
-    const fullText = editingUserVerse.verses.map(v => v.text).join(' ');
-    const wordArray = fullText.split(' ').filter(word => word.length > 0);
-    const allWords = [...referenceParts, ...wordArray];
-    
-    const progressPercent = editingUserVerse.progressPercent || 0;
-    const totalWords = allWords.length;
-    const wordsToShow = Math.max(1, Math.floor(totalWords * (progressPercent / 100) * 0.50));
-    
-    // Calculate spacing to evenly distribute visible words
-    const spacing = totalWords / wordsToShow;
-    
-    const initialWords: WordDisplay[] = allWords.map((word, index) => {
-      const showIndex = Math.floor(index / spacing);
-      const isVisible = showIndex < wordsToShow;
-      
-      return {
-        id: index,
-        word,
-        isVisible,
-        typedLetter: null,
-        isCorrect: null,
-      };
-    });
-    
-    setWords(initialWords);
-    setCurrentProgress(progressPercent);
+    setAllWords(all);
+    setDisplayWords(hideWordsForStage(all, 1));
+    setCurrentStage(1);
+    setHighestCompletedStage(1);
+    setStageHistory([]);
     setCurrentWordIndex(0);
+    setUserInput('');
+    setTypedWords([]);
   }, [editingUserVerse]);
 
-  const visibleWords = words.filter(w => w.isVisible);
-
-  // Calculate how many words to hide based on progress (0% = all shown, 100% = almost all hidden)
-  const getWordsToHideCount = () => {
-    const total = visibleWords.length;
-    const hidePercent = currentProgress / 95;
-    const wordsToHide = Math.floor(total * hidePercent); // 95% max to keep some words visible
-    return wordsToHide;
-  };
-
-  // Get randomly selected word indices to hide
-  const getHiddenWordIndices = () => {
-    const wordsToHide = getWordsToHideCount();
-    const total = visibleWords.length;
-    const indices: number[] = [];
-    
-    // Randomly select which words to hide
-    const availableIndices = Array.from({ length: total }, (_, i) => i);
-    for (let i = 0; i < wordsToHide && availableIndices.length > 0; i++) {
-      const randomIndex = Math.floor(Math.random() * availableIndices.length);
-      indices.push(availableIndices.splice(randomIndex, 1)[0]);
-    }
-    
-    return new Set(indices);
-  };
-
-  const hiddenIndices = React.useMemo(() => getHiddenWordIndices(), [currentProgress]);
-
-  const getCompletedText = () => {
-    const completed = [];
-    
-    // Only show words that have been completed (isCorrect === true)
-    for (let i = 0; i < currentWordIndex; i++) {
-      const word = visibleWords[i];
-      if (word && word.isCorrect === true) {
-        completed.push(word.word);
-      }
-    }
-    
-    return completed.join(' ');
-  };
-
-  const handleInputChange = (text: string) => {
-    console.log('handleInputChange - text:', text, 'userInput:', userInput, 'currentWordIndex:', currentWordIndex);
-    
-    if (isComplete || currentWordIndex >= visibleWords.length) {
-      setUserInput('');
-      return;
-    }
-
-    const currentWord = visibleWords[currentWordIndex];
-    if (!currentWord) {
-      setUserInput('');
-      return;
-    }
-
-    console.log('Current word:', currentWord.word);
-    
-    const isNumber = typeof currentWord.word === "number";
-    
-    if (isNumber) {
-      // For numbers, extract just the current word's input from text
-      // The text contains completed words + current word input
-      // Take the last segment after splitting by space
-      const textParts = text.split(' ');
-      const currentInput = textParts[textParts.length - 1] || '';
-      
-      if (currentInput.length === 0) {
-        setUserInput('');
-        return;
-      }
-      
-      // Check if this input matches the expected number (progressive)
-      const expectedSubstring = currentWord.word.substring(0, currentInput.length);
-      
-      if (currentInput === expectedSubstring) {
-        // Correct partial or complete
-        setUserInput(currentInput);
-        
-        if (currentInput === currentWord.word) {
-          // Complete number typed - mark and move to next word
-          const updatedWords = words.map((w) => {
-            if (w.id === currentWord.id) {
-              return { ...w, typedLetter: currentWord.word, isCorrect: true };
-            }
-            return w;
-          });
-          setWords(updatedWords);
-          moveToNextWord(updatedWords);
-        }
-      } else {
-        // Wrong input for number - clear
-        setUserInput('');
-      }
-    } else {
-      // For text words, only first letter matters
-      // Extract just the current word's input from text
-      const textParts = text.split(' ');
-      const currentInput = textParts[textParts.length - 1] || '';
-      
-      if (currentInput.length === 0) {
-        setUserInput('');
-        return;
-      }
-      
-      const firstChar = currentInput.charAt(0);
-      const expectedChar = currentWord.word.charAt(0);
-      
-      console.log('Checking first letter - got:', firstChar, 'expected:', expectedChar);
-      
-      if (firstChar.toLowerCase() === expectedChar.toLowerCase()) {
-        // Correct first letter - fill in the whole word immediately without showing single letter
-        // Batch the state updates to happen in one render cycle
-        setUserInput(currentWord.word);
-        
-        // Mark word as complete
-        const updatedWords = words.map((w) => {
-          if (w.id === currentWord.id) {
-            return { ...w, typedLetter: currentWord.word, isCorrect: true };
-          }
-          return w;
-        });
-        setWords(updatedWords);
-        
-        moveToNextWord(updatedWords);
-      } else {
-        // Wrong letter - clear
-        setUserInput('');
-      }
-    }
-  };
-
-  const moveToNextWord = (updatedWords: WordDisplay[]) => {
-    const nextIndex = currentWordIndex + 1;
-    
-    setUserInput('');
-    
-    if (nextIndex >= visibleWords.length) {
-      const allCorrect = updatedWords.filter(w => w.isVisible).every(w => w.isCorrect === true);
-      if (allCorrect) {
-        advanceToNextLevel(updatedWords);
-      } else {
-        setCurrentWordIndex(0);
-      }
-    } else {
-      setCurrentWordIndex(nextIndex);
-      inputRef.current?.focus();
-    }
-  };
-
-  const advanceToNextLevel = (currentWords: WordDisplay[]) => {
-    const completedVisibleWords = currentWords.filter(w => w.isVisible);
-    const totalWords = currentWords.length;
-    const currentProgressPercent = currentProgress;
-    
-    // Calculate the percentage of words to hide based on progress
-    // As progress increases, hide fewer words (less help needed)
-    // Early stages (0-30%): hide 25% of words
-    // Mid stages (30-70%): hide 15% of words
-    // Late stages (70-90%): hide 10% of words
-    // Final stage (90%+): hide 5% of words
-    let hidePercentage: number;
-    if (currentProgressPercent < 30) {
-      hidePercentage = 0.25; // 25% of words hidden
-    } else if (currentProgressPercent < 70) {
-      hidePercentage = 0.15; // 15% of words hidden
-    } else if (currentProgressPercent < 90) {
-      hidePercentage = 0.10; // 10% of words hidden
-    } else {
-      hidePercentage = 0.00; // 5% of words hidden
-    }
-    
-    const wordsToHide = Math.max(1, Math.floor(completedVisibleWords.length * hidePercentage));
-    
-    // Randomly select words to hide
-    const visibleWordIds = completedVisibleWords.map(w => w.id);
-    const shuffledIds = visibleWordIds.sort(() => Math.random() - 0.5);
-    const idsToHide = shuffledIds.slice(0, wordsToHide);
-    
-    let hiddenCount = 0;
-    const updatedWords = currentWords.map(word => {
-      if (word.isVisible && idsToHide.includes(word.id) && hiddenCount < wordsToHide) {
-        hiddenCount++;
-        return { ...word, isVisible: false, typedLetter: null, isCorrect: null };
-      }
-      return { ...word, typedLetter: null, isCorrect: null };
-    });
-    
-    setWords(updatedWords);
+  // Update display when stage changes
+  useEffect(() => {
+    setDisplayWords(hideWordsForStage(allWords, currentStage));
     setCurrentWordIndex(0);
+    setUserInput('');
+    setTypedWords([]);
+  }, [currentStage, allWords]);
+
+// Input handler
+  const handleInputChange = (text: string) => {
+    if (currentWordIndex >= allWords.length) return;
+
+    const currentWord = allWords[currentWordIndex];
     
-    // Increment progress by a larger amount (20-25% per completion)
-    // This means about 4 rounds from start to finish
-    const progressIncrement = 20; // Random between 20-25%
-    const remainingVisible = updatedWords.filter(w => w.isVisible).length;
-    const calculatedProgress = Math.round((1 - remainingVisible / totalWords) * 100);
-    const newProgress = Math.min(100, currentProgressPercent + progressIncrement);
+    // Check if current word is punctuation that should be auto-completed
+    const isPunctuation = ['-', ':', ','].includes(currentWord.word);
+    const isNumber = currentWord.isNumber;
     
-    setCurrentProgress(newProgress);
+    const currentDisplayed = getDisplayedInput();
+
+    // Handle backspace - compare without spaces
+    const textNoSpacesForBackspace = text.replace(/\s/g, '');
+    const currentDisplayedNoSpaces = currentDisplayed.replace(/\s/g, '');
     
-    // Save progress
-    if (editingUserVerse) {
-      const updatedUserVerse: UserVerse = {
-        ...editingUserVerse,
-        progressPercent: newProgress,
-        lastPracticed: new Date(),
-      };
+    if (textNoSpacesForBackspace.length < currentDisplayedNoSpaces.length) {
+      if (userInput.length > 0) {
+        setUserInput(userInput.slice(0, -1));
+      }
+      return;
+    }
+
+    // Build expected text (for comparison)
+    const buildExpectedText = (includeCurrentInput: boolean, includeNextChar: boolean): string => {
+      let expected = '';
+      for (let i = 0; i < typedWords.length; i++) {
+        expected += typedWords[i];
+        if (allWords[i]?.showSpace) expected += ' ';
+      }
+      if (includeCurrentInput) {
+        expected += userInput;
+        if (includeNextChar && userInput.length < currentWord.word.length) {
+          expected += currentWord.word[userInput.length];
+        }
+      }
+      return expected;
+    };
+
+    // Auto-complete punctuation
+    if (isPunctuation) {
+      setUserInput(currentWord.word);
+      setTimeout(() => handleCorrectWord(), 100);
+      return;
+    }
+
+    // For numbers: check character by character
+    if (isNumber) {
+      const expectedChar = currentWord.word[userInput.length];
       
-      updateUserVerseAPI(updatedUserVerse).catch(error => {
-        console.error('Failed to update progress:', error);
-      });
+      if (!expectedChar) return; // Word complete
       
-      useAppStore.getState().setEditingUserVerse(updatedUserVerse);
+      // Get the actual new input (strip spaces for comparison)
+      const currentExpectedNoSpaces = buildExpectedText(true, false).replace(/\s/g, '');
+      const textNoSpaces = text.replace(/\s/g, '');
       
-      // Update the userVerse in all collections where it appears
-      collections.forEach(collection => {
-        const userVerseIndex = collection.userVerses.findIndex(uv => 
-          uv.readableReference === updatedUserVerse.readableReference
-        );
+      // Check if user typed the next expected character
+      if (textNoSpaces === currentExpectedNoSpaces + expectedChar) {
+        // Correct - add the character
+        const newInput = userInput + expectedChar;
+        setUserInput(newInput);
         
-        if (userVerseIndex !== -1) {
-          const updatedCollection = {
-            ...collection,
-            userVerses: collection.userVerses.map((uv, index) => 
-              index === userVerseIndex ? updatedUserVerse : uv
-            )
-          };
-          updateCollection(updatedCollection);
+        // If word complete, move to next
+        if (newInput === currentWord.word) {
+          setTimeout(() => handleCorrectWord(), 100);
         }
-      });
-      
-      // Check if today already has activity in the streak (normalize to local date)
-      const toLocalYMD = (s: string) => {
-        const ymd = s.slice(0, 10);
-        const [y, m, d] = ymd.split('-').map(Number);
-        const dt = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
-        const year = dt.getFullYear();
-        const month = String(dt.getMonth() + 1).padStart(2, '0');
-        const day = String(dt.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      };
-      const todayLocal = (() => {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      })();
-      const todayHasActivity = user.streak?.some(s => toLocalYMD(s.date) === todayLocal) || false;
-      
-      // Record practice session for streak tracking
-      recordPractice(user.username).then(streakLength => {
-        if (streakLength > 0) {
-          // Only show snackbar if today didn't have activity before this practice session
-          if (!todayHasActivity) {
-            setSnackbarMessage(`🔥 You completed your streak for today!`);
-            setSnackbarVisible(true);
-          }
-          
-          // Update user streak in store
-          setUser({
-            ...user,
-            streakLength: streakLength
-          });
+      } else if (textNoSpaces.length <= currentExpectedNoSpaces.length) {
+        // User typed space or hasn't typed next char yet - ignore
+        return;
+      } else if (textNoSpaces.startsWith(currentExpectedNoSpaces) && textNoSpaces.length > currentExpectedNoSpaces.length) {
+        // User typed something after current position - check if it's wrong
+        const extraChar = textNoSpaces[currentExpectedNoSpaces.length];
+        if (extraChar !== expectedChar) {
+          handleIncorrectInput();
         }
-      }).catch(error => {
-        console.error('Failed to record practice:', error);
-      });
-    }
-    
-    // Check if complete
-    if (remainingVisible === 0 || newProgress >= 100) {
-      setIsComplete(true);
-      
-      // Set the flag to reload practice list when user returns to practice tab
-      const setShouldReloadPracticeList = useAppStore.getState().setShouldReloadPracticeList;
-      if (setShouldReloadPracticeList) {
-        setShouldReloadPracticeList(true);
+      } else {
+        // Text doesn't match at all - wrong input
+        handleIncorrectInput();
       }
-      
-      // Increment verse memorized count for each verse in the passage
-      if (editingUserVerse?.verses && editingUserVerse.verses.length > 0) {
-        editingUserVerse.verses.forEach(verse => {
-          if (verse.verse_reference) {
-            incrementVerseMemorized(verse.verse_reference).catch(error => {
-              console.error('Failed to increment verse memorized:', error);
-            });
-          }
-        });
-      }
-      
-      // Increment user's verses memorized count
-      if (user.username) {
-        incrementVersesMemorized(user.username).catch(error => {
-          console.error('Failed to increment user verses memorized:', error);
-        });
-      }
-      
-      router.back();
     } else {
-        inputRef.current?.focus();
+      // For regular words: check first letter then auto-complete
+      if (userInput.length === 0) {
+        const textNoSpaces = text.replace(/\s/g, '');
+        const expectedNoSpaces = buildExpectedText(false, false).replace(/\s/g, '');
+        const remainingText = textNoSpaces.slice(expectedNoSpaces.length);
+        
+        if (remainingText.length > 0) {
+          const firstChar = remainingText[0].toLowerCase();
+          const wordFirstChar = currentWord.word[0].toLowerCase();
+          
+          if (firstChar === wordFirstChar) {
+            setUserInput(currentWord.word);
+            setTimeout(() => handleCorrectWord(), 100);
+          } else {
+            handleIncorrectInput();
+          }
+        }
+      } else {
+        // Already auto-completed
+        handleIncorrectInput();
+      }
     }
   };
 
-  const getFullText = () => {
-    return editingUserVerse?.verses.map(v => v.text).join(' ') || '';
+  // Handle word completion
+  const handleCorrectWord = () => {
+    if (currentWordIndex >= allWords.length) return;
+
+    const currentWord = allWords[currentWordIndex];
+    setTypedWords([...typedWords, currentWord.word]);
+    const nextIndex = currentWordIndex + 1;
+    setCurrentWordIndex(nextIndex);
+    setUserInput('');
+
+    // Check if stage complete
+    if (nextIndex >= allWords.length) {
+      if (currentStage < TOTAL_STAGES) {
+        setTimeout(() => {
+          const nextStage = currentStage + 1;
+          setStageHistory(prev => [...prev, currentStage]);
+          setCurrentStage(nextStage);
+          // Update highest completed stage if advancing to a new stage
+          if (nextStage > highestCompletedStage) {
+            setHighestCompletedStage(nextStage);
+          }
+        }, 500);
+      } else {
+        setTimeout(() => handleCompleted(), 500);
+        // Update highest completed stage if this was the last stage
+        if (currentStage === TOTAL_STAGES && currentStage > highestCompletedStage) {
+          setHighestCompletedStage(TOTAL_STAGES);
+        }
+      }
+    }
   };
 
-  if (!editingUserVerse || !editingUserVerse.verses || editingUserVerse.verses.length === 0) {
+  // Handle incorrect input
+  const handleIncorrectInput = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    setUserInput('');
+  };
+
+  const handleCompleted = () => {
+    // 
+  }
+
+  // Handle going back to previous stage
+  // Going back is permanent - user must re-type from that stage
+  const handleGoBack = () => {
+    if (currentStage > 1) {
+      const previousStage = currentStage - 1;
+      setStageHistory(prev => [...prev, currentStage]);
+      setCurrentStage(previousStage);
+      // Reset progress - user must re-type the verse
+      setCurrentWordIndex(0);
+      setUserInput('');
+      setTypedWords([]);
+      // Update highest completed stage to the previous stage
+      // This prevents skipping ahead
+      setHighestCompletedStage(previousStage);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  // Build displayed input text
+  const getDisplayedInput = (): string => {
+    let displayed = '';
+    for (let i = 0; i < typedWords.length; i++) {
+      displayed += typedWords[i];
+      // Add space if next word wants space before it (showSpace: true)
+      // Exception: never add space before colons
+      const nextWord = allWords[i + 1];
+      const shouldAddSpace = nextWord && nextWord.showSpace && nextWord.word !== ':';
+      if (shouldAddSpace) displayed += ' ';
+    }
+    displayed += userInput;
+    return displayed;
+  };
+
+  // Calculate progress
+  const calculateProgress = (): number => {
+    if (allWords.length === 0) return 0;
+    return Math.min((currentWordIndex / allWords.length) * 100, 100);
+  };
+
+  if (!editingUserVerse?.verses?.length) {
     return null;
   }
+
+  const inputStyle = {
+    ...styles.text,
+    fontFamily: 'Noto Serif',
+    fontSize: 18,
+    color: theme.colors.onBackground,
+    flex: 1,
+    textAlignVertical: 'top' as const,
+    padding: 0,
+    margin: 0,
+    minHeight: MIN_STAGE_HEIGHT,
+  };
 
   return (
     <>
       <Stack.Screen
         options={{
-          title: `${Math.floor(currentProgress)}%`,
+          title: editingUserVerse.readableReference,
           headerBackVisible: true,
-          headerStyle: {
-            backgroundColor: theme.colors.surface,
-          },
+          headerStyle: { backgroundColor: theme.colors.surface },
           headerTintColor: theme.colors.onBackground,
+          headerShadowVisible: false,
         }}
       />
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -418,73 +580,98 @@ export default function PracticeSessionScreen() {
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
         >
-          {/* Input box for typing - two layers */}
-          <View style={{ position: 'relative', marginBottom: 20, minHeight: 200, maxHeight: 400 }}>
-            <View style={{ padding: 20, borderRadius: 8, backgroundColor: theme.colors.surface, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-              {/* Background layer - shows all upcoming words with transparency based on progress */}
-              <Text style={{ 
-                ...styles.text, 
-                fontFamily: 'Noto Serif', 
-                fontSize: 18, 
-                color: theme.colors.onBackground, 
+          <ProgressBar 
+            currentStage={currentStage} 
+            totalStages={TOTAL_STAGES}
+            progressPercent={calculateProgress()}
+            highestCompletedStage={highestCompletedStage}
+            theme={theme}
+          />
+
+          {/* Previous stage button */}
+          <TouchableOpacity
+            onPress={handleGoBack}
+            disabled={currentStage <= 1}
+            style={{
+              alignSelf: 'flex-start',
+              marginTop: 8,
+              marginBottom: 12,
+              paddingVertical: 8,
+              paddingHorizontal: 0,
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{
+              fontSize: 14,
+              color: currentStage <= 1 ? theme.colors.onSurfaceVariant : theme.colors.primary,
+              opacity: currentStage <= 1 ? 0.5 : 1,
+              marginTop: -20
+            }}>
+              Previous stage
+            </Text>
+          </TouchableOpacity>
+          
+          <View style={{ position: 'relative', marginBottom: 20, minHeight: MIN_STAGE_HEIGHT }}>
+            {/* Background text */}
+            <View style={{ 
+              padding: 20, 
+              borderRadius: 8, 
+              backgroundColor: theme.colors.surface 
+            }}>
+              <Text style={{
+                ...styles.text,
+                fontFamily: 'Noto Serif',
+                fontSize: 18,
+                color: theme.colors.onBackground,
                 opacity: 0.7,
-                paddingTop: 0,
-                paddingLeft: 0,
-                paddingRight: 0,
-                paddingBottom: 0,
-                marginTop: 0,
-                marginLeft: 0,
-                marginRight: 0,
-                marginBottom: 0,
+                padding: 0,
+                margin: 0,
               }}>
-                {visibleWords.map((w, index) => {
-                  const isHidden = hiddenIndices.has(index);
+                {displayWords.map((w, index) => {
+                  const space = w.showSpace && index > 0 ? ' ' : '';
+                  const shouldHide = !w.isVisible;
                   return (
-                    <Text key={w.id} style={{ color: isHidden ? theme.colors.surface : undefined }}>
-                      {w.word}
-                      {index < visibleWords.length - 1 ? ' ' : ''}
+                    <Text 
+                      key={`${w.id}-${index}`} 
+                      style={{ 
+                        color: shouldHide ? theme.colors.surface : undefined,
+                        opacity: shouldHide ? 0 : 0.7,
+                      }}
+                    >
+                      {space}{w.word}
                     </Text>
                   );
                 })}
               </Text>
             </View>
             
-            {/* Foreground layer - shows completed full words in green */}
-            <View style={{ padding: 20, borderRadius: 8, backgroundColor: 'transparent', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+            {/* Input overlay */}
+            <View style={{ 
+              position: 'absolute', 
+              top: 0, left: 0, right: 0, bottom: 0,
+              padding: 20,
+              borderRadius: 8, 
+              backgroundColor: 'transparent' 
+            }}>
               <TextInput
                 ref={inputRef}
-                value={getCompletedText() + (getCompletedText() ? ' ' : '') + userInput}
+                value={getDisplayedInput()}
                 onChangeText={handleInputChange}
-                style={{
-                  ...styles.text,
-                  fontFamily: 'Noto Serif',
-                  fontSize: 18,
-                  color: theme.colors.onBackground,
-                  flex: 1,
-                  textAlignVertical: 'top',
-                  paddingTop: 0,
-                  paddingLeft: 0,
-                  paddingRight: 0,
-                  paddingBottom: 0,
-                  marginTop: 0,
-                  marginLeft: 0,
-                  marginRight: 0,
-                  marginBottom: 0,
-                }}
+                style={inputStyle}
                 multiline
                 autoFocus
                 autoCapitalize="none"
                 autoCorrect={false}
-                blurOnSubmit={false}
-                keyboardType="default"
-                scrollEnabled={true}
-                underlineColorAndroid="transparent"
+                scrollEnabled
                 spellCheck={false}
+                underlineColorAndroid="transparent"
+                selectionColor={theme.colors.primary}
+                selection={{ start: getDisplayedInput().length, end: getDisplayedInput().length }}
               />
             </View>
           </View>
-
         </ScrollView>
+        
         <Snackbar
           visible={snackbarVisible}
           onDismiss={() => setSnackbarVisible(false)}
@@ -492,10 +679,7 @@ export default function PracticeSessionScreen() {
           style={{ 
             backgroundColor: theme.colors.primary,
             position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            margin: 0
+            top: 0, left: 0, right: 0, margin: 0
           }}
           wrapperStyle={{ top: 0 }}
         >
