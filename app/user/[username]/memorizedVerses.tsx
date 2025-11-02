@@ -2,7 +2,8 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { Surface } from 'react-native-paper';
-import { getAllUserVerses, populateVersesForUserVerses } from '../../db';
+import { formatDate, getUTCTimestamp, parseUTCDate } from '../../dateUtils';
+import { getMemorizedUserVerses } from '../../db';
 import { UserVerse } from '../../store';
 import useStyles from '../../styles';
 import useAppTheme from '../../theme';
@@ -24,30 +25,11 @@ export default function FriendMemorizedVersesScreen() {
     try {
       setLoading(true);
       
-      const allUserVerses = await getAllUserVerses(username!);
-      
-      const memorized = allUserVerses.filter(
-        (uv) => uv.progressPercent === 100
-      );
-      
-      const populated = await populateVersesForUserVerses(memorized);
-
-      const withIds: UserVerse[] = populated.map(uv => ({
-        ...uv,
-        clientId: (globalThis as any)?.crypto?.randomUUID?.() ?? 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-          return v.toString(16);
-        })
-      }));
+      setMemorizedVerses(await getMemorizedUserVerses(username));
 
       const getTime = (uv: UserVerse) => {
-        const d: any = uv.lastPracticed || uv.dateMemorized;
-        if (!d) return 0;
-        try { return new Date(d as any).getTime(); } catch { return 0; }
+        return getUTCTimestamp(uv.lastPracticed || uv.dateMemorized);
       };
-      const sorted = withIds.sort((a, b) => getTime(b) - getTime(a));
-      
-      setMemorizedVerses(sorted);
     } catch (error) {
       console.error('Failed to load memorized verses:', error);
       setMemorizedVerses([]);
@@ -129,10 +111,12 @@ export default function FriendMemorizedVersesScreen() {
                       fontSize: 12
                     }}>
                       {(() => {
-                        const d: any = userVerse.lastPracticed || userVerse.dateMemorized;
-                        const dt = d ? new Date(d as any) : undefined;
+                        const d = userVerse.lastPracticed || userVerse.dateMemorized;
+                        if (!d) return '';
+                        const dt = parseUTCDate(d);
+                        if (!dt) return '';
                         const label = userVerse.lastPracticed ? 'Last practiced' : 'Memorized on';
-                        return dt ? `${label}: ${dt.toLocaleDateString()}` : '';
+                        return `${label}: ${formatDate(dt)}`;
                       })()}
                     </Text>
                   </View>

@@ -12,6 +12,7 @@ import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, get
 import { Collection, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
+import { getUTCTimestamp } from '../dateUtils';
 
 const { height } = Dimensions.get('window');
 
@@ -48,8 +49,8 @@ function orderNewest(collections: Collection[]): Collection[] {
   const withoutDates = collections.filter(c => !c.dateCreated);
   
   const sortedWithDates = withDates.sort((a: Collection, b: Collection) => {
-    const dateA = new Date(a.dateCreated || '').getTime();
-    const dateB = new Date(b.dateCreated || '').getTime();
+    const dateA = getUTCTimestamp(a.dateCreated);
+    const dateB = getUTCTimestamp(b.dateCreated);
     return dateB - dateA;
   });
   

@@ -8,6 +8,7 @@ import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
 import { createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory } from './db';
+import { formatDate as formatDateUtil } from './dateUtils';
 
 export default function AdminScreen() {
   const styles = useStyles();
@@ -225,8 +226,7 @@ export default function AdminScreen() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return formatDateUtil(dateString);
   };
 
   return (

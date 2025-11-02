@@ -1,11 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Divider } from 'react-native-paper';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import FriendCollectionItem from '../components/friendCollectionItem';
 import { ProfileSkeleton } from '../components/skeleton';
-import { getAllUserVerses, getStreakLength, getUserFriendCollections, getUserProfile, removeFriend, submitUserReport } from '../db';
+import { minutesSince, parseUTCDate } from '../dateUtils';
+import { getMemorizedUserVerses, getStreakLength, getUserFriendCollections, getUserProfile } from '../db';
 import { Collection, useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -41,27 +41,12 @@ export default function UserProfileScreen() {
   //                 Helper renderers
   // ***************************************************
   const parseLastSeen = (lastSeenValue: unknown): Date | null => {
-    if (!lastSeenValue) return null;
-    const lastSeenStr = lastSeenValue.toString();
-    if (lastSeenStr.includes('Z') || lastSeenStr.includes('+') || (lastSeenStr.includes('-') && lastSeenStr.match(/[+-]\d{2}:\d{2}$/))) {
-      const d = new Date(lastSeenStr);
-      return isNaN(d.getTime()) ? null : d;
-    } else {
-      const d = new Date(lastSeenStr + 'Z');
-      return isNaN(d.getTime()) ? null : d;
-    }
-  };
-
-  const minutesSince = (date: Date | null): number | null => {
-    if (!date) return null;
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    return Math.floor(Math.abs(diffMs) / 60000);
+    return parseUTCDate(lastSeenValue as Date | string | undefined);
   };
 
   const renderActiveStatusDot = (lastSeenValue: unknown) => {
     const lastSeenDate = parseLastSeen(lastSeenValue);
-    const diffMins = minutesSince(lastSeenDate);
+    const diffMins = minutesSince(lastSeenValue as Date | string | undefined);
     const isActive = diffMins !== null && diffMins < 1;
     if (!isActive) return null;
     return (
@@ -80,8 +65,7 @@ export default function UserProfileScreen() {
   };
 
   const renderLastSeenTextEl = (lastSeenValue: unknown) => {
-    const lastSeenDate = parseLastSeen(lastSeenValue);
-    const diffMins = minutesSince(lastSeenDate);
+    const diffMins = minutesSince(lastSeenValue as Date | string | undefined);
     if (diffMins === null) return null;
     if (diffMins < 1) {
       return (
@@ -166,31 +150,23 @@ export default function UserProfileScreen() {
       }
 
       try {
-        const verses = await getAllUserVerses(username!);
-        const count = verses.filter(v => (v as any).progressPercent === 100).length;
-        setMemorizedCount(count);
+        const memorized = await getMemorizedUserVerses(username!);
+        setMemorizedCount(memorized.length);
       } catch (error) {
         console.error('Failed to fetch memorized count for friend:', error);
         setMemorizedCount(0);
       }
 
       if (user.lastSeen) {
-        const lastSeenStr = user.lastSeen.toString();
-        let lastSeen: Date;
-        
-        if (lastSeenStr.includes('Z') || lastSeenStr.includes('+') || (lastSeenStr.includes('-') && lastSeenStr.match(/[+-]\d{2}:\d{2}$/))) {
-          lastSeen = new Date(lastSeenStr);
-        } else {
-          lastSeen = new Date(lastSeenStr + 'Z');
+        const lastSeen = parseUTCDate(user.lastSeen);
+        if (lastSeen) {
+          const now = new Date();
+          console.log('Last seen parsed (ISO):', lastSeen.toISOString());
+          console.log('Now (ISO):', now.toISOString());
+          const diffMins = minutesSince(user.lastSeen);
+          const diffHours = diffMins ? Math.floor(diffMins / 60) : null;
+          console.log('Diff (minutes):', diffMins, 'Diff (hours):', diffHours);
         }
-        
-        const now = new Date();
-        console.log('Last seen parsed (ISO):', lastSeen.toISOString());
-        console.log('Now (ISO):', now.toISOString());
-        const diffMs = now.getTime() - lastSeen.getTime();
-        const diffMins = Math.floor(Math.abs(diffMs) / 60000);
-        const diffHours = Math.floor(Math.abs(diffMs) / 3600000);
-        console.log('Diff (ms):', diffMs, 'Diff (minutes):', diffMins, 'Diff (hours):', diffHours);
       }
     } catch (error) {
       console.error('Failed to load profile:', error);
@@ -272,10 +248,9 @@ export default function UserProfileScreen() {
 
         {profileUser.description && (
           <View style={{ 
-            backgroundColor: theme.colors.surface, 
             borderRadius: 12, 
-            padding: 16, 
-            marginBottom: 20 
+            marginBottom: 20,
+            marginTop: -10
           }}>
             <Text style={{
               fontSize: 14,
@@ -288,66 +263,87 @@ export default function UserProfileScreen() {
           </View>
         )}
 
-        <View style={{ flexDirection: 'row', marginBottom: 30, gap: 20 }}>
-          <TouchableOpacity 
-            style={{ 
-              flex: 1, 
-              backgroundColor: theme.colors.surface, 
-              borderRadius: 12, 
-              padding: 20,
-              alignItems: 'center' 
-            }}
-            onPress={() => router.push(`/user/${profileUser.username}/streak`)}
-          >
-            <Ionicons name="flame" size={32} color="#FF6B35" />
-            <Text style={{ 
-              fontSize: 32, 
-              fontWeight: 'bold', 
-              color: theme.colors.onBackground,
-              marginTop: 8,
-              fontFamily: 'Inter'
+        {/* Stats Row */}
+        <View style={{ 
+          flexDirection: 'row', 
+          marginBottom: 10,
+          width: '100%',
+        }}>
+          {/* Day Streak */}
+          <View style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}>
+            <View style={{
+              justifyContent: 'center',
+              marginTop: -10
             }}>
-              {streakLength}
-            </Text>
-            <Text style={{ 
-              fontSize: 14, 
-              color: theme.colors.onSurfaceVariant,
-              marginTop: 4,
-              fontFamily: 'Inter'
+              <Ionicons name="flame" size={52} color={theme.colors.onBackground} />
+            </View>
+            <View style={{
+              flexDirection: 'column',
+              justifyContent: 'center',
             }}>
-              Day Streak
-            </Text>
-          </TouchableOpacity>
+              <Text style={{
+                  ...styles.text, 
+                  marginBottom: -7,
+                  marginTop: -5,
+                  fontSize: 36,
+                  fontWeight: 800,
+                  color: theme.colors.onBackground,
+                }}>
+                {streakLength}
+              </Text>
+              <Text style={{
+                ...styles.text, 
+                margin: 0, 
+                fontSize: 14,
+                color: theme.colors.onSurfaceVariant,
+              }}>
+                Day Streak
+              </Text>
+            </View>
+          </View>
 
-          <TouchableOpacity 
-            style={{ 
-              flex: 1, 
-              backgroundColor: theme.colors.surface, 
-              borderRadius: 12, 
-              padding: 20,
-              alignItems: 'center' 
-            }}
-            onPress={() => router.push(`/user/${profileUser.username}/memorizedVerses`)}
-          >
-            <Ionicons name="checkmark-circle" size={32} color={theme.colors.primary} />
-            <Text style={{ 
-              fontSize: 32, 
-              fontWeight: 'bold', 
-              color: theme.colors.onBackground,
-              marginTop: 8,
-              fontFamily: 'Inter'
+          {/* Verses in Memory */}
+          <View style={{
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 15,
+          }}>
+            <View style={{
+              justifyContent: 'center',
+              marginTop: -18,
+              marginRight: 5
             }}>
-              {memorizedCount || 0}
-            </Text>
-            <Text style={{ 
-              fontSize: 14, 
-              color: theme.colors.onSurfaceVariant,
-              marginTop: 4,
-              fontFamily: 'Inter'
+              <Ionicons name="checkmark-done" size={58} color={theme.colors.onBackground} />
+            </View>
+            <View style={{
+              flexDirection: 'column',
+              justifyContent: 'center',
             }}>
-              Verses in Memory
-            </Text>
-          </TouchableOpacity>
+              <Text style={{
+                  ...styles.text, 
+                  marginBottom: -7,
+                  marginTop: -5,
+                  fontSize: 36,
+                  fontWeight: 800,
+                  color: theme.colors.onBackground,
+                }}>
+                {memorizedCount}
+              </Text>
+              <Text style={{
+                ...styles.text, 
+                margin: 0, 
+                fontSize: 14,
+                color: theme.colors.onSurfaceVariant,
+              }}>
+                Memorized
+              </Text>
+            </View>
+          </View>
         </View>
 
         {collections.length > 0 && (

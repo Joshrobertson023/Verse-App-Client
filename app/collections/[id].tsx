@@ -10,6 +10,7 @@ import AddPassage from '../components/addPassage';
 import PublishDialog from '../components/publishDialog';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
+import { formatISODate, getUTCTimestamp } from '../dateUtils';
 import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedInfo, getUserCollections, getUserVersesPopulated, notifyAuthorCollectionSaved, publishCollection, refreshUser, unpublishCollection, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
@@ -19,8 +20,8 @@ const { height } = Dimensions.get('window');
 
 function orderByDateAdded(userVerses: UserVerse[]): UserVerse[] {
   return [...userVerses].sort((a, b) => {
-    const dateA = a.dateAdded ? new Date(a.dateAdded).getTime() : 0;
-    const dateB = b.dateAdded ? new Date(b.dateAdded).getTime() : 0;
+    const dateA = getUTCTimestamp(a.dateAdded);
+    const dateB = getUTCTimestamp(b.dateAdded);
     return dateB - dateA;
   });
 }
@@ -118,7 +119,6 @@ export default function Index() {
       const refreshedUser = await refreshUser(user.username);
       setUser(refreshedUser);
 
-      // If source collection is published, notify the author
       try {
         await notifyAuthorCollectionSaved(user.username, collection.collectionId!);
       } catch (e) {
@@ -558,7 +558,7 @@ useEffect(() => {
                               </TouchableOpacity>
                               <View style={{alignSelf: 'flex-end', marginTop: 15}}>
                                 <View style={{}}>
-                                  <Text style={{...styles.tinyText}}>{userVerse.dateAdded ? new Date(userVerse.dateAdded).toISOString().slice(0, 10) : ''}</Text>
+                                  <Text style={{...styles.tinyText}}>{formatISODate(userVerse.dateAdded)}</Text>
                                 </View>
                               </View>
                             </View>

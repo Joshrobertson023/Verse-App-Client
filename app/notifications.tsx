@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Text, TouchableOpacity, View, Modal } from 'react-native';
+import { ActivityIndicator, FlatList, Text, TouchableOpacity, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { checkRelationship, getCollectionById, getUserNotificationsPaged, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, respondToFriendRequest, addUserVersesToNewCollection, updateCollectionDB, getUserCollections } from './db';
-import { Collection, Notification, UserVerse, Verse, useAppStore } from './store';
 import SaveVerseToCollectionSheet from './components/saveVerseToCollectionSheet';
+import { formatRelativeTime, isDateExpired } from './dateUtils';
+import { addUserVersesToNewCollection, checkRelationship, getCollectionById, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, respondToFriendRequest, updateCollectionDB } from './db';
+import { Collection, Notification, UserVerse, Verse, useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
 
@@ -19,7 +20,6 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [nextCursorCreated, setNextCursorCreated] = useState<string | null>(null);
   const [nextCursorId, setNextCursorId] = useState<number | null>(null);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -42,11 +42,10 @@ export default function NotificationsScreen() {
   const loadNotifications = async () => {
     try {
       setLoading(true);
-      const page = await getUserNotificationsPaged(user.username, 10);
+      const page = await getUserNotificationsTop(user.username, 10);
       const data: Notification[] = page.items;
-      setNextCursorCreated(page.nextCursorCreated ?? null);
       setNextCursorId(page.nextCursorId ?? null);
-      setHasMore(Boolean(page.nextCursorCreated && page.nextCursorId != null));
+      setHasMore(Boolean(page.nextCursorId != null));
 
       const friendRequestNotifications = data.filter((n: Notification) => n.notificationType === 'FRIEND_REQUEST');
       const acceptedSet = new Set<number>();
@@ -74,10 +73,10 @@ export default function NotificationsScreen() {
   };
 
   const loadMore = async () => {
-    if (isLoadingMore || !hasMore || !nextCursorCreated || nextCursorId == null) return;
+    if (isLoadingMore || !hasMore || nextCursorId == null) return;
     try {
       setIsLoadingMore(true);
-      const page = await getUserNotificationsPaged(user.username, 10, nextCursorCreated, nextCursorId);
+      const page = await getUserNotificationsPaged(user.username, 10, nextCursorId);
       const newItems: Notification[] = page.items;
 
       // update friend request accepted set for new items only
@@ -92,9 +91,9 @@ export default function NotificationsScreen() {
       }
 
       setNotifications((prev) => [...prev, ...newItems]);
-      setNextCursorCreated(page.nextCursorCreated ?? null);
       setNextCursorId(page.nextCursorId ?? null);
-      setHasMore(Boolean(page.nextCursorCreated && page.nextCursorId != null));
+      setHasMore(Boolean(page.nextCursorId != null));
+
     } catch (error) {
       console.error('Failed to load more notifications:', error);
     } finally {
@@ -138,42 +137,7 @@ export default function NotificationsScreen() {
 
 
   const formatTimestamp = (dateString: string) => {
-    // Parse the date - handle both UTC and local time formats
-    let date: Date;
-    
-    // Check if the string ends with Z (UTC indicator) or has timezone info
-    if (dateString.includes('Z') || dateString.includes('+') || dateString.includes('-') && dateString.match(/[+-]\d{2}:\d{2}$/)) {
-      // Date string has timezone info, parse as-is
-      date = new Date(dateString);
-    } else {
-      // Date string has no timezone info, assume UTC and treat as UTC
-      // Add Z to force UTC parsing
-      date = new Date(dateString + 'Z');
-    }
-    
-    const now = new Date();
-    
-    // Debug logging
-    console.log('Notification date string:', dateString);
-    console.log('Parsed date (ISO):', date.toISOString());
-    console.log('Parsed date (local):', date.toLocaleString());
-    console.log('Now (ISO):', now.toISOString());
-    console.log('Now (local):', now.toLocaleString());
-    
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(Math.abs(diffMs) / 60000);
-    const diffHours = Math.floor(Math.abs(diffMs) / 3600000);
-    const diffDays = Math.floor(Math.abs(diffMs) / 86400000);
-
-    console.log('Diff in ms:', diffMs, 'Diff hours:', diffHours);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} min ago`;
-    if (diffHours < 24) return `${diffHours} hr ago`;
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    
-    // Return formatted date if older than a week
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatRelativeTime(dateString);
   };
 
   const isSystemNotification = (notification: Notification) => {
@@ -181,9 +145,7 @@ export default function NotificationsScreen() {
   };
 
   const isExpired = (notification: Notification) => {
-    if (!notification.expirationDate) return false;
-    const expirationDate = new Date(notification.expirationDate);
-    return new Date() > expirationDate;
+    return isDateExpired(notification.expirationDate);
   };
 
   const parseSharedCollectionInfo = (message: string): { collectionId?: number; collectionTitle?: string } => {
@@ -210,28 +172,20 @@ export default function NotificationsScreen() {
     
     try {
       console.log('Fetching collection with ID:', collectionInfo.collectionId);
-      // Fetch the collection metadata (title, visibility, verseOrder, etc.)
       const collectionMetadata = await getCollectionById(collectionInfo.collectionId);
-      
-      // Fetch the userVerses with their verses populated
       const userVerses = await getUserVersesByCollectionWithVerses(collectionInfo.collectionId);
-      
-      // Update the username for each userVerse to be the current user
-      // Reset all progress fields to 0% since this is a new collection for the current user
-      // (the fetched userVerses have the original sharer's username and progress)
       const updatedUserVerses = userVerses.map((uv) => ({
         ...uv,
-        id: undefined, // Remove the ID since this will be a new userVerse
+        id: undefined,
         username: user.username,
-        collectionId: undefined, // Remove the collectionId since this will be a new collection
-        progressPercent: 0, // Reset progress
-        timesMemorized: 0, // Reset memorization count
-        lastPracticed: undefined, // Clear last practiced date
-        dateMemorized: undefined, // Clear memorization date
-        dateAdded: undefined, // Will be set when collection is created
+        collectionId: undefined,
+        progressPercent: 0,
+        timesMemorized: 0,
+        lastPracticed: undefined,
+        dateMemorized: undefined,
+        dateAdded: undefined,
       }));
       
-      // Create a new collection object with the fetched data
       const sharedCollection: Collection = {
         title: collectionMetadata.title,
         visibility: collectionMetadata.visibility,
@@ -240,11 +194,9 @@ export default function NotificationsScreen() {
         favorites: false,
       };
       
-      // Store the collection in the store so addnew.tsx can access it
       const { setNewCollection } = useAppStore.getState();
       setNewCollection(sharedCollection);
       
-      // Navigate to addnew page
       router.push('../collections/addnew');
     } catch (error) {
       console.error('Failed to view shared collection:', error);
@@ -255,7 +207,6 @@ export default function NotificationsScreen() {
 
   const renderNotificationIcon = (notification: Notification) => {
     if (isSystemNotification(notification)) {
-      // System notifications show shield icon
       return (
         <View style={{
           width: 48,
@@ -272,7 +223,6 @@ export default function NotificationsScreen() {
       );
     }
     
-    // Regular user notifications show person icon
     return (
       <View style={{
         width: 48,
@@ -482,18 +432,6 @@ export default function NotificationsScreen() {
             </View>
           )}
         </View>
-
-        {/* Dismiss button (disabled per requirements - don't allow deleting) */}
-        {!isSystemNotification(item) && (
-          <View style={{
-            width: 40,
-            height: 40,
-            justifyContent: 'center',
-            alignItems: 'center',
-            opacity: 0.3
-          }}>
-          </View>
-        )}
       </View>
     );
   };
@@ -554,15 +492,6 @@ export default function NotificationsScreen() {
           }}>
             You're all caught up
           </Text>
-          <Text style={{
-            fontSize: 14,
-            color: theme.colors.onSurfaceVariant,
-            marginTop: 8,
-            textAlign: 'center',
-            fontFamily: 'Inter'
-          }}>
-            You'll see notifications here when someone interacts with you or sends you updates.
-          </Text>
         </View>
       </SafeAreaView>
     );
@@ -577,11 +506,14 @@ export default function NotificationsScreen() {
         contentContainerStyle={{ flexGrow: 1 }}
         onEndReachedThreshold={0.2}
         onEndReached={loadMore}
-        ListFooterComponent={isLoadingMore ? (
-          <View style={{ paddingVertical: 12 }}>
+        ListFooterComponent={ isLoadingMore ? (
+          <View style={{ paddingVertical: 22 }}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
           </View>
-        ) : null}
+          ) : (
+          <View style={{ paddingVertical: 22 }}>
+          </View>
+          )}
         ListEmptyComponent={
           <View style={{ padding: 20 }}>
             <Text style={{ textAlign: 'center', color: theme.colors.onSurfaceVariant }}>

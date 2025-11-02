@@ -1,7 +1,8 @@
 import { Stack } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
-import { getAllUserVerses, populateVersesForUserVerses } from '../db';
+import { formatDate, parseUTCDate } from '../dateUtils';
+import { getMemorizedUserVerses } from '../db';
 import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -20,40 +21,7 @@ export default function MemorizedVersesScreen() {
   const loadMemorizedVerses = async () => {
     try {
       setLoading(true);
-      
-      // *********************************************
-      // WARNING: CHANGE TO CHECK FOR MEMORIZED IN SQL
-      // *********************************************
-
-      // Fetch all userVerses for the user
-      const allUserVerses = await getAllUserVerses(user.username);
-      
-      // Filter for memorized verses (100%)
-      const memorized = allUserVerses.filter(
-        (uv) => uv.progressPercent === 100
-      );
-      
-      // Populate verses
-      const populated = await populateVersesForUserVerses(memorized);
-
-      // Assign client-only GUIDs to ensure unique keys even with duplicate references
-      const withIds: UserVerse[] = populated.map(uv => ({
-        ...uv,
-        clientId: (globalThis as any)?.crypto?.randomUUID?.() ?? 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-          const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
-          return v.toString(16);
-        })
-      }));
-
-      // Sort by last practiced (fallback to date memorized), most recent first
-      const getTime = (uv: UserVerse) => {
-        const d: any = uv.lastPracticed || uv.dateMemorized;
-        if (!d) return 0;
-        try { return new Date(d as any).getTime(); } catch { return 0; }
-      };
-      const sorted = withIds.sort((a, b) => getTime(b) - getTime(a));
-      
-      setMemorizedVerses(sorted);
+      setMemorizedVerses(await getMemorizedUserVerses(user.username));
     } catch (error) {
       console.error('Failed to load memorized verses:', error);
       setMemorizedVerses([]);
@@ -143,10 +111,12 @@ export default function MemorizedVersesScreen() {
                       fontSize: 12
                     }}>
                       {(() => {
-                        const d: any = userVerse.lastPracticed || userVerse.dateMemorized;
-                        const dt = d ? new Date(d as any) : undefined;
+                        const d = userVerse.lastPracticed || userVerse.dateMemorized;
+                        if (!d) return '';
+                        const dt = parseUTCDate(d);
+                        if (!dt) return '';
                         const label = userVerse.lastPracticed ? 'Last practiced' : 'Memorized on';
-                        return dt ? `${label}: ${dt.toLocaleDateString()}` : '';
+                        return `${label}: ${formatDate(dt)}`;
                       })()}
                     </Text>
                   </View>

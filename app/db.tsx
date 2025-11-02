@@ -1,6 +1,6 @@
 import { Collection, SearchData, User, UserVerse, Verse } from "./store";
 
-const baseUrl = 'http://10.169.51.121:5160'
+const baseUrl = 'http://10.222.147.121:5160'
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
@@ -167,6 +167,22 @@ export async function addUserVersesToNewCollection(userVerses: UserVerse[], coll
 export async function getUserVersesByCollectionWithVerses(collectionId: number): Promise<UserVerse[]> {
     try {
         const response = await fetch(`${baseUrl}/userverses/collection/${collectionId}`);
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch user verses');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getMemorizedUserVerses(username: string): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/memorized/${username}`);
         if (response.ok) {
             const data: UserVerse[] = await response.json();
             return data;
@@ -531,6 +547,28 @@ export async function getAllUserVerses(username: string): Promise<UserVerse[]> {
     }
 }
 
+export async function populateVersesForUserVerses(userVerses: UserVerse[]): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/populate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userVerses),
+        });
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to populate verses for user verses');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function incrementVerseMemorized(reference: string): Promise<void> {
     try {
         const response = await fetch(`${baseUrl}/verses/memorized/${encodeURIComponent(reference)}`, {
@@ -646,6 +684,53 @@ export async function getUserNotifications(username: string) {
         } else {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to get notifications');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getUserNotificationsTop(username: string, page: number) {
+    try {
+        const params = new URLSearchParams();
+        if (page !== undefined) {
+            params.append('pageSize', page.toString());
+        }
+
+        const queryString = params.toString();
+        const response = await fetch(`${baseUrl}/notifications/${username}/paged?${queryString}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get notifications paged');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getUserNotificationsPaged(username: string, page: number, nextCursorId: number) {
+    try {
+        const params = new URLSearchParams();
+        if (page !== undefined) {
+            params.append('pageSize', page.toString());
+        }
+        if (nextCursorId !== undefined) {
+            params.append('cursorId', nextCursorId.toString());
+        }
+
+        const queryString = params.toString();
+        const response = await fetch(`${baseUrl}/notifications/${username}/paged?${queryString}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get notifications paged');
         }
     } catch (error) {
         console.error(error);

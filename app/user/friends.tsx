@@ -1,16 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { Divider, Portal, Dialog } from 'react-native-paper';
-import { router } from 'expo-router';
-import { getFriends, removeFriend, submitUserReport } from '../db';
+import { Dialog, Divider, Portal } from 'react-native-paper';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { FriendItemSkeleton } from '../components/skeleton';
+import { getFriends } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { FriendItemSkeleton } from '../components/skeleton';
 
 export default function FriendsScreen() {
   const styles = useStyles();
@@ -129,7 +128,7 @@ export default function FriendsScreen() {
     }
   };
 
-  const renderFriend = ({ item }: { item: User }) => (
+  const renderFriend = (friend: User) => (
     <View 
       style={{
         backgroundColor: theme.colors.surface,
@@ -142,7 +141,7 @@ export default function FriendsScreen() {
     >
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-        onPress={() => router.push(`/user/${item.username}`)}
+        onPress={() => router.push(`/user/${friend.username}`)}
         activeOpacity={0.35}
       >
         <View style={{
@@ -166,19 +165,19 @@ export default function FriendsScreen() {
             color: theme.colors.onBackground,
             fontFamily: 'Inter'
           }}>
-            {item.firstName} {item.lastName}
+            {friend.firstName} {friend.lastName}
           </Text>
           <Text style={{
             fontSize: 14,
             color: theme.colors.onSurfaceVariant,
             fontFamily: 'Inter'
           }}>
-            @{item.username}
+            @{friend.username}
           </Text>
         </View>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => openSettingsSheet(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      <TouchableOpacity onPress={() => openSettingsSheet(friend)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
         <Ionicons name="ellipsis-vertical" size={20} color={theme.colors.onSurfaceVariant} style={{ marginRight: 8 }} />
       </TouchableOpacity>
       <Ionicons name="chevron-forward" size={24} color={theme.colors.onSurfaceVariant} />

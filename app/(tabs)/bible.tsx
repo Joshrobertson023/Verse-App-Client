@@ -79,9 +79,10 @@ export default function BibleScreen() {
                     <>
                       <Text style={{ 
                         ...styles.subheading, 
-                        fontSize: 22,
-                        marginTop: 10,
+                        fontSize: 24,
+                        marginTop: 50,
                         marginBottom: 15,
+                        fontWeight: 800,
                         color: theme.colors.onBackground,
                       }}>
                         Old Testament
@@ -92,9 +93,10 @@ export default function BibleScreen() {
                     <>
                       <Text style={{ 
                         ...styles.subheading, 
-                        fontSize: 22,
+                        fontSize: 24,
                         marginTop: 50,
                         marginBottom: 15,
+                        fontWeight: 800,
                         color: theme.colors.onBackground,
                       }}>
                         New Testament
