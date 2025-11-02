@@ -2,7 +2,8 @@ import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Snackbar } from 'react-native-paper';
+import { ActivityIndicator, Snackbar } from 'react-native-paper';
+import { getUserCollections, memorizeUserVerse } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -11,7 +12,7 @@ import useAppTheme from './theme';
   IMPORTANT: A CHUNK OF THE CODE ON THIS PAGE WAS FINISHED WITH AI HELP TO SPEED UP DEVELOPMENT
 */
 
-const TOTAL_STAGES = 5;
+const TOTAL_STAGES = 1;
 const HIDE_PERCENTAGE_PER_STAGE = 0.25;
 const MIN_STAGE_HEIGHT = 200;
 
@@ -111,7 +112,7 @@ export default function PracticeSessionScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
   const editingUserVerse = useAppStore((state) => state.editingUserVerse);
-  
+  const user = useAppStore((state) => state.user);
   const [allWords, setAllWords] = useState<Word[]>([]);
   const [displayWords, setDisplayWords] = useState<Word[]>([]);
   const [currentStage, setCurrentStage] = useState(1);
@@ -122,7 +123,12 @@ export default function PracticeSessionScreen() {
   const [typedWords, setTypedWords] = useState<string[]>([]);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [completed, setCompleted] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const collections = useAppStore((state) => state.collections);
+  const setCollections = useAppStore((state) => state.setCollections);
+  const [loading, setLoading] = useState(false);
+  const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
 
   const createWord = (id: number, word: string, isNumber: boolean, showSpace: boolean): Word => ({
     id,
@@ -506,7 +512,23 @@ export default function PracticeSessionScreen() {
   };
 
   const handleCompleted = () => {
-    // 
+    setCompleted(true);
+    setSnackbarMessage('You memorized this verse!');
+    setSnackbarVisible(true);
+  }
+
+  const handleBack = async () => {
+    if (editingUserVerse) {
+      setLoading(true);
+      editingUserVerse.progressPercent = 100;
+      await memorizeUserVerse(editingUserVerse);
+    } else {
+      alert('Error sending update to server: editingUserVerse was undefined.');
+    }
+    setCollections(await getUserCollections(user.username));
+    setShouldReloadPracticeList(true);
+    setLoading(false);
+    router.back();
   }
 
   // Handle going back to previous stage
@@ -670,6 +692,16 @@ export default function PracticeSessionScreen() {
               />
             </View>
           </View>
+
+          {completed && (
+            <TouchableOpacity style={{
+              ...styles.button_text,
+              marginTop: -10
+            }}
+            onPress={() => {handleBack()}}>
+              <Text style={{...styles.text}}>Go Back</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
         
         <Snackbar
@@ -686,6 +718,16 @@ export default function PracticeSessionScreen() {
           {snackbarMessage}
         </Snackbar>
       </View>
+      {loading && (
+        <View style={{
+          position: 'absolute',
+          width: 100,
+          height: 100,
+          backgroundColor: theme.colors.surface
+        }}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+        </View>
+      )}
     </>
   );
 }

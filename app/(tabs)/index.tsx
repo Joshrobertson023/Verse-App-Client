@@ -101,6 +101,7 @@ export default function Index() {
   const [localSortBy, setLocalSortBy] = useState(0);
   const [orderedCollections, setOrderedCollections] = useState<Collection[]>(collections);
   const [isSettingsCollectionPublished, setIsSettingsCollectionPublished] = useState<boolean | null>(null);
+  const [shouldReloadPracticeList, setShouldReloadPracticeList] = useState(false);
 
   const [visible, setVisible] = React.useState(false);
 
@@ -133,6 +134,7 @@ export default function Index() {
     
     deleteCollectionStore(collectionId);
     await deleteCollection(deleteDialogCollection);
+    setShouldReloadPracticeList(true);
     
     const currentOrder = user.collectionsOrder || '';
     const orderArray = currentOrder.split(',').filter(id => id.trim() !== collectionId.toString()).join(',');

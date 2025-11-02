@@ -30,10 +30,14 @@ export default function PracticeScreen() {
         setLoading(false);
         return;
       }
-      
-      setVersesMemorized(await getUnpopulatedMemorizedUserVerses(user.username));
-      setVersesInProgress(await getUserVersesInProgress(user.username));
-      setVersesNotStarted(await getUserVersesNotStarted(user.username));
+      const [memorized, inProgress, notStarted] = await Promise.all([
+        getUnpopulatedMemorizedUserVerses(user.username),
+        getUserVersesInProgress(user.username),
+        getUserVersesNotStarted(user.username)
+      ]);
+      setVersesMemorized(memorized);
+      setVersesInProgress(inProgress);
+      setVersesNotStarted(notStarted);
     } catch (error) {
       console.error('Failed to fetch user verses:', error);
     } finally {
@@ -52,7 +56,7 @@ export default function PracticeScreen() {
           setShouldReloadPracticeList(false);
         });
       }
-    }, [fetchUserVerses, shouldReloadPracticeList, setShouldReloadPracticeList])
+    }, [fetchUserVerses, shouldReloadPracticeList, useAppStore.getState().setShouldReloadPracticeList])
   );
 
   const handlePractice = async (userVerse: UserVerse) => {
@@ -144,7 +148,7 @@ export default function PracticeScreen() {
             ))}
           </View>
         ) : (
-          versesInProgress.length === 0 ? (
+          versesMemorized.length === 0 && versesInProgress.length === 0 && versesNotStarted.length === 0 ? (
             <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 100, width: '100%' }}>
               <Ionicons name="book-outline" size={80} color={theme.colors.onSurface} />
               <Text style={{ ...styles.text, fontSize: 20, fontWeight: '600', marginTop: 20, textAlign: 'center' }}>

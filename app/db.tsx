@@ -561,9 +561,9 @@ export async function deleteUserVersesFromCollection(collectionId: number) {
     }
 }
 
-export async function updateUserVerse(userVerse: UserVerse) {
+export async function memorizeUserVerse(userVerse: UserVerse) {
     try {
-        const response = await fetch(`${baseUrl}/userverses`, {
+        const response = await fetch(`${baseUrl}/userverses/memorized`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
