@@ -1,6 +1,6 @@
 import { Collection, SearchData, User, UserVerse, Verse } from "./store";
 
-const baseUrl = 'http://10.222.147.121:5160'
+const baseUrl = 'http://10.144.165.121:5160'
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
@@ -1125,5 +1125,112 @@ export async function shareCollection(fromUsername: string, toUsername: string, 
     } catch (error) {
         console.error('Failed to share collection:', error);
         throw error;
+    }
+}
+
+export interface Category {
+    categoryId: number,
+    name: string
+}
+
+export interface PublishedCollection {
+    publishedId: number,
+    description: string,
+    numSaves: number,
+    title: number,
+    verseOrder: string,
+    author: string,
+    categoryIds: number[],
+    publishedDate: Date,
+    userVerses: UserVerse[]
+}
+
+export async function getAllCategories(): Promise<Category[]> {
+    try {
+        const response = await fetch(`${baseUrl}/categories`);
+        if (response.ok) {
+            const data: Category[] = await response.json();
+            return data;
+        } else {
+            return [];
+        }
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+}
+
+export async function getCollectionsByCategory(categoryId: number): Promise<PublishedCollection[]> {
+    try {
+        const response = await fetch(`${baseUrl}/categories/${categoryId}/collections`);
+        if (response.ok) {
+            const data: PublishedCollection[] = await response.json();
+            return data;
+        } else {
+            return [];
+        }
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+}
+
+export async function getPopularPublishedCollections(): Promise<PublishedCollection[]> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/published/popular`);
+        if (response.ok) {
+            const data: PublishedCollection[] = await response.json();
+            return data;
+        } else {
+            return [];
+        }
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+}
+
+export async function getRecentPublishedCollections(): Promise<PublishedCollection[]> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/published/recent`);
+        if (response.ok) {
+            const data: PublishedCollection[] = await response.json();
+            return data;
+        } else {
+            return [];
+        }
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+}
+
+export async function getTopSavedVerses(): Promise<Verse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/verses/top/saved`);
+        if (response.ok) {
+            const data: Verse[] = await response.json();
+            return data;
+        } else {
+            return [];
+        }
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+}
+
+export async function getTopMemorizedVerses(): Promise<Verse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/verses/top/saved`);
+        if (response.ok) {
+            const data: Verse[] = await response.json();
+            return data;
+        } else {
+            return [];
+        }
+    } catch (error) {
+        console.error(error);
+        return [];
     }
 }

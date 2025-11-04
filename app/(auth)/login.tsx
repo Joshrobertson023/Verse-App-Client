@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import checkUsernameAvailable, { getUserCollections, getUserPasswordHash, loginUser, getStreakLength } from '../db';
+import checkUsernameAvailable, { getStreakLength, getUserCollections, getUserPasswordHash, loginUser } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -55,7 +55,6 @@ const nextClick = async () => {
             numberPublishedCollections: 0,
         }
 
-        
         const usernameAvailable = await checkUsernameAvailable(username); 
         if (usernameAvailable) {
             setErrorMessage('Username does not exist');

@@ -8,7 +8,7 @@ import ExploreCollectionCard from '../components/exploreCollectionCard';
 import SearchResultVerseCard from '../components/searchResultVerseCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { Skeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, getAllCategories, getCollectionsByCategory, getPopularPublishedCollections, getRecentPublishedCollections, getTopMemorizedVerses, getTopSavedVerses, updateCollectionDB } from '../db';
+import { addUserVersesToNewCollection, Category, getAllCategories, getCollectionsByCategory, getPopularPublishedCollections, getRecentPublishedCollections, getTopMemorizedVerses, getTopSavedVerses, PublishedCollection, updateCollectionDB } from '../db';
 import { Collection, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -19,18 +19,18 @@ export default function ExploreScreen() {
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const setCollections = useAppStore((state) => state.setCollections);
-  const [popular, setPopular] = useState<Collection[]>([]);
-  const [recent, setRecent] = useState<Collection[]>([]);
-  const [categories, setCategories] = useState<{ category_Id: number; name: string }[]>([]);
+  const [popular, setPopular] = useState<PublishedCollection[]>([]);
+  const [recent, setRecent] = useState<PublishedCollection[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [categoryCollections, setCategoryCollections] = useState<Collection[]>([]);
+  const [categoryCollections, setCategoryCollections] = useState<PublishedCollection[]>([]);
   const [topSaved, setTopSaved] = useState<any[]>([]);
   const [topMemorized, setTopMemorized] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isCategoryLoading, setIsCategoryLoading] = useState<boolean>(false);
   const [showCollectionPicker, setShowCollectionPicker] = useState(false);
   const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
-  const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
+  const [pickedCollection, setPickedCollection] = useState<PublishedCollection | undefined>(undefined);
   const [isAddingToCollection, setIsAddingToCollection] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -38,43 +38,29 @@ export default function ExploreScreen() {
   const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
     (async () => {
       try {
-        const [cats, pop, rec, saved, memo] = await Promise.all([
-          getAllCategories(),
-          getPopularPublishedCollections(20),
-          getRecentPublishedCollections(20),
-          getTopSavedVerses(20),
-          getTopMemorizedVerses(20)
-        ]);
-        if (!isMounted) return;
-        setCategories(cats);
-        // Ensure a category is always active on load
-        if (cats && cats.length > 0) {
-          const firstId = cats[0].category_Id;
-          setSelectedCategoryId(firstId);
-          try {
-            setIsCategoryLoading(true);
-            const cols = await getCollectionsByCategory(firstId);
-            setCategoryCollections(cols);
-          } catch {
-            setCategoryCollections([]);
-          } finally {
-            setIsCategoryLoading(false);
-          }
+        setCategories(await getAllCategories());
+        setSelectedCategoryId(categories[0].categoryId);
+        try {
+          setIsCategoryLoading(true);
+          const categoryPublished: PublishedCollection[] = await getCollectionsByCategory(selectedCategoryId ? selectedCategoryId : categories[0].categoryId);
+          setCategoryCollections(categoryPublished);
+        } catch {
+          setCategoryCollections([]);
+        } finally {
+          setIsCategoryLoading(false);
         }
-        setPopular(pop);
-        setRecent(rec);
-        setTopSaved(saved);
-        setTopMemorized(memo);
+        setPopular(await getPopularPublishedCollections());
+        setRecent(await getRecentPublishedCollections());
+        setTopSaved(await getTopSavedVerses());
+        setTopMemorized(await getTopMemorizedVerses());
         setIsLoading(false);
       } catch (e) {
         console.error('Failed to load explore data', e);
         setIsLoading(false);
       }
     })();
-    return () => { isMounted = false; };
   }, []);
 
 
@@ -90,8 +76,8 @@ export default function ExploreScreen() {
   const handleCollectionSaved = async (_id: number) => {
     try {
       const [pop, rec] = await Promise.all([
-        getPopularPublishedCollections(20),
-        getRecentPublishedCollections(20)
+        getPopularPublishedCollections(),
+        getRecentPublishedCollections()
       ]);
       setPopular(pop);
       setRecent(rec);

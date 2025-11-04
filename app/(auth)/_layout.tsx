@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
+import * as SystemUI from 'expo-system-ui';
 import React from 'react';
 import useAppTheme from '../theme';
-import * as SystemUI from 'expo-system-ui';
 
 
 export default function RootLayout() {
@@ -21,6 +21,7 @@ export default function RootLayout() {
               headerStyle: {
                 backgroundColor: theme.colors.background,
               },
+              headerShadowVisible: false
             }} 
         />
         <Stack.Screen 
@@ -33,6 +34,7 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false
              }} 
         />
         <Stack.Screen 
@@ -45,6 +47,7 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false
              }} 
         />
         <Stack.Screen
@@ -57,6 +60,7 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false
              }} 
         />
         <Stack.Screen 
@@ -69,6 +73,7 @@ export default function RootLayout() {
                 color: theme.colors.onBackground,
               },
               headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false
              }} 
         />
     </Stack>

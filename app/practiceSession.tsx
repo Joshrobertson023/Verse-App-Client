@@ -8,10 +8,6 @@ import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
 
-/*
-  IMPORTANT: A CHUNK OF THE CODE ON THIS PAGE WAS FINISHED WITH AI HELP TO SPEED UP DEVELOPMENT
-*/
-
 const TOTAL_STAGES = 1;
 const HIDE_PERCENTAGE_PER_STAGE = 0.25;
 const MIN_STAGE_HEIGHT = 200;
@@ -31,81 +27,6 @@ interface ProgressBarProps {
   progressPercent: number;
   highestCompletedStage: number;
   theme: ReturnType<typeof useAppTheme>;
-}
-
-function ProgressBar({ currentStage, totalStages, progressPercent, highestCompletedStage, theme }: ProgressBarProps) {
-  return (
-    <View style={{ marginBottom: 20 }}>
-      <View style={{ 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: 8 
-      }}>
-        <Text style={{ 
-          fontSize: 16, 
-          fontWeight: '600', 
-          color: theme.colors.onBackground 
-        }}>
-          Stage {currentStage} / {totalStages}
-        </Text>
-        <Text style={{ 
-          fontSize: 16, 
-          fontWeight: '600', 
-          color: theme.colors.onBackground 
-        }}>
-          {Math.round(progressPercent)}%
-        </Text>
-      </View>
-      
-      <View style={{
-        height: 8,
-        backgroundColor: theme.colors.surface,
-        borderRadius: 4,
-        overflow: 'hidden'
-      }}>
-        <View style={{
-          height: '100%',
-          width: `${progressPercent}%`,
-          backgroundColor: theme.colors.primary,
-          borderRadius: 4,
-        }} />
-      </View>
-      
-      <View style={{ 
-        flexDirection: 'row', 
-        justifyContent: 'space-between',
-        marginTop: 8,
-      }}>
-        {Array.from({ length: totalStages }).map((_, index) => {
-          const stageNum = index + 1;
-          const isCompleted = stageNum <= highestCompletedStage;
-          const isCurrent = stageNum === currentStage;
-          
-          let backgroundColor = theme.colors.surface;
-          if (isCurrent || isCompleted) {
-            backgroundColor = theme.colors.primary;
-          }
-          
-          return (
-            <View
-              key={stageNum}
-              style={{
-                flex: 1,
-                height: isCurrent ? 6 : 4,
-                backgroundColor: backgroundColor,
-                opacity: isCurrent ? 1 : (isCompleted ? 0.5 : 0.3),
-                borderRadius: 2,
-                marginRight: index < totalStages - 1 ? 4 : 0,
-                borderWidth: isCurrent ? 1 : 0,
-                borderColor: theme.colors.primary,
-              }}
-            />
-          );
-        })}
-      </View>
-    </View>
-  );
 }
 
 export default function PracticeSessionScreen() {
@@ -163,7 +84,7 @@ export default function PracticeSessionScreen() {
     
     const trimmed = verseText.trim();
     const elements: Array<{ text: string; isNumber: boolean; needsSpaceAfter: boolean }> = [];
-    let isFirstElement = true; // Track if this is the first element after colon
+    let isFirstElement = true;
     
     let i = 0;
     while (i < trimmed.length) {
@@ -270,7 +191,7 @@ export default function PracticeSessionScreen() {
     );
   };
 
-  // Hide words for current stage
+  // Hide words
   const hideWordsForStage = (words: Word[], stage: number): Word[] => {
     if (stage === 1) {
       return words.map(w => ({ ...w, isVisible: true }));
@@ -278,40 +199,29 @@ export default function PracticeSessionScreen() {
 
     const totalHidePercent = (stage - 1) * HIDE_PERCENTAGE_PER_STAGE;
     const verseTextStartIndex = words.findIndex(w => w.id >= 1000);
-    if (verseTextStartIndex === -1) return words;
+    if (verseTextStartIndex === -1) 
+      return words;
     
     const verseWords = words.slice(verseTextStartIndex);
     const referenceWords = words.slice(0, verseTextStartIndex);
-    
-    // Calculate total words (reference + verse) for percentage calculation
     const totalWords = words.length;
     const totalWordsToHide = Math.floor(totalWords * totalHidePercent);
-    
-    // Create a combined pool of all available visible word indices
-    // Each index is mapped to include whether it's a reference or verse word
+
     const availableIndices: Array<{ type: 'reference' | 'verse'; index: number; wordIndex: number }> = [];
     
-    // Add reference word indices (wordIndex is the position in the referenceWords array)
     referenceWords.forEach((word, refIndex) => {
       if (word.isVisible) {
         availableIndices.push({ type: 'reference', index: refIndex, wordIndex: refIndex });
       }
     });
-    
-    // Add verse word indices (wordIndex is the position in the verseWords array)
     verseWords.forEach((word, verseIndex) => {
       if (word.isVisible) {
         availableIndices.push({ type: 'verse', index: verseIndex, wordIndex: verseIndex });
       }
     });
     
-    // Randomly shuffle all available indices together
     const shuffled = [...availableIndices].sort(() => Math.random() - 0.5);
-    
-    // Select words to hide from the combined pool
     const indicesToHide = shuffled.slice(0, Math.min(totalWordsToHide, availableIndices.length));
-    
-    // Separate the indices back into reference and verse
     const referenceIndicesToHide = new Set<number>();
     const verseIndicesToHide = new Set<number>();
     
@@ -322,14 +232,11 @@ export default function PracticeSessionScreen() {
         verseIndicesToHide.add(item.wordIndex);
       }
     });
-    
-    // Update verse words
+  
     const updatedVerseWords = verseWords.map((word, index) => ({
       ...word,
       isVisible: !verseIndicesToHide.has(index),
     }));
-    
-    // Update reference words
     const updatedReferenceWords = referenceWords.map((word, index) => ({
       ...word,
       isVisible: !referenceIndicesToHide.has(index),
@@ -338,7 +245,7 @@ export default function PracticeSessionScreen() {
     return [...updatedReferenceWords, ...updatedVerseWords];
   };
 
-  // Initialize
+  // Runs when first open practice session
   useEffect(() => {
     if (!editingUserVerse?.verses?.length) {
       Alert.alert('Error', 'No passage to practice');
@@ -361,7 +268,7 @@ export default function PracticeSessionScreen() {
     setTypedWords([]);
   }, [editingUserVerse]);
 
-  // Update display when stage changes
+  // Runs when stage changes
   useEffect(() => {
     setDisplayWords(hideWordsForStage(allWords, currentStage));
     setCurrentWordIndex(0);
@@ -369,22 +276,19 @@ export default function PracticeSessionScreen() {
     setTypedWords([]);
   }, [currentStage, allWords]);
 
-// Input handler
+
   const handleInputChange = (text: string) => {
-    if (currentWordIndex >= allWords.length) return;
+    if (currentWordIndex >= allWords.length) 
+      return;
 
     const currentWord = allWords[currentWordIndex];
-    
-    // Check if current word is punctuation that should be auto-completed
     const isPunctuation = ['-', ':', ','].includes(currentWord.word);
     const isNumber = currentWord.isNumber;
-    
     const currentDisplayed = getDisplayedInput();
 
-    // Handle backspace - compare without spaces
+    // If backspace
     const textNoSpacesForBackspace = text.replace(/\s/g, '');
     const currentDisplayedNoSpaces = currentDisplayed.replace(/\s/g, '');
-    
     if (textNoSpacesForBackspace.length < currentDisplayedNoSpaces.length) {
       if (userInput.length > 0) {
         setUserInput(userInput.slice(0, -1));
@@ -392,7 +296,6 @@ export default function PracticeSessionScreen() {
       return;
     }
 
-    // Build expected text (for comparison)
     const buildExpectedText = (includeCurrentInput: boolean, includeNextChar: boolean): string => {
       let expected = '';
       for (let i = 0; i < typedWords.length; i++) {
@@ -408,48 +311,45 @@ export default function PracticeSessionScreen() {
       return expected;
     };
 
-    // Auto-complete punctuation
     if (isPunctuation) {
       setUserInput(currentWord.word);
       setTimeout(() => handleCorrectWord(), 100);
       return;
     }
 
-    // For numbers: check character by character
+    // If number entered
     if (isNumber) {
       const expectedChar = currentWord.word[userInput.length];
+      // End of word     
+      if (!expectedChar) 
+        return;
       
-      if (!expectedChar) return; // Word complete
-      
-      // Get the actual new input (strip spaces for comparison)
       const currentExpectedNoSpaces = buildExpectedText(true, false).replace(/\s/g, '');
       const textNoSpaces = text.replace(/\s/g, '');
       
-      // Check if user typed the next expected character
       if (textNoSpaces === currentExpectedNoSpaces + expectedChar) {
-        // Correct - add the character
+        // Entered correct letter
         const newInput = userInput + expectedChar;
         setUserInput(newInput);
         
-        // If word complete, move to next
+        // Go to next Word
         if (newInput === currentWord.word) {
           setTimeout(() => handleCorrectWord(), 100);
         }
       } else if (textNoSpaces.length <= currentExpectedNoSpaces.length) {
-        // User typed space or hasn't typed next char yet - ignore
+        // Entered space
         return;
       } else if (textNoSpaces.startsWith(currentExpectedNoSpaces) && textNoSpaces.length > currentExpectedNoSpaces.length) {
-        // User typed something after current position - check if it's wrong
+        // Entered more than one character
         const extraChar = textNoSpaces[currentExpectedNoSpaces.length];
         if (extraChar !== expectedChar) {
           handleIncorrectInput();
         }
       } else {
-        // Text doesn't match at all - wrong input
+        // Incorrect input
         handleIncorrectInput();
       }
-    } else {
-      // For regular words: check first letter then auto-complete
+    } else { // If word entered
       if (userInput.length === 0) {
         const textNoSpaces = text.replace(/\s/g, '');
         const expectedNoSpaces = buildExpectedText(false, false).replace(/\s/g, '');
@@ -467,15 +367,14 @@ export default function PracticeSessionScreen() {
           }
         }
       } else {
-        // Already auto-completed
         handleIncorrectInput();
       }
     }
   };
 
-  // Handle word completion
   const handleCorrectWord = () => {
-    if (currentWordIndex >= allWords.length) return;
+    if (currentWordIndex >= allWords.length)
+      return;
 
     const currentWord = allWords[currentWordIndex];
     setTypedWords([...typedWords, currentWord.word]);
@@ -483,21 +382,18 @@ export default function PracticeSessionScreen() {
     setCurrentWordIndex(nextIndex);
     setUserInput('');
 
-    // Check if stage complete
     if (nextIndex >= allWords.length) {
       if (currentStage < TOTAL_STAGES) {
         setTimeout(() => {
           const nextStage = currentStage + 1;
           setStageHistory(prev => [...prev, currentStage]);
           setCurrentStage(nextStage);
-          // Update highest completed stage if advancing to a new stage
           if (nextStage > highestCompletedStage) {
             setHighestCompletedStage(nextStage);
           }
         }, 500);
       } else {
         setTimeout(() => handleCompleted(), 500);
-        // Update highest completed stage if this was the last stage
         if (currentStage === TOTAL_STAGES && currentStage > highestCompletedStage) {
           setHighestCompletedStage(TOTAL_STAGES);
         }
@@ -505,7 +401,6 @@ export default function PracticeSessionScreen() {
     }
   };
 
-  // Handle incorrect input
   const handleIncorrectInput = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     setUserInput('');
@@ -531,43 +426,35 @@ export default function PracticeSessionScreen() {
     router.back();
   }
 
-  // Handle going back to previous stage
-  // Going back is permanent - user must re-type from that stage
   const handleGoBack = () => {
     if (currentStage > 1) {
       const previousStage = currentStage - 1;
       setStageHistory(prev => [...prev, currentStage]);
       setCurrentStage(previousStage);
-      // Reset progress - user must re-type the verse
       setCurrentWordIndex(0);
       setUserInput('');
       setTypedWords([]);
-      // Update highest completed stage to the previous stage
-      // This prevents skipping ahead
       setHighestCompletedStage(previousStage);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
-  // Build displayed input text
   const getDisplayedInput = (): string => {
     let displayed = '';
     for (let i = 0; i < typedWords.length; i++) {
       displayed += typedWords[i];
-      // Add space if next word wants space before it (showSpace: true)
-      // Exception: never add space before colons
       const nextWord = allWords[i + 1];
-      const shouldAddSpace = nextWord && nextWord.showSpace && nextWord.word !== ':';
-      if (shouldAddSpace) displayed += ' ';
+      if (nextWord && nextWord.showSpace && nextWord.word !== ':')
+        displayed += ' ';
     }
     displayed += userInput;
     return displayed;
   };
 
-  // Calculate progress
   const calculateProgress = (): number => {
-    if (allWords.length === 0) return 0;
-    return Math.min((currentWordIndex / allWords.length) * 100, 100);
+    if (allWords.length === 0) 
+      return 0;
+    return (currentWordIndex / allWords.length) * 100;
   };
 
   if (!editingUserVerse?.verses?.length) {
@@ -585,6 +472,81 @@ export default function PracticeSessionScreen() {
     margin: 0,
     minHeight: MIN_STAGE_HEIGHT,
   };
+
+  function ProgressBar({ currentStage, totalStages, progressPercent, highestCompletedStage, theme }: ProgressBarProps) {
+    return (
+      <View style={{ marginBottom: 20 }}>
+        <View style={{ 
+          flexDirection: 'row', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: 8 
+        }}>
+          <Text style={{ 
+            fontSize: 16, 
+            fontWeight: '600', 
+            color: theme.colors.onBackground 
+          }}>
+            Stage {currentStage} / {totalStages}
+          </Text>
+          <Text style={{ 
+            fontSize: 16, 
+            fontWeight: '600', 
+            color: theme.colors.onBackground 
+          }}>
+            {Math.round(progressPercent)}%
+          </Text>
+        </View>
+        
+        <View style={{
+          height: 8,
+          backgroundColor: theme.colors.surface,
+          borderRadius: 4,
+          overflow: 'hidden'
+        }}>
+          <View style={{
+            height: '100%',
+            width: `${progressPercent}%`,
+            backgroundColor: theme.colors.primary,
+            borderRadius: 4,
+          }} />
+        </View>
+        
+        <View style={{ 
+          flexDirection: 'row', 
+          justifyContent: 'space-between',
+          marginTop: 8,
+        }}>
+          {Array.from({ length: totalStages }).map((_, index) => {
+            const stageNum = index + 1;
+            const isCompleted = stageNum <= highestCompletedStage;
+            const isCurrent = stageNum === currentStage;
+            
+            let backgroundColor = theme.colors.surface;
+            if (isCurrent || isCompleted) {
+              backgroundColor = theme.colors.primary;
+            }
+            
+            return (
+              <View
+                key={stageNum}
+                style={{
+                  flex: 1,
+                  height: isCurrent ? 6 : 4,
+                  backgroundColor: backgroundColor,
+                  opacity: isCurrent ? 1 : (isCompleted ? 0.5 : 0.3),
+                  borderRadius: 2,
+                  marginRight: index < totalStages - 1 ? 4 : 0,
+                  borderWidth: isCurrent ? 1 : 0,
+                  borderColor: theme.colors.primary,
+                }}
+              />
+            );
+          })}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <>
@@ -656,8 +618,8 @@ export default function PracticeSessionScreen() {
                     <Text 
                       key={`${w.id}-${index}`} 
                       style={{ 
-                        color: shouldHide ? theme.colors.surface : undefined,
-                        opacity: shouldHide ? 0 : 0.7,
+                        color: shouldHide ? theme.colors.surface : 'transparent',
+                        opacity: shouldHide ? 0 : 0.6,
                       }}
                     >
                       {space}{w.word}

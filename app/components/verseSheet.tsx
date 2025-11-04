@@ -322,7 +322,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                                 fontSize: 14,
                                 marginLeft: 10,
                             }}>
-                                {verse.users_Saved_Verse || 0} {(verse.users_Saved_Verse || 0) === 1 ? 'Person has' : 'People have'} this verse
+                                {verse.users_Saved_Verse || 0} {(verse.users_Saved_Verse || 0) === 1 ? 'save' : 'saves'}
                             </Text>
                         </View>
 
@@ -336,7 +336,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                                 fontSize: 14,
                                 marginLeft: 10,
                             }}>
-                                {verse.users_Memorized || 0} {(verse.users_Memorized || 0) === 1 ? 'Person has' : 'People have'} memorized this verse
+                                {verse.users_Memorized || 0} {(verse.users_Memorized || 0) === 1 ? 'memorized' : 'memorized'}
                             </Text>
                         </View>
                     </View>
