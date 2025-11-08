@@ -27,6 +27,8 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
     const user = useAppStore((state) => state.user);
     const collections = useAppStore((state) => state.collections);
     const setCollections = useAppStore((state) => state.setCollections);
+    const verseSaveAdjustments = useAppStore((state) => state.verseSaveAdjustments);
+    const incrementVerseSaveAdjustment = useAppStore((state) => state.incrementVerseSaveAdjustment);
 
     const [showCollectionPicker, setShowCollectionPicker] = useState(false);
     const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
@@ -196,6 +198,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                 c.collectionId === pickedCollection.collectionId ? updatedCollection : c
             ));
 
+            incrementVerseSaveAdjustment(readableRef);
             setShowCollectionPicker(false);
             setSelectedVerse(null);
             setPickedCollection(undefined);
@@ -225,6 +228,10 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
     };
 
     if (!visible || !verse) return null;
+
+    const verseReferenceKey = verse.verse_reference || `${bookName} ${chapter}:${verseNumber}`;
+    const savedAdjustment = verseSaveAdjustments[verseReferenceKey] ?? 0;
+    const displayedSavedCount = (verse.users_Saved_Verse ?? 0) + savedAdjustment;
 
     return (
         <Portal>
@@ -322,7 +329,7 @@ export default function VerseSheet({ verse, verseIndex, visible, onClose, bookNa
                                 fontSize: 14,
                                 marginLeft: 10,
                             }}>
-                                {verse.users_Saved_Verse || 0} {(verse.users_Saved_Verse || 0) === 1 ? 'save' : 'saves'}
+                                {displayedSavedCount} {displayedSavedCount === 1 ? 'save' : 'saves'}
                             </Text>
                         </View>
 

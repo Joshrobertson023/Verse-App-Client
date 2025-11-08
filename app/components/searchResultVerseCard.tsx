@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Verse } from '../store';
+import { useAppStore, Verse } from '../store';
 import useAppTheme from '../theme';
 
 interface Props {
@@ -13,6 +13,10 @@ interface Props {
 
 export default function SearchResultVerseCard({ verse, onSave, onRead, onShare }: Props) {
   const theme = useAppTheme();
+  const savedAdjustment = useAppStore((state) => state.verseSaveAdjustments[verse.verse_reference] ?? 0);
+  const savedCount = (verse.users_Saved_Verse ?? 0) + savedAdjustment;
+  const savedLabel = savedCount === 1 ? 'save' : 'saves';
+  const memorizedCount = verse.users_Memorized ?? 0;
 
   return (
     <View style={{
@@ -44,13 +48,13 @@ export default function SearchResultVerseCard({ verse, onSave, onRead, onShare }
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="people-outline" size={14} color={theme.colors.onSurfaceVariant} />
           <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
-            {verse.users_Saved_Verse || 0} saved
+            {savedCount} {savedLabel}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.onSurfaceVariant} />
           <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
-            {verse.users_Memorized || 0} memorized
+            {memorizedCount || 0} memorized
           </Text>
         </View>
       </View>

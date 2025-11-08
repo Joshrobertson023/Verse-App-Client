@@ -1,13 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import React, { useEffect, useState, useRef } from 'react';
-import { Animated, ScrollView, Text, TouchableOpacity, View, Pressable } from 'react-native';
-import { router, Stack, useLocalSearchParams, useGlobalSearchParams } from 'expo-router';
+import { router, Stack, useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { getChaptersForBook } from '../bibleData';
+import VerseSheet from '../components/verseSheet';
 import { getChapterVerses } from '../db';
 import { Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { getChaptersForBook } from '../bibleData';
-import VerseSheet from '../components/verseSheet';
 
 // Skeleton Loader Component
 const SkeletonLoader = () => {
@@ -239,7 +239,7 @@ export default function ChapterReadingPage() {
               {verses.map((verse, index) => (
                 <Pressable 
                   key={verse.id || index} 
-                  style={{ marginBottom: 8 }}
+                  style={{ marginBottom: 0 }}
                   onPress={() => {
                     setSelectedVerse(verse);
                     setSelectedVerseIndex(index);
@@ -250,8 +250,8 @@ export default function ChapterReadingPage() {
                     ...styles.text, 
                     marginBottom: 0,
                     fontFamily: 'Noto Serif',
-                    fontSize: 18,
-                    lineHeight: 24,
+                    fontSize: 16,
+                    lineHeight: 22,
                   }}>
                     <Text style={{ 
                       fontWeight: '600',

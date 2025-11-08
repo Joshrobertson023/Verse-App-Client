@@ -1,6 +1,6 @@
-import { Collection, SearchData, User, UserVerse, Verse } from "./store";
+import { Activity, Collection, SearchData, User, UserVerse, Verse } from "./store";
 
-const baseUrl = 'http://10.144.165.121:5160'
+const baseUrl = 'http://10.137.126.121:5160'
 
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
@@ -244,17 +244,30 @@ export async function getUserVersesNotStarted(username: string): Promise<UserVer
     }
 }
 
-export async function getCollectionById(collectionId: number): Promise<Collection> {
+export async function getCollectionById(collectionId: number): Promise<Collection | null> {
     try {
         const response = await fetch(`${baseUrl}/collections/byId/${collectionId}`);
         if (response.ok) {
             const data: Collection = await response.json();
             return data;
-        } else {
-            const responseText = await response.text();
-            throw new Error(responseText || 'Failed to fetch collection');
         }
+
+        if (response.status === 404) {
+            return null;
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch collection');
     } catch (error) {
+        const message = (error as Error)?.message?.toLowerCase() ?? '';
+        if (
+            message.includes('failed to fetch collection') ||
+            message.includes('not found') ||
+            message.includes('does not exist')
+        ) {
+            return null;
+        }
+
         console.error(error);
         throw error;
     }
@@ -512,6 +525,90 @@ export async function getFriends(username: string): Promise<User[]> {
     }
 }
 
+export async function removeFriend(username: string, friendUsername: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/relationships/${username}/${friendUsername}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to remove friend');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function submitUserReport(reporterUsername: string, reportedUsername: string, reason: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/reports`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ reporterUsername, reportedUsername, reason }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to submit report');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function submitBugReport(username: string, description: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/reports/bug`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, description }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to submit bug report');
+        }
+    } catch (error) {
+        console.error('Failed to submit bug report:', error);
+        throw error;
+    }
+}
+
+export async function getAllReports(): Promise<ReportItem[]> {
+    try {
+        const response = await fetch(`${baseUrl}/reports`);
+        if (response.ok) {
+            const data: ReportItem[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get reports');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function deleteReport(id: number): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/reports/${id}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to delete report');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function getUserProfile(username: string): Promise<User> {
     try {
         const response = await fetch(`${baseUrl}/users/${username}`);
@@ -573,6 +670,27 @@ export async function memorizeUserVerse(userVerse: UserVerse) {
         if (!response.ok) {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to update user verse');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function memorizeVerseOfDay(username: string, readableReference: string) {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/memorize-verse-of-day`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: username,
+                readableReference: readableReference
+            }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to memorize verse of day');
         }
     } catch (error) {
         throw error;
@@ -868,14 +986,18 @@ export async function sendNotificationToAll(message: string, senderUsername: str
     }
 }
 
-export async function createVerseOfDay(reference: string, senderUsername: string) {
+export async function createVerseOfDay(reference: string, senderUsername: string, verseDate: Date) {
     try {
         const response = await fetch(`${baseUrl}/admin/verseofday`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ readableReference: reference, senderUsername })
+            body: JSON.stringify({
+                readableReference: reference,
+                senderUsername,
+                verseDate: verseDate?.toISOString()
+            })
         });
         if (!response.ok) {
             let errorMessage = 'Failed to create verse of day';
@@ -968,6 +1090,21 @@ export async function makeUserAdmin(username: string): Promise<void> {
         if (!response.ok) {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to make user admin');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function removeUserAdmin(username: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/users/${username}/remove-admin`, {
+            method: 'PUT',
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to remove user admin');
         }
     } catch (error) {
         console.error(error);
@@ -1128,19 +1265,52 @@ export async function shareCollection(fromUsername: string, toUsername: string, 
     }
 }
 
+export async function shareVerse(fromUsername: string, toUsername: string, readableReference: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/notifications/share-verse`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                fromUsername,
+                toUsername,
+                readableReference
+            }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to share verse');
+        }
+    } catch (error) {
+        console.error('Failed to share verse:', error);
+        throw error;
+    }
+}
+
 export interface Category {
     categoryId: number,
     name: string
 }
 
+export interface ReportItem {
+    report_Id: number;
+    reporter_Username: string;
+    reported_Username: string;
+    reported_Email?: string;
+    reason?: string;
+    created_Date: string;
+    status?: string;
+}
+
 export interface PublishedCollection {
     publishedId: number,
-    description: string,
+    description?: string | null,
     numSaves: number,
-    title: number,
+    title: string,
     verseOrder: string,
     author: string,
-    categoryIds: number[],
+    categoryIds?: number[],
     publishedDate: Date,
     userVerses: UserVerse[]
 }
@@ -1160,24 +1330,61 @@ export async function getAllCategories(): Promise<Category[]> {
     }
 }
 
+export async function createCategory(name: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/categories`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name })
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to create category');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function deleteCategory(categoryId: number): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/categories/${categoryId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to delete category');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function getCollectionsByCategory(categoryId: number): Promise<PublishedCollection[]> {
     try {
         const response = await fetch(`${baseUrl}/categories/${categoryId}/collections`);
         if (response.ok) {
             const data: PublishedCollection[] = await response.json();
             return data;
-        } else {
+        }
+        if (response.status === 404) {
             return [];
         }
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch collections by category');
     } catch (error) {
         console.error(error);
         return [];
     }
 }
 
-export async function getPopularPublishedCollections(): Promise<PublishedCollection[]> {
+export async function getPopularPublishedCollections(top: number = 50): Promise<PublishedCollection[]> {
     try {
-        const response = await fetch(`${baseUrl}/collections/published/popular`);
+        const response = await fetch(`${baseUrl}/collections/published/popular/${top}`);
         if (response.ok) {
             const data: PublishedCollection[] = await response.json();
             return data;
@@ -1190,24 +1397,45 @@ export async function getPopularPublishedCollections(): Promise<PublishedCollect
     }
 }
 
-export async function getRecentPublishedCollections(): Promise<PublishedCollection[]> {
+export async function getRecentPublishedCollections(top: number = 50): Promise<PublishedCollection[]> {
     try {
-        const response = await fetch(`${baseUrl}/collections/published/recent`);
+        const response = await fetch(`${baseUrl}/collections/published/recent/${top}`);
         if (response.ok) {
             const data: PublishedCollection[] = await response.json();
             return data;
-        } else {
+        }
+        if (response.status === 404) {
             return [];
         }
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch recent published collections');
     } catch (error) {
         console.error(error);
         return [];
+    }
+}
+
+export async function getPublishedCollection(publishedId: number): Promise<PublishedCollection | null> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/published/${publishedId}`);
+        if (response.ok) {
+            const data: PublishedCollection = await response.json();
+            return data;
+        }
+        if (response.status === 404) {
+            return null;
+        }
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch published collection');
+    } catch (error) {
+        console.error(error);
+        throw error;
     }
 }
 
 export async function getTopSavedVerses(): Promise<Verse[]> {
     try {
-        const response = await fetch(`${baseUrl}/verses/top/saved`);
+        const response = await fetch(`${baseUrl}/verses/top/saved/30`);
         if (response.ok) {
             const data: Verse[] = await response.json();
             return data;
@@ -1222,7 +1450,7 @@ export async function getTopSavedVerses(): Promise<Verse[]> {
 
 export async function getTopMemorizedVerses(): Promise<Verse[]> {
     try {
-        const response = await fetch(`${baseUrl}/verses/top/saved`);
+        const response = await fetch(`${baseUrl}/verses/top/memorized/30`);
         if (response.ok) {
             const data: Verse[] = await response.json();
             return data;
@@ -1232,5 +1460,122 @@ export async function getTopMemorizedVerses(): Promise<Verse[]> {
     } catch (error) {
         console.error(error);
         return [];
+    }
+}
+
+export interface PublishCollectionInfo {
+    collection: Collection,
+    description: string,
+    categoryIds: number[]
+}
+
+export async function publishCollection(collection: Collection, description: string, categoryIds: number[]) {
+    try {
+        // Ensure the collection has all required fields and userVerses are included
+        const collectionToPublish: Collection = {
+            ...collection,
+            userVerses: collection.userVerses || []
+        };
+        
+        const info: PublishCollectionInfo = {
+            collection: collectionToPublish,
+            description: description,
+            categoryIds: categoryIds
+        };
+        
+        const response = await fetch(`${baseUrl}/collections/publish`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(info),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to publish collection');
+        }
+    } catch (error) {
+        console.error('Failed to publish collection:', error);
+        throw error;
+    }
+}
+
+export async function getRecentPractice(username: string): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/recent/${username}`);
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get recent practice');
+        }
+    } catch (error) {
+        console.error('Failed to get recent practice:', error);
+        throw error;
+    }
+}
+
+export async function getOverdueVerses(username: string): Promise<UserVerse[]> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/overdue/${username}`);
+        if (response.ok) {
+            const data: UserVerse[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get overdue verses');
+        }
+    } catch (error) {
+        console.error('Failed to get overdue verses:', error);
+        throw error;
+    }
+}
+
+export async function getFriendsActivity(username: string, limit: number = 10): Promise<Activity[]> {
+    try {
+        const response = await fetch(`${baseUrl}/activity/friends/${username}?limit=${limit}`);
+        if (response.ok) {
+            const data: Activity[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get friends activity');
+        }
+    } catch (error) {
+        console.error('Failed to get friends activity:', error);
+        throw error;
+    }
+}
+
+export async function getUserActivity(username: string, limit: number = 10): Promise<Activity[]> {
+    try {
+        const response = await fetch(`${baseUrl}/activity/user/${username}?limit=${limit}`);
+        if (response.ok) {
+            const data: Activity[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get user activity');
+        }
+    } catch (error) {
+        console.error('Failed to get user activity:', error);
+        throw error;
+    }
+}
+
+export async function getFriendActivity(username: string, viewerUsername: string, limit: number = 10): Promise<Activity[]> {
+    try {
+        const response = await fetch(`${baseUrl}/activity/friend/${username}?viewerUsername=${viewerUsername}&limit=${limit}`);
+        if (response.ok) {
+            const data: Activity[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get friend activity');
+        }
+    } catch (error) {
+        console.error('Failed to get friend activity:', error);
+        throw error;
     }
 }

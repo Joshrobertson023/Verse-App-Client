@@ -2,14 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { Collection } from '../store';
-import { getRecentPublishedCollections } from '../db';
+import { PublishedCollection, getRecentPublishedCollections } from '../db';
 import ExploreCollectionCard from '../components/exploreCollectionCard';
 
 export default function RecentExploreList() {
   const styles = useStyles();
   const theme = useAppTheme();
-  const [items, setItems] = useState<Collection[]>([]);
+  const [items, setItems] = useState<PublishedCollection[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -22,7 +21,7 @@ export default function RecentExploreList() {
     })();
   }, []);
 
-  const renderItem = ({ item }: { item: Collection }) => (
+  const renderItem = ({ item }: { item: PublishedCollection }) => (
     <View style={{ marginHorizontal: 8, marginVertical: 4 }}>
       <ExploreCollectionCard collection={item} />
     </View>
@@ -34,7 +33,7 @@ export default function RecentExploreList() {
       <FlatList
         data={items}
         renderItem={renderItem}
-        keyExtractor={(c) => String(c.collectionId)}
+        keyExtractor={(c) => String(c.publishedId)}
       />
     </View>
   );

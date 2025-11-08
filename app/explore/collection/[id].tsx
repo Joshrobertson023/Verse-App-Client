@@ -5,7 +5,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { Surface, Text } from 'react-native-paper';
-import { getMostRecentCollectionId, getPublishedInfo, getUserCollections, notifyAuthorCollectionSaved, createCollectionDB, addUserVersesToNewCollection, updateCollectionsOrder, refreshUser, getCollectionById, getUserVersesByCollectionWithVerses } from '../../db';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedCollection, getUserCollections, getUserVersesByCollectionWithVerses, refreshUser, updateCollectionsOrder, PublishedCollection } from '../../db';
 import { Collection, UserVerse, useAppStore } from '../../store';
 import useStyles from '../../styles';
 import useAppTheme from '../../theme';
@@ -21,10 +21,9 @@ export default function PublishedCollectionView() {
   const setCollections = useAppStore((s) => s.setCollections);
   const setUser = useAppStore((s) => s.setUser);
 
-  const [collection, setCollection] = useState<Collection | null>(null);
+  const [collection, setCollection] = useState<PublishedCollection | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [publishedDescription, setPublishedDescription] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     if (collection) {
@@ -37,19 +36,34 @@ export default function PublishedCollectionView() {
     (async () => {
       if (!id) return;
       try {
-        const [baseCol, verses, pub] = await Promise.all([
-          getCollectionById(Number(id)),
-          getUserVersesByCollectionWithVerses(Number(id)),
-          getPublishedInfo(Number(id))
+        const publishedId = Number(id);
+        if (Number.isNaN(publishedId)) {
+          setErrorMessage('Invalid collection id.');
+          setLoading(false);
+          return;
+        }
+
+        const [published, verses] = await Promise.all([
+          getPublishedCollection(publishedId),
+          getUserVersesByCollectionWithVerses(publishedId)
         ]);
         if (cancelled) return;
-        if (!baseCol) {
+
+        if (!published) {
           setCollection(null);
           setErrorMessage('This collection is no longer available.');
         } else {
-          setCollection({ ...baseCol, userVerses: verses || [] } as any);
+          const preparedVerses = (verses || []).map((uv) => ({
+            ...uv,
+            verses: uv.verses || []
+          }));
+
+          setCollection({
+            ...published,
+            userVerses: preparedVerses
+          });
+          setErrorMessage(null);
         }
-        setPublishedDescription(pub?.description ?? null);
       } catch (e) {
         console.error('Failed to load published collection', e);
         setErrorMessage('Unable to load this collection. It may have been removed.');
@@ -66,16 +80,33 @@ export default function PublishedCollectionView() {
     if (!collection) return;
     try {
       const duplicateCollection: Collection = {
-        ...collection,
         title: `${collection.title} (Copy)`,
+        authorUsername: user.username,
+        visibility: 'private',
+        verseOrder: collection.verseOrder,
+        userVerses: [],
         collectionId: undefined,
-        favorites: false,
+        favorites: false
       } as any;
 
       await createCollectionDB(duplicateCollection, user.username);
       const newCollectionId = await getMostRecentCollectionId(user.username);
-      if (collection.userVerses && collection.userVerses.length > 0) {
-        await addUserVersesToNewCollection(collection.userVerses, newCollectionId);
+
+      const duplicateUserVerses = (collection.userVerses || []).map((uv) => ({
+        ...uv,
+        id: undefined,
+        collectionId: undefined,
+        username: user.username,
+        progressPercent: 0,
+        timesMemorized: 0,
+        lastPracticed: undefined,
+        dateAdded: undefined,
+        dateMemorized: undefined,
+        verses: uv.verses || []
+      }));
+
+      if (duplicateUserVerses.length > 0) {
+        await addUserVersesToNewCollection(duplicateUserVerses, newCollectionId);
       }
       const updatedCollections = await getUserCollections(user.username);
       setCollections(updatedCollections);
@@ -84,7 +115,6 @@ export default function PublishedCollectionView() {
       setUser({ ...user, collectionsOrder: newOrder });
       try { await updateCollectionsOrder(newOrder, user.username); } catch {}
       try { const refreshedUser = await refreshUser(user.username); setUser(refreshedUser); } catch {}
-      try { await notifyAuthorCollectionSaved(user.username, Number(id)); } catch {}
     } catch (e) {
       console.error('Failed to save published collection', e);
     }
@@ -126,12 +156,12 @@ export default function PublishedCollectionView() {
       </View>
 
       <Text style={{ ...styles.tinyText, marginTop: 6 }}>
-        Created by @{collection.authorUsername}{publishedDescription ? ' ' : ''}
+        Created by @{collection.author}
       </Text>
 
-      {!!publishedDescription && (
+      {!!collection.description && (
         <Surface style={{ minWidth: '100%', padding: 14, borderRadius: 6, backgroundColor: theme.colors.surface, marginTop: 12 }} elevation={2}>
-          <Text style={{ ...styles.text }}>{publishedDescription}</Text>
+          <Text style={{ ...styles.text }}>{collection.description}</Text>
         </Surface>
       )}
 

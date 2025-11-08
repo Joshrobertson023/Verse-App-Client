@@ -1,18 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { BackHandler, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackHandler, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { ActivityIndicator, Button, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
 import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import CollectionItem from '../components/collectionItem';
-import PublishDialog from '../components/publishDialog';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
-import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getPublishedInfo, getUserCollections, publishCollection, refreshUser, unpublishCollection, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
-import { Collection, useAppStore } from '../store';
+import ShareVerseSheet from '../components/shareVerseSheet';
+import { getUTCTimestamp } from '../dateUtils';
+import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getOverdueVerses, getRecentPractice, getUpcomingVerseOfDay, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
+import { Collection, SearchData, useAppStore, UserVerse, Verse, VerseOfDay as VodType } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { getUTCTimestamp } from '../dateUtils';
 
 const { height } = Dimensions.get('window');
 
@@ -78,6 +78,8 @@ function orderCustom(array: Collection[], idString: string | undefined): Collect
   return [...reorderedArray, ...remainingCollections];
 }
 
+const queuedVodLoads = new Set<string>();
+
 export default function Index() {
   const styles = useStyles();
   const theme = useAppTheme();
@@ -96,7 +98,6 @@ export default function Index() {
   const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [showPublish, setShowPublish] = useState(false);
   const deleteCollectionStore = useAppStore((state) => state.removeCollection);
   const [localSortBy, setLocalSortBy] = useState(0);
   const [orderedCollections, setOrderedCollections] = useState<Collection[]>(collections);
@@ -104,6 +105,246 @@ export default function Index() {
   const [shouldReloadPracticeList, setShouldReloadPracticeList] = useState(false);
 
   const [visible, setVisible] = React.useState(false);
+  const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+
+  // Verse of the Day state
+  const [currentVod, setCurrentVod] = useState<VodType | null>(null);
+  const [vodTexts, setVodTexts] = useState<Record<string, Verse[]>>({});
+  const screenWidth = Dimensions.get('window').width;
+  const cardWidth = useMemo(() => Math.min(screenWidth - 50, 580), [screenWidth]);
+
+  // Collection picker state for Verse of the Day Save functionality
+  const [showVodCollectionPicker, setShowVodCollectionPicker] = useState(false);
+  const [selectedVodVerse, setSelectedVodVerse] = useState<Verse | null>(null);
+  const [pickedVodCollection, setPickedVodCollection] = useState<Collection | undefined>(undefined);
+  const [isAddingVodToCollection, setIsAddingVodToCollection] = useState(false);
+  const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
+  const verseSaveAdjustments = useAppStore((state) => state.verseSaveAdjustments);
+  const incrementVerseSaveAdjustment = useAppStore((state) => state.incrementVerseSaveAdjustment);
+
+  // Recent Practice, Overdue, and Activity state
+  const [recentPractice, setRecentPractice] = useState<UserVerse[]>([]);
+  const [overdueVerses, setOverdueVerses] = useState<UserVerse[]>([]);
+  const [recentPracticeLoaded, setRecentPracticeLoaded] = useState(false);
+  const [overdueVersesLoaded, setOverdueVersesLoaded] = useState(false);
+
+  const isSameUTCDate = (a: Date, b: Date) => {
+    return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
+  };
+
+  const currentVodVerses = currentVod ? vodTexts[currentVod.readableReference] : undefined;
+  const currentVodDate = currentVod ? new Date(currentVod.versedDate) : null;
+  const currentVodIsToday = currentVodDate ? isSameUTCDate(currentVodDate, new Date()) : false;
+  const currentVodText = currentVodVerses && currentVodVerses.length > 0
+    ? currentVodVerses.map(v => v.text).join(' ')
+    : '';
+  const currentVodSavedCount = currentVodVerses && currentVodVerses.length > 0
+    ? currentVodVerses[0].users_Saved_Verse ?? 0
+    : 0;
+  const currentVodMemorizedCount = currentVodVerses && currentVodVerses.length > 0
+    ? currentVodVerses[0].users_Memorized ?? 0
+    : 0;
+  const displayedVodSavedCount = currentVodSavedCount + (currentVod?.readableReference ? (verseSaveAdjustments[currentVod.readableReference] ?? 0) : 0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data: VodType[] = await getUpcomingVerseOfDay();
+        const normalized = Array.isArray(data) ? [...data] : [];
+        normalized.sort((a, b) => {
+          const aTime = new Date(a.versedDate).getTime();
+          const bTime = new Date(b.versedDate).getTime();
+          return bTime - aTime;
+        });
+        const today = new Date();
+        const targetForToday = normalized.find(v => {
+          const d = new Date(v.versedDate);
+          return isSameUTCDate(d, today);
+        });
+        const fallback = normalized.length > 0 ? normalized[0] : null;
+        const targetVod = targetForToday || fallback || null;
+
+        setCurrentVod(targetVod);
+
+        if (targetVod?.readableReference) {
+          loadTextForReference(targetVod.readableReference);
+        }
+      } catch (e) {
+        console.error('Failed to load verse of day list', e);
+        setCurrentVod(null);
+      }
+    })();
+  }, []);
+
+  // Fetch Recent Practice, Overdue, and Activity separately
+  useFocusEffect(
+    useCallback(() => {
+      if (user.username === 'Default User') return;
+      
+      // Load Recent Practice
+      (async () => {
+        try {
+          const recent = await getRecentPractice(user.username);
+          setRecentPractice(recent || []);
+          setRecentPracticeLoaded(true);
+        } catch (e) {
+          console.error('Failed to load recent practice', e);
+          setRecentPracticeLoaded(false);
+        }
+      })();
+
+      // Load Overdue Verses
+      (async () => {
+        try {
+          const overdue = await getOverdueVerses(user.username);
+          setOverdueVerses(overdue || []);
+          setOverdueVersesLoaded(true);
+        } catch (e) {
+          console.error('Failed to load overdue verses', e);
+          setOverdueVersesLoaded(false);
+        }
+      })();
+
+    }, [user.username])
+  );
+
+  const loadTextForReference = async (readableReference: string | undefined | null) => {
+    if (!readableReference) return;
+
+    if (vodTexts[readableReference] && vodTexts[readableReference]!.length > 0) {
+      return;
+    }
+
+    if (queuedVodLoads.has(readableReference)) {
+      return;
+    }
+
+    queuedVodLoads.add(readableReference);
+
+    try {
+      const data: SearchData = await getVerseSearchResult(readableReference);
+      setVodTexts(prev => ({ ...prev, [readableReference]: data.verses || [] }));
+    } catch (e) {
+      console.error('Failed to fetch verse text', e);
+    } finally {
+      queuedVodLoads.delete(readableReference);
+    }
+  };
+
+  const handleSaveVodVerse = (readableReference: string) => {
+    const verses = vodTexts[readableReference];
+    if (!verses || verses.length === 0) {
+      setSnackbarMessage('Verse not loaded yet. Please wait...');
+      setSnackbarVisible(true);
+      return;
+    }
+    // Use the first verse from the search results
+    const verse = verses[0];
+    // Ensure verse_reference is set
+    const formattedVerse: Verse = {
+      ...verse,
+      verse_reference: verse.verse_reference || readableReference,
+    };
+    setSelectedVodVerse(formattedVerse);
+    setPickedVodCollection(undefined);
+    setShowVodCollectionPicker(true);
+  };
+
+  const handleAddVodToCollection = async () => {
+    if (!pickedVodCollection || !selectedVodVerse || !user.username || isAddingVodToCollection) return;
+
+    const readableReference = selectedVodVerse.verse_reference || '';
+    const alreadyExists = pickedVodCollection.userVerses.some(
+      uv => uv.readableReference === readableReference
+    );
+
+    if (alreadyExists) {
+      setSnackbarMessage('This passage is already in the collection');
+      setSnackbarVisible(true);
+      setShowVodCollectionPicker(false);
+      setSelectedVodVerse(null);
+      setPickedVodCollection(undefined);
+      return;
+    }
+
+    setIsAddingVodToCollection(true);
+
+    const userVerse: UserVerse = {
+      username: user.username,
+      readableReference: readableReference,
+      verses: [selectedVodVerse]
+    };
+
+    try {
+      await addUserVersesToNewCollection([userVerse], pickedVodCollection.collectionId!);
+      
+      const currentOrder = pickedVodCollection.verseOrder || '';
+      const newOrder = currentOrder ? `${currentOrder}${readableReference},` : `${readableReference},`;
+      
+      const updatedCollection = {
+        ...pickedVodCollection,
+        userVerses: [...pickedVodCollection.userVerses, userVerse],
+        verseOrder: newOrder,
+      };
+      
+      await updateCollectionDB(updatedCollection);
+      setCollections(collections.map(c =>
+        c.collectionId === pickedVodCollection.collectionId ? updatedCollection : c
+      ));
+
+      incrementVerseSaveAdjustment(readableReference);
+      setShowVodCollectionPicker(false);
+      setSelectedVodVerse(null);
+      setPickedVodCollection(undefined);
+      setIsAddingVodToCollection(false);
+      setSnackbarMessage('Verse added to collection!');
+      setSnackbarVisible(true);
+    } catch (error) {
+      console.error('Error adding to collection:', error);
+      setSnackbarMessage('Failed to add verse to collection');
+      setSnackbarVisible(true);
+      setIsAddingVodToCollection(false);
+    }
+  };
+
+  const handlePracticeVodVerse = (readableReference: string) => {
+    const verses = vodTexts[readableReference];
+    if (!verses || verses.length === 0) {
+      setSnackbarMessage('Verse not loaded yet. Please wait...');
+      setSnackbarVisible(true);
+      return;
+    }
+    
+    // Create a UserVerse object for practice session
+    const userVerse: UserVerse = {
+      username: user.username,
+      readableReference: readableReference,
+      verses: verses
+    };
+    
+    // Set the editing user verse and navigate to practice session
+    const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
+    setEditingUserVerse(userVerse);
+    router.push('/practiceSession');
+  };
+
+  const handleShareVodVerse = (readableReference: string) => {
+    const verses = vodTexts[readableReference];
+    if (!verses || verses.length === 0) {
+      setSnackbarMessage('Verse not loaded yet. Please wait...');
+      setSnackbarVisible(true);
+      return;
+    }
+    
+    // Use the first verse from the search results
+    const verse = verses[0];
+    // Ensure verse_reference is set
+    const formattedVerse: Verse = {
+      ...verse,
+      verse_reference: verse.verse_reference || readableReference,
+    };
+    setVerseToShare(formattedVerse);
+  };
 
   const hideDialog = () => setVisible(false);
   const hideDeleteDialog = () => setDeleteDialogVisible(false);
@@ -210,6 +451,11 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
     }, [collections])
   );
 
+  useEffect(() => {
+    if (!user.username || user.username === 'Default User') {
+      setIsProfileDrawerOpen(false);
+    }
+  }, [user.username]);
 
 
 
@@ -424,14 +670,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
       setSettingsCollection(collection);
       openSettingsSheet();
     }
-    // Fetch published status
-    if (collection.collectionId) {
-      getPublishedInfo(collection.collectionId)
-        .then(info => setIsSettingsCollectionPublished(!!info))
-        .catch(() => setIsSettingsCollectionPublished(false));
-    } else {
-      setIsSettingsCollectionPublished(false);
-    }
   }
 
   const sheetItemStyle = StyleSheet.create({
@@ -560,6 +798,254 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           width: '100%'
         }}
       >
+        {/* Verse Of The Day */}
+        <View style={{ width: '100%', marginBottom: 20 }}>
+          <View style={{ paddingHorizontal: 2, marginBottom: 4, marginTop: -10 }}>
+            <Text style={{ ...styles.tinyText, margin: 0, marginLeft: 15, fontSize: 13, opacity: 0.8 }}>Verse Of The Day</Text>
+            </View>
+          <View style={{ alignItems: 'center', width: '100%' }}>
+            {currentVod ? (
+                <View style={{ width: '100%' }}>
+                <View style={{ backgroundColor: theme.colors.surface, alignItems: 'stretch', justifyContent: 'space-between', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOpacity: .15, shadowRadius: 6 }}>
+                    <View>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={{ fontFamily: 'Noto Serif bold', fontSize: 22, color: theme.colors.onBackground }}>{currentVod.readableReference}</Text>
+                      </View>
+                      <Text style={{ fontFamily: 'Noto Serif', fontSize: 16, lineHeight: 24, color: theme.colors.onBackground, marginBottom: 12 }} numberOfLines={5}>
+                      {currentVodText || 'Loading verse...'}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 16 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="people-outline" size={14} color={theme.colors.onSurfaceVariant} />
+                          <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
+                            {displayedVodSavedCount} saved
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.onSurfaceVariant} />
+                          <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
+                            {currentVodMemorizedCount} memorized
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 18 }}>
+                    <TouchableOpacity activeOpacity={0.1} onPress={() => handleSaveVodVerse(currentVod.readableReference)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="bookmark-outline" size={18} color={theme.colors.onBackground} />
+                          <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Save</Text>
+                        </View>
+                      </TouchableOpacity>
+                    <TouchableOpacity activeOpacity={0.1} onPress={() => handlePracticeVodVerse(currentVod.readableReference)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.onBackground} />
+                          <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Practice</Text>
+                        </View>
+                      </TouchableOpacity>
+                    <TouchableOpacity activeOpacity={0.1} onPress={() => handleShareVodVerse(currentVod.readableReference)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="share-social-outline" size={18} color={theme.colors.onBackground} />
+                          <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Share</Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+            ) : (
+              <View style={{ paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Recent Practice Section */}
+        {recentPracticeLoaded && (
+          <View style={{ width: '100%', marginBottom: 30, marginTop: 5, borderRadius: 20 }}>
+            <Text style={{ ...styles.text, fontFamily: 'Inter bold', marginBottom: 5, backgroundColor: theme.colors.background, zIndex: 9999 }}>Recent Practice</Text>
+            {recentPractice.length > 0 ? (
+              <View style={{ flexDirection: 'row', position: 'relative' }}>
+                <View style={{ flex: 1, marginLeft: 20 }}>
+                  {recentPractice.map((uv, index) => (
+                    <View key={uv.id || index} style={{ 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between',
+                      position: 'relative'
+                    }}>
+                      <View style={{
+                        position: 'absolute',
+                        left: -10,
+                        top: 0,
+                        width: 4,
+                        height: 34,
+                        borderRadius: 9999,
+                        backgroundColor: theme.colors.onBackground
+                      }}/>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginLeft: 10, height: 30, marginTop: 0 }}>
+                        <Text style={{ fontFamily: 'Inter', fontSize: 16, color: theme.colors.onBackground, marginRight: 12 }}>
+                          {uv.readableReference}
+                        </Text>
+                        <Text style={{ fontFamily: 'Inter', fontSize: 14, color: theme.colors.onSurfaceVariant }}>
+                          {uv.progressPercent === 100 ? '100%' : `${Math.round(uv.progressPercent || 0)}%`}
+                        </Text>
+                      </View>
+                      <TouchableOpacity 
+                        activeOpacity={0.1}
+                        onPress={async () => {
+                          try {
+                            // Populate verses if not already populated
+                            let verseToPractice = uv;
+                            if (!verseToPractice.verses || verseToPractice.verses.length === 0) {
+                              const searchData = await getVerseSearchResult(uv.readableReference);
+                              verseToPractice = { ...uv, verses: searchData.verses || [] };
+                            }
+                            const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
+                            setEditingUserVerse(verseToPractice);
+                            router.push('/practiceSession');
+                          } catch (e) {
+                            console.error('Failed to load verse for practice', e);
+                            setSnackbarMessage('Failed to load verse');
+                            setSnackbarVisible(true);
+                          }
+                        }}
+                      >
+                        <Text style={{ ...styles.tinyText, fontSize: 12, textDecorationLine: 'underline', opacity: 0.8}}>
+                          Learn again
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', position: 'relative', marginTop: 5 }}>
+                {/* L shape for empty state */}
+                <View style={{ marginLeft: 20, alignItems: 'flex-start' }}>
+                  
+                      <View style={{
+                        position: 'absolute',
+                        left: -10,
+                        top: 0,
+                        width: 4,
+                        height: 30,
+                        borderRadius: 9999,
+                        backgroundColor: theme.colors.onBackground
+                      }}/>
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-start', marginLeft: 10, marginTop: 5 }}>
+                  <Text style={{ 
+                    fontFamily: 'Inter', 
+                    fontSize: 14, 
+                    color: theme.colors.onBackground,
+                  }}>
+                    No passages practiced
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Overdue Section */}
+        {overdueVersesLoaded && (
+          <View style={{ width: '100%', marginBottom: 24, borderRadius: 20 }}>
+            <Text style={{ ...styles.text, fontFamily: 'Inter bold', marginBottom: 12 }}>Overdue</Text>
+            {overdueVerses.length > 0 ? (
+              <View style={{ flexDirection: 'row', position: 'relative' }}>
+                <View style={{ flex: 1, marginLeft: 30 }}>
+                  {overdueVerses.map((uv, index) => {
+                    const lastPracticed = uv.lastPracticed ? new Date(uv.lastPracticed) : null;
+                    const now = new Date();
+                    const diffMs = lastPracticed ? now.getTime() - lastPracticed.getTime() : 0;
+                    const diffHours = diffMs ? Math.floor(diffMs / (1000 * 60 * 60)) : 0;
+                    const diffDays = diffMs ? Math.floor(diffMs / (1000 * 60 * 60 * 24)) : 0;
+                    const timeAgo = diffDays > 0 ? `${diffDays}d ago` : `${diffHours}hr ago`;
+                    
+                    return (
+                    <View key={uv.id || index} style={{ 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      justifyContent: 'space-between',
+                      position: 'relative'
+                    }}>
+                      <View style={{
+                        position: 'absolute',
+                        left: -10,
+                        top: 0,
+                        width: 4,
+                        height: 30,
+                        borderRadius: 9999,
+                        backgroundColor: theme.colors.onBackground
+                      }}/>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginLeft: 10, height: 30 }}>
+                          <Text style={{ color: '#ff4444', fontSize: 16, marginRight: 8 }}>!</Text>
+                        <Text style={{ fontFamily: 'Inter', fontSize: 16, color: theme.colors.onBackground, marginRight: 12 }}>
+                            {uv.readableReference}
+                          </Text>
+                          <Text style={{ fontFamily: 'Inter', fontSize: 12, color: theme.colors.onSurfaceVariant }}>
+                            {timeAgo}
+                          </Text>
+                        </View>
+                        <TouchableOpacity 
+                          activeOpacity={0.1}
+                          onPress={async () => {
+                            try {
+                              // Populate verses if not already populated
+                              let verseToPractice = uv;
+                              if (!verseToPractice.verses || verseToPractice.verses.length === 0) {
+                                const searchData = await getVerseSearchResult(uv.readableReference);
+                                verseToPractice = { ...uv, verses: searchData.verses || [] };
+                              }
+                              const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
+                              setEditingUserVerse(verseToPractice);
+                              router.push('/practiceSession');
+                            } catch (e) {
+                              console.error('Failed to load verse for practice', e);
+                              setSnackbarMessage('Failed to load verse');
+                              setSnackbarVisible(true);
+                            }
+                          }}
+                        >
+                          <Text style={{ fontFamily: 'Inter', fontSize: 14, color: theme.colors.primary, textDecorationLine: 'underline' }}>
+                            Practice &gt;
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', position: 'relative' }}>
+                {/* L shape for empty state */}
+                <View style={{ marginLeft: 20, alignItems: 'flex-start' }}>
+                  
+                      <View style={{
+                        position: 'absolute',
+                        left: -10,
+                        top: 0,
+                        width: 4,
+                        height: 30,
+                        borderRadius: 9999,
+                        backgroundColor: theme.colors.onBackground
+                      }}/>
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-start', marginLeft: 10, marginTop: 5 }}>
+                  <Text style={{ 
+                    fontFamily: 'Inter', 
+                    fontSize: 14, 
+                    color: theme.colors.onBackground,
+                  }}>
+                    No passages overdue
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+
         <Text style={{ ...styles.subheading }}>My Verses</Text>
         <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}} activeOpacity={0.1} onPress={() => openCollectionsSettingsSheet()}>
           <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
@@ -714,27 +1200,14 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <TouchableOpacity
             style={sheetItemStyle.settingsItem}
             activeOpacity={0.1}
-            onPress={async () => {
+            onPress={() => {
               if (!settingsCollection?.collectionId) return;
-              if (isSettingsCollectionPublished) {
-                try {
-                  await unpublishCollection(settingsCollection.collectionId);
-                  setIsSettingsCollectionPublished(false);
-                  setSnackbarMessage('Collection unpublished');
-                  setSnackbarVisible(true);
-                } catch (e) {
-                  console.error('Failed to unpublish collection', e);
-                  setSnackbarMessage('Failed to unpublish collection');
-                  setSnackbarVisible(true);
-                } finally {
-                  closeSettingsSheet();
-                }
-              } else {
-                closeSettingsSheet();
-                setShowPublish(true);
-              }
+              closeSettingsSheet();
+              const setEditingCollection = useAppStore.getState().setEditingCollection;
+              setEditingCollection(settingsCollection);
+              router.push('../collections/publishCollection');
             }}>
-              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>{isSettingsCollectionPublished ? 'Unpublish' : 'Publish'}</Text>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
            </TouchableOpacity>
           <Divider />
           <TouchableOpacity
@@ -870,28 +1343,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         </Dialog.Actions>
       </Dialog>
       </Portal>
-      <PublishDialog
-        visible={showPublish}
-        onDismiss={() => setShowPublish(false)}
-        onPublish={async (desc, categoryIds) => {
-          if (!settingsCollection?.collectionId) return;
-          await publishCollection(settingsCollection.collectionId, desc, categoryIds);
-          setIsSettingsCollectionPublished(true);
-          // Ensure the collection is Public after publishing
-          try {
-            const updated = { ...settingsCollection, visibility: 'Public' } as Collection;
-            await updateCollectionDB(updated);
-            const updatedCollections = collections.map(c => 
-              c.collectionId === updated.collectionId ? updated : c
-            );
-            setCollections(updatedCollections);
-          } catch (e) {
-            console.error('Failed to set visibility Public after publish', e);
-          }
-          setSnackbarMessage('Collection published');
-          setSnackbarVisible(true);
-        }}
-      />
       
       <ShareCollectionSheet
         visible={isShareSheetVisible}
@@ -906,6 +1357,166 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           setSnackbarVisible(true);
         }}
       />
+
+      {/* Collection Picker Modal for Verse of the Day Save */}
+      <Modal
+        visible={showVodCollectionPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowVodCollectionPicker(false)}
+      >
+        <View style={{ 
+          flex: 1, 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          backgroundColor: 'rgba(0, 0, 0, 0.5)' 
+        }}>
+          <View style={{ 
+            backgroundColor: theme.colors.surface, 
+            borderRadius: 16, 
+            padding: 20, 
+            width: '85%',
+            maxHeight: '70%'
+          }}>
+            <Text style={{ 
+              fontSize: 20,
+              fontWeight: '600',
+              fontFamily: 'Inter',
+              color: theme.colors.onBackground,
+              marginBottom: 20
+            }}>
+              Choose a Collection
+            </Text>
+            
+            <ScrollView>
+              {(() => {
+                const favorites = collections.filter(col => col.favorites || col.title === 'Favorites');
+                const nonFavorites = collections.filter(col => !col.favorites && col.title !== 'Favorites');
+                
+                return (
+                  <>
+                    {favorites.map((collection) => (
+                      <TouchableOpacity
+                        key={collection.collectionId}
+                        activeOpacity={0.1}
+                        style={{
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          marginBottom: 8,
+                          backgroundColor: pickedVodCollection?.collectionId === collection.collectionId 
+                            ? theme.colors.primary 
+                            : 'transparent',
+                          borderRadius: 8,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}
+                        onPress={() => setPickedVodCollection(collection)}
+                      >
+                        <Text style={{
+                          fontSize: 16,
+                          color: pickedVodCollection?.collectionId === collection.collectionId 
+                            ? '#fff' 
+                            : theme.colors.onBackground,
+                          fontFamily: 'Inter'
+                        }}>
+                          {collection.title}
+                        </Text>
+                        <Ionicons 
+                          name="star" 
+                          size={20} 
+                          color={pickedVodCollection?.collectionId === collection.collectionId 
+                            ? '#fff' 
+                            : theme.colors.onBackground} 
+                        />
+                      </TouchableOpacity>
+                    ))}
+                    {nonFavorites.map((collection) => (
+                      <TouchableOpacity
+                        key={collection.collectionId}
+                        activeOpacity={0.1}
+                        style={{
+                          paddingVertical: 12,
+                          paddingHorizontal: 16,
+                          marginBottom: 8,
+                          backgroundColor: pickedVodCollection?.collectionId === collection.collectionId 
+                            ? theme.colors.primary 
+                            : 'transparent',
+                          borderRadius: 8
+                        }}
+                        onPress={() => setPickedVodCollection(collection)}
+                      >
+                        <Text style={{
+                          fontSize: 16,
+                          color: pickedVodCollection?.collectionId === collection.collectionId 
+                            ? '#fff' 
+                            : theme.colors.onBackground,
+                          fontFamily: 'Inter'
+                        }}>
+                          {collection.title}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                );
+              })()}
+            </ScrollView>
+
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              marginTop: 20
+            }}>
+              <TouchableOpacity
+                style={{
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  borderRadius: 8
+                }}
+                activeOpacity={0.1}
+                onPress={() => {
+                  setPickedVodCollection(undefined);
+                  setShowVodCollectionPicker(false);
+                }}
+              >
+                <Text style={{
+                  fontSize: 16,
+                  color: theme.colors.onBackground,
+                  fontFamily: 'Inter'
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: theme.colors.primary,
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  borderRadius: 8,
+                  opacity: (!pickedVodCollection || isAddingVodToCollection) ? 0.5 : 1
+                }}
+                activeOpacity={0.1}
+                onPress={handleAddVodToCollection}
+                disabled={!pickedVodCollection || isAddingVodToCollection}
+              >
+                {isAddingVodToCollection ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{
+                    fontSize: 16,
+                    color: '#fff',
+                    fontFamily: 'Inter',
+                    fontWeight: '600'
+                  }}>
+                    Add
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       
       <Snackbar
         visible={snackbarVisible}
@@ -917,6 +1528,21 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           {snackbarMessage}
         </Text>
       </Snackbar>
+
+      <ShareVerseSheet
+        visible={!!verseToShare}
+        verseReference={verseToShare?.verse_reference || null}
+        onClose={() => setVerseToShare(null)}
+        onShareSuccess={(friend) => { 
+          setVerseToShare(null); 
+          setSnackbarMessage(`Verse shared with ${friend}`); 
+          setSnackbarVisible(true); 
+        }}
+        onShareError={() => { 
+          setSnackbarMessage('Failed to share verse'); 
+          setSnackbarVisible(true); 
+        }}
+      />
     </View>
     </>
   );

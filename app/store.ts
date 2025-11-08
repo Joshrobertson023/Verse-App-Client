@@ -1,6 +1,8 @@
     import { create } from 'zustand';
 import Status from './Enums';
 
+export type ThemePreference = 'system' | 'light' | 'dark';
+
 export interface ErrorMessage {
     type: string;
     message: string;
@@ -11,8 +13,6 @@ export interface Collection {
     title: string;
     authorUsername?: string;
     visibility?: string;
-    isPublished?: boolean;
-    numSaves?: number;
     dateCreated?: Date;
     verseOrder?: string;
     userVerses: UserVerse[];
@@ -46,7 +46,7 @@ export interface User {
 }
 
 export interface UserVerse {
-    clientId?: string; // client-only unique id for list keys
+    clientId?: string;
     id?: number;
     username: string;
     collectionId?: number;
@@ -71,6 +71,13 @@ export interface Verse {
     users_Saved_Verse?: number;
     users_Memorized?: number;
     verse_Number?: string | number;
+}
+
+export interface Activity {
+    id: number;
+    text: string;
+    dateCreated: string;
+    username: string;
 }
 
 export interface loginInfo {
@@ -108,10 +115,7 @@ export interface Notification {
 export interface VerseOfDay {
     id: number;
     readableReference: string;
-    scheduledDate: string;
-    sentDate?: string;
-    isSent: boolean;
-    createdDate: string;
+    versedDate: string;
 }
 
 export interface CollectionSheetControls {
@@ -156,6 +160,38 @@ const emptyNewCollection: Collection = {
     favorites: false,
 }
 
+export interface ProfileCache {
+    memorizedCount: number;
+    activity: Activity[];
+    isLoaded: boolean;
+    isLoading: boolean;
+    lastFetchedAt?: number;
+    username?: string;
+    error?: string | null;
+}
+
+export interface ProfileDrawerControls {
+    openDrawer: () => void;
+    closeDrawer: () => void;
+    toggleDrawer: () => void;
+}
+
+const defaultProfileCache: ProfileCache = {
+    memorizedCount: 0,
+    activity: [],
+    isLoaded: false,
+    isLoading: false,
+    lastFetchedAt: undefined,
+    username: undefined,
+    error: null,
+};
+
+export const defaultProfileDrawerControls: ProfileDrawerControls = {
+    openDrawer: () => console.log('Profile drawer control not yet registered or component unmounted.'),
+    closeDrawer: () => console.log('Profile drawer control not yet registered or component unmounted.'),
+    toggleDrawer: () => console.log('Profile drawer control not yet registered or component unmounted.'),
+};
+
 export const loggedOutUser: User = {
     username: 'Default User',
     firstName: 'L',
@@ -184,6 +220,10 @@ interface AppState {
   numNotifications: number;
   collectionsSheetControls: CollectionSheetControls;
   popularSearches: string[];
+  profileCache: ProfileCache;
+  profileDrawerControls: ProfileDrawerControls;
+  themePreference: ThemePreference;
+  verseSaveAdjustments: Record<string, number>;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -204,6 +244,12 @@ interface AppState {
   setEditingUserVerse: (userVerse: UserVerse | undefined) => void;
   setNumNotifications?: (count: number) => void;
   setPopularSearches: (searches: string[]) => void;
+  setProfileCache: (patch: Partial<ProfileCache>) => void;
+  resetProfileCache: () => void;
+  setProfileDrawerControls: (controls: ProfileDrawerControls) => void;
+  setThemePreference: (preference: ThemePreference) => void;
+  incrementVerseSaveAdjustment: (reference: string, amount?: number) => void;
+  resetVerseSaveAdjustment: (reference?: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -221,6 +267,10 @@ export const useAppStore = create<AppState>((set) => ({
     numNotifications: 0,
     collectionsSheetControls: defaultCollectionsSheetControls,
     popularSearches: [],
+    profileCache: { ...defaultProfileCache, activity: [] },
+    profileDrawerControls: defaultProfileDrawerControls,
+    themePreference: 'system',
+    verseSaveAdjustments: {},
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -263,4 +313,42 @@ export const useAppStore = create<AppState>((set) => ({
     setNumNotifications: (count: number) => set({numNotifications: count}),
     setShouldReloadPracticeList: (should: boolean) => set({shouldReloadPracticeList: should}),
     setPopularSearches: (searches: string[]) => set({popularSearches: searches}),
+    setProfileCache: (patch: Partial<ProfileCache>) => set((state) => ({
+        profileCache: {
+            ...state.profileCache,
+            ...patch,
+        },
+    })),
+    resetProfileCache: () => set({
+        profileCache: { ...defaultProfileCache, activity: [] },
+    }),
+    setProfileDrawerControls: (controls: ProfileDrawerControls) => set({ profileDrawerControls: controls }),
+    setThemePreference: (preference: ThemePreference) => set({ themePreference: preference }),
+    incrementVerseSaveAdjustment: (reference: string, amount = 1) => set((state) => {
+        if (!reference) {
+            return {};
+        }
+        const current = state.verseSaveAdjustments[reference] ?? 0;
+        return {
+            verseSaveAdjustments: {
+                ...state.verseSaveAdjustments,
+                [reference]: current + amount,
+            },
+        };
+    }),
+    resetVerseSaveAdjustment: (reference?: string) => {
+        if (!reference) {
+            set({ verseSaveAdjustments: {} });
+            return;
+        }
+
+        set((state) => {
+            if (!(reference in state.verseSaveAdjustments)) {
+                return {};
+            }
+            const next = { ...state.verseSaveAdjustments };
+            delete next[reference];
+            return { verseSaveAdjustments: next };
+        });
+    },
 }))

@@ -29,7 +29,10 @@ export default function PublishDialog({ visible, onDismiss, onPublish }: Props) 
 
   const toggle = (id: number) => {
     const next = new Set(selected);
-    if (next.has(id)) next.delete(id); else next.add(id);
+    if (next.has(id)) 
+      next.delete(id); 
+    else 
+      next.add(id);
     setSelected(next);
   };
 
@@ -48,22 +51,22 @@ export default function PublishDialog({ visible, onDismiss, onPublish }: Props) 
       <Dialog visible={visible} onDismiss={onDismiss} style={{ backgroundColor: theme.colors.surface }}>
         <Dialog.Title>Publish Collection</Dialog.Title>
         <Dialog.Content>
-          <Text style={{ ...styles.text, marginBottom: 8 }}>All users can discover this collection.</Text>
           <TextInput
             mode="outlined"
+            multiline={true}
+            maxLength={200}
             label="Description (optional)"
             value={description}
             onChangeText={setDescription}
-            style={{ marginBottom: 12 }}
           />
           <Text style={{ ...styles.text, marginBottom: 6 }}>Select categories</Text>
           <ScrollView style={{ maxHeight: 220 }}>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {categories.map(c => (
                 <Chip
-                  key={c.category_Id}
-                  selected={selected.has(c.category_Id)}
-                  onPress={() => toggle(c.category_Id)}
+                  key={c.categoryId}
+                  selected={selected.has(c.categoryId)}
+                  onPress={() => toggle(c.categoryId)}
                   style={{ marginBottom: 8, backgroundColor: theme.colors.surface2 }}
                 >
                   {c.name}

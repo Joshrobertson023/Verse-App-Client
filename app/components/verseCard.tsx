@@ -3,7 +3,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { Verse } from '../store';
+import { useAppStore, Verse } from '../store';
 
 interface Props {
   verse: Verse;
@@ -13,8 +13,12 @@ interface Props {
 export default function VerseCard({ verse, rightMeta = 'saved' }: Props) {
   const styles = useStyles();
   const theme = useAppTheme();
-
-  const rightCount = rightMeta === 'saved' ? verse.users_Saved_Verse ?? (verse as any).Users_Saved_Verse : verse.users_Memorized ?? (verse as any).Users_Memorized;
+  const verseReferenceKey = (verse.verse_reference || (verse as any).readableReference || (verse as any).ReadableReference) as string | undefined;
+  const savedAdjustment = useAppStore((state) => verseReferenceKey ? state.verseSaveAdjustments[verseReferenceKey] ?? 0 : 0);
+  const baseSavedCount = verse.users_Saved_Verse ?? (verse as any).Users_Saved_Verse ?? 0;
+  const rightCount = rightMeta === 'saved'
+    ? baseSavedCount + savedAdjustment
+    : verse.users_Memorized ?? (verse as any).Users_Memorized ?? 0;
 
   return (
     <View

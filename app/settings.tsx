@@ -1,11 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { getUserCollections, updateSubscribedVerseOfDay, updatePushNotifications, updateActivityNotifications, deleteUser, submitBugReport } from './db';
-import { useAppStore } from './store';
+import { deleteUser, submitBugReport, updateActivityNotifications, updatePushNotifications, updateSubscribedVerseOfDay } from './db';
+import { ThemePreference, useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
 
@@ -17,6 +16,8 @@ export default function SettingsScreen() {
   const router = useRouter();
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
+  const themePreference = useAppStore((state) => state.themePreference);
+  const setThemePreference = useAppStore((state) => state.setThemePreference);
   const [subscribedVerseOfDay, setSubscribedVerseOfDay] = useState(user.subscribedVerseOfDay ?? true);
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(user.pushNotificationsEnabled ?? true);
   const [activityNotificationsEnabled, setActivityNotificationsEnabled] = useState(user.activityNotificationsEnabled ?? true);
@@ -25,6 +26,16 @@ export default function SettingsScreen() {
   const [bugReportText, setBugReportText] = useState('');
   const [submittingBugReport, setSubmittingBugReport] = useState(false);
   const [showBugReportSuccess, setShowBugReportSuccess] = useState(false);
+
+  const themeOptions: Array<{ key: ThemePreference; label: string; description: string; icon: keyof typeof Ionicons.glyphMap }> = [
+    { key: 'light', label: 'Light', description: '', icon: 'sunny-outline' },
+    { key: 'dark', label: 'Dark', description: '', icon: 'moon-outline' },
+    { key: 'system', label: 'Use device setting', description: '', icon: 'phone-portrait-outline' },
+  ];
+
+  const handleThemeSelection = (preference: ThemePreference) => {
+    setThemePreference(preference);
+  };
 
   const handleToggleVerseOfDay = async (value: boolean) => {
     setSubscribedVerseOfDay(value);
@@ -228,8 +239,8 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* About Section */}
-          <View>
+          {/* Appearance Section */}
+          <View style={{ marginBottom: 30 }}>
             <Text style={{
               fontSize: 18,
               fontWeight: '600',
@@ -237,92 +248,50 @@ export default function SettingsScreen() {
               marginBottom: 15,
               fontFamily: 'Inter'
             }}>
-              About
+              Appearance
             </Text>
 
-            <View style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 12,
-              padding: 15,
-              marginBottom: 10
-            }}>
-              <Text style={{
-                fontSize: 14,
-                color: theme.colors.onSurfaceVariant,
-                fontFamily: 'Inter',
-                lineHeight: 20
-              }}>
-                Verse Memorization App
-              </Text>
-              <Text style={{
-                fontSize: 12,
-                color: theme.colors.onSurfaceVariant,
-                marginTop: 8,
-                fontFamily: 'Inter'
-              }}>
-                Version 1.0.0
-              </Text>
-              <View style={{ height: 12 }} />
-              <TouchableOpacity
-                onPress={() => router.push('/privacy')}
-                style={{
-                  paddingVertical: 10,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.primary,
-                  fontFamily: 'Inter',
-                  textDecorationLine: 'underline'
-                }}>
-                  Privacy Policy
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push('/terms')}
-                style={{
-                  paddingVertical: 10,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.primary,
-                  fontFamily: 'Inter',
-                  textDecorationLine: 'underline'
-                }}>
-                  Terms of Service
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push('/activity')}
-                style={{
-                  paddingVertical: 10,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between'
-                }}
-              >
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.primary,
-                  fontFamily: 'Inter',
-                  textDecorationLine: 'underline'
-                }}>
-                  Activity Tracking & Sharing
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.primary} />
-              </TouchableOpacity>
-            </View>
+            {themeOptions.map((option) => {
+              const isSelected = themePreference === option.key;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  onPress={() => handleThemeSelection(option.key)}
+                  activeOpacity={0.8}
+                  style={{
+                    backgroundColor: isSelected ? theme.colors.surface : 'transparent',
+                    borderRadius: 12,
+                    padding: 15,
+                    marginBottom: 10,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: isSelected ? theme.colors.primary : theme.colors.surface2,
+                    gap: 12,
+                  }}
+                >
+                  <Ionicons
+                    name={option.icon}
+                    size={22}
+                    color={isSelected ? theme.colors.primary : theme.colors.onSurfaceVariant}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{
+                      fontSize: 16,
+                      fontWeight: '500',
+                      color: isSelected ? theme.colors.primary : theme.colors.onBackground,
+                      fontFamily: 'Inter'
+                    }}>
+                      {option.label}
+                    </Text>
+                  </View>
+                  {isSelected && (
+                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.primary} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
-
 
           {/* Report Bug/Issue Section */}
           <View style={{ marginTop: 30, marginBottom: 30 }}>
@@ -335,6 +304,13 @@ export default function SettingsScreen() {
             }}>
               Help
             </Text>
+
+            <TouchableOpacity
+              style={{ ...styles.button_outlined, marginBottom: 12 }}
+              onPress={() => router.push('/about')}
+            >
+              <Text style={styles.buttonText_outlined}>About VerseMemorization</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.button_outlined}

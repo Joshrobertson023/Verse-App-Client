@@ -8,8 +8,8 @@ import ExploreCollectionCard from '../components/exploreCollectionCard';
 import SearchResultVerseCard from '../components/searchResultVerseCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { Skeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, Category, getAllCategories, getCollectionsByCategory, getPopularPublishedCollections, getRecentPublishedCollections, getTopMemorizedVerses, getTopSavedVerses, PublishedCollection, updateCollectionDB } from '../db';
-import { Collection, useAppStore, UserVerse, Verse } from '../store';
+import { Category, getAllCategories, getCollectionsByCategory, getPopularPublishedCollections, getRecentPublishedCollections, getTopMemorizedVerses, getTopSavedVerses, PublishedCollection } from '../db';
+import { Collection, useAppStore, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -30,7 +30,7 @@ export default function ExploreScreen() {
   const [isCategoryLoading, setIsCategoryLoading] = useState<boolean>(false);
   const [showCollectionPicker, setShowCollectionPicker] = useState(false);
   const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
-  const [pickedCollection, setPickedCollection] = useState<PublishedCollection | undefined>(undefined);
+  const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
   const [isAddingToCollection, setIsAddingToCollection] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
@@ -40,16 +40,19 @@ export default function ExploreScreen() {
   useEffect(() => {
     (async () => {
       try {
-        setCategories(await getAllCategories());
-        setSelectedCategoryId(categories[0].categoryId);
-        try {
-          setIsCategoryLoading(true);
-          const categoryPublished: PublishedCollection[] = await getCollectionsByCategory(selectedCategoryId ? selectedCategoryId : categories[0].categoryId);
-          setCategoryCollections(categoryPublished);
-        } catch {
-          setCategoryCollections([]);
-        } finally {
-          setIsCategoryLoading(false);
+        const loadedCategories = await getAllCategories();
+        setCategories(loadedCategories);
+        if (loadedCategories.length > 0) {
+          setSelectedCategoryId(loadedCategories[0].categoryId);
+          try {
+            setIsCategoryLoading(true);
+            const categoryPublished: PublishedCollection[] = await getCollectionsByCategory(loadedCategories[0].categoryId);
+            setCategoryCollections(categoryPublished);
+          } catch {
+            setCategoryCollections([]);
+          } finally {
+            setIsCategoryLoading(false);
+          }
         }
         setPopular(await getPopularPublishedCollections());
         setRecent(await getRecentPublishedCollections());
@@ -86,7 +89,7 @@ export default function ExploreScreen() {
     }
   };
 
-  const Horizontal = ({ data }: { data: Collection[] }) => (
+  const Horizontal = ({ data }: { data: PublishedCollection[] }) => (
     <ScrollView
       horizontal
       decelerationRate="fast"
@@ -95,7 +98,7 @@ export default function ExploreScreen() {
       contentContainerStyle={{ paddingHorizontal: 8 }}
     >
       {data.map((c) => (
-        <ExploreCollectionCard key={c.collectionId} collection={c} onSaved={handleCollectionSaved} />
+        <ExploreCollectionCard key={c.publishedId} collection={c} onSaved={handleCollectionSaved} />
       ))}
     </ScrollView>
   );
@@ -117,9 +120,9 @@ export default function ExploreScreen() {
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 96, marginBottom: -50 }} contentContainerStyle={{ paddingHorizontal: 12 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, columnGap: 8, height: 96 }}>
         {categories.map(c => (
-          <TouchableOpacity key={c.category_Id} onPress={() => onSelectCategory(c.category_Id)}>
-            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: selectedCategoryId === c.category_Id ? '#FFFFFF' : theme.colors.surface, borderWidth: 1, borderColor: theme.colors.outline }}>
-              <Text style={{ color: selectedCategoryId === c.category_Id ? theme.colors.onBackground : theme.colors.onSurface }}>{c.name}</Text>
+          <TouchableOpacity key={c.categoryId} onPress={() => onSelectCategory(c.categoryId)}>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: selectedCategoryId === c.categoryId ? '#FFFFFF' : theme.colors.surface, borderWidth: 1, borderColor: theme.colors.outline }}>
+              <Text style={{ color: selectedCategoryId === c.categoryId ? theme.colors.onBackground : theme.colors.onSurface }}>{c.name}</Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -146,61 +149,61 @@ export default function ExploreScreen() {
     setShowCollectionPicker(true);
   };
 
-  const handleAddToCollection = async () => {
-    if (!pickedCollection || !selectedVerse || !user.username || isAddingToCollection) return;
+  // const handleAddToCollection = async () => {
+  //   if (!pickedCollection || !selectedVerse || !user.username || isAddingToCollection) return;
 
-    const parsed = parseVerseReference(selectedVerse.verse_reference);
-    if (!parsed) return;
+  //   const parsed = parseVerseReference(selectedVerse.verse_reference);
+  //   if (!parsed) return;
 
-    const alreadyExists = pickedCollection.userVerses.some(
-      uv => uv.readableReference === selectedVerse.verse_reference
-    );
-    if (alreadyExists) {
-      setSnackbarMessage('This passage is already in the collection');
-      setSnackbarVisible(true);
-      setShowCollectionPicker(false);
-      setSelectedVerse(null);
-      setPickedCollection(undefined);
-      return;
-    }
+  //   const alreadyExists = pickedCollection.userVerses.some(
+  //     uv => uv.readableReference === selectedVerse.verse_reference
+  //   );
+  //   if (alreadyExists) {
+  //     setSnackbarMessage('This passage is already in the collection');
+  //     setSnackbarVisible(true);
+  //     setShowCollectionPicker(false);
+  //     setSelectedVerse(null);
+  //     setPickedCollection(undefined);
+  //     return;
+  //   }
 
-    setIsAddingToCollection(true);
+  //   setIsAddingToCollection(true);
 
-    const userVerse: UserVerse = {
-      username: user.username,
-      readableReference: selectedVerse.verse_reference,
-      verses: [selectedVerse]
-    };
+  //   const userVerse: UserVerse = {
+  //     username: user.username,
+  //     readableReference: selectedVerse.verse_reference,
+  //     verses: [selectedVerse]
+  //   };
 
-    try {
-      await addUserVersesToNewCollection([userVerse], pickedCollection.collectionId!);
+  //   try {
+  //     await addUserVersesToNewCollection([userVerse], pickedCollection.collectionId!);
 
-      const currentOrder = pickedCollection.verseOrder || '';
-      const newOrder = currentOrder ? `${currentOrder}${selectedVerse.verse_reference},` : `${selectedVerse.verse_reference},`;
+  //     const currentOrder = pickedCollection.verseOrder || '';
+  //     const newOrder = currentOrder ? `${currentOrder}${selectedVerse.verse_reference},` : `${selectedVerse.verse_reference},`;
 
-      const updatedCollection = {
-        ...pickedCollection,
-        userVerses: [...pickedCollection.userVerses, userVerse],
-        verseOrder: newOrder,
-      } as Collection;
+  //     const updatedCollection = {
+  //       ...pickedCollection,
+  //       userVerses: [...pickedCollection.userVerses, userVerse],
+  //       verseOrder: newOrder,
+  //     } as Collection;
 
-      await updateCollectionDB(updatedCollection);
-      setCollections(collections.map(c => 
-        c.collectionId === pickedCollection.collectionId ? updatedCollection : c
-      ));
+  //     await updateCollectionDB(updatedCollection);
+  //     setCollections(collections.map(c => 
+  //       c.collectionId === pickedCollection.collectionId ? updatedCollection : c
+  //     ));
 
-      setShowCollectionPicker(false);
-      setSelectedVerse(null);
-      setPickedCollection(undefined);
-      setIsAddingToCollection(false);
-      setSnackbarMessage('Verse added to collection!');
-      setSnackbarVisible(true);
-    } catch (error) {
-      setSnackbarMessage('Failed to add verse to collection');
-      setSnackbarVisible(true);
-      setIsAddingToCollection(false);
-    }
-  };
+  //     setShowCollectionPicker(false);
+  //     setSelectedVerse(null);
+  //     setPickedCollection(undefined);
+  //     setIsAddingToCollection(false);
+  //     setSnackbarMessage('Verse added to collection!');
+  //     setSnackbarVisible(true);
+  //   } catch (error) {
+  //     setSnackbarMessage('Failed to add verse to collection');
+  //     setSnackbarVisible(true);
+  //     setIsAddingToCollection(false);
+  //   }
+  // };
 
   const handleReadVerse = (verse: Verse) => {
     const parsed = parseVerseReference(verse.verse_reference);
@@ -261,7 +264,7 @@ export default function ExploreScreen() {
           </View>
         ) : (
           categoryCollections.map((c) => (
-            <ExploreCollectionCard key={`cat-${c.collectionId}`} collection={c} onSaved={handleCollectionSaved} />
+            <ExploreCollectionCard key={`cat-${c.publishedId}`} collection={c} onSaved={handleCollectionSaved} />
           ))
         )}
       </ScrollView>
@@ -480,7 +483,7 @@ export default function ExploreScreen() {
                   borderRadius: 8,
                   opacity: (!pickedCollection || isAddingToCollection) ? 0.5 : 1
                 }}
-                onPress={handleAddToCollection}
+                //onPress={handleAddToCollection}
                 disabled={!pickedCollection || isAddingToCollection}
               >
                 {isAddingToCollection ? (

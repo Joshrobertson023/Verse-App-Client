@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { Divider, Surface } from 'react-native-paper';
+import { Surface } from 'react-native-paper';
 import { bibleBooks } from '../bibleData';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -80,7 +80,6 @@ export default function BibleScreen() {
                       <Text style={{ 
                         ...styles.subheading, 
                         fontSize: 24,
-                        marginTop: 50,
                         marginBottom: 15,
                         fontWeight: 800,
                         color: theme.colors.onBackground,
@@ -109,18 +108,16 @@ export default function BibleScreen() {
                     activeOpacity={0.1}
                     style={{
                       paddingVertical: 16,
-                      paddingHorizontal: 20,
                       flexDirection: 'row',
                       justifyContent: 'space-between',
                       alignItems: 'center',
                     }}
                   >
-                    <Text style={{ ...styles.text, marginBottom: 0 }}>
+                    <Text style={{ ...styles.tinyText, fontSize: 18, fontWeight: 100, marginBottom: 0 }}>
                       {book.name}
                     </Text>
-                    <Ionicons name="chevron-forward" size={20} color={theme.colors.onBackground} />
+                    <Ionicons name="arrow-forward" size={20} color={theme.colors.onBackground} style={{opacity: 0.7}} />
                   </TouchableOpacity>
-                  {index < bibleBooks.length - 1 && <Divider style={{ marginVertical: 0 }} />}
                 </React.Fragment>
               ))}
             </>
@@ -137,16 +134,18 @@ export default function BibleScreen() {
                   <TouchableOpacity
                     key={chapterNum}
                     onPress={() => handleChapterSelect(selectedBook, chapterNum)}
-                    activeOpacity={0.1}
+                    activeOpacity={0.3}
                     style={{
                       width: '25%',
                       padding: 5,
                     }}
                   >
                     <View style={{ 
-                      padding: 15, 
+                      padding: 10, 
                       borderRadius: 10, 
-                      backgroundColor: theme.colors.surface,
+                      backgroundColor: theme.colors.background,
+                      borderColor: theme.colors.surface2,
+                      borderWidth: 3,
                       aspectRatio: 1,
                       justifyContent: 'center',
                       alignItems: 'center',
@@ -155,6 +154,7 @@ export default function BibleScreen() {
                         ...styles.text, 
                         marginBottom: 0,
                         fontSize: 16,
+                        opacity: 1,
                         fontWeight: '600',
                       }}>
                         {chapterNum}

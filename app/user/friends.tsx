@@ -6,7 +6,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Dialog, Divider, Portal } from 'react-native-paper';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { FriendItemSkeleton } from '../components/skeleton';
-import { getFriends } from '../db';
+import { getFriends, removeFriend, submitUserReport } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -112,15 +112,24 @@ export default function FriendsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadFriends();
-    }, [])
+      if (!user?.username || user.username === 'Default User') {
+        return;
+      }
+      loadFriends(user.username);
+    }, [user?.username])
   );
 
-  const loadFriends = async () => {
+  const loadFriends = async (username: string) => {
     try {
       setLoading(true);
-      const data = await getFriends(user.username);
-      setFriends(data);
+      const data = await getFriends(username);
+      // Sort alphabetically to match share dialogs
+      const sorted = [...data].sort((a, b) => {
+        const aName = `${a.firstName ?? ''} ${a.lastName ?? ''}`.trim().toLowerCase();
+        const bName = `${b.firstName ?? ''} ${b.lastName ?? ''}`.trim().toLowerCase();
+        return aName.localeCompare(bName);
+      });
+      setFriends(sorted);
     } catch (error) {
       console.error('Failed to load friends:', error);
     } finally {
@@ -128,7 +137,7 @@ export default function FriendsScreen() {
     }
   };
 
-  const renderFriend = (friend: User) => (
+  const renderFriend = ({ item: friend }: { item: User }) => (
     <View 
       style={{
         backgroundColor: theme.colors.surface,
@@ -312,7 +321,7 @@ export default function FriendsScreen() {
                   await removeFriend(user.username, selectedFriend.username);
                   setConfirmRemoveVisible(false);
                   setSelectedFriend(null);
-                  await loadFriends();
+                  await loadFriends(user.username);
                 } catch (error) {
                   console.error('Failed to remove friend:', error);
                   alert('Failed to remove friend');

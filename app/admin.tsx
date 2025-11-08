@@ -1,14 +1,21 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { DatePickerModal, en, registerTranslation } from 'react-native-paper-dates';
 import { DataTable } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
-import { createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory } from './db';
+import { Category, createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory } from './db';
 import { formatDate as formatDateUtil } from './dateUtils';
+
+type VerseOfDayQueueItem = {
+  id: number;
+  readableReference: string;
+  versedDate: string;
+};
 
 export default function AdminScreen() {
   const styles = useStyles();
@@ -20,14 +27,16 @@ export default function AdminScreen() {
   const [loading, setLoading] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [verseOfDayReference, setVerseOfDayReference] = useState('');
-  const [verseOfDays, setVerseOfDays] = useState<any[]>([]);
+  const [verseOfDayDate, setVerseOfDayDate] = useState<Date>(new Date());
+  const [showVerseOfDayDatePicker, setShowVerseOfDayDatePicker] = useState(false);
+  const [verseOfDays, setVerseOfDays] = useState<VerseOfDayQueueItem[]>([]);
   const [loadingVerseOfDays, setLoadingVerseOfDays] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [page, setPage] = useState(0);
   const itemsPerPage = 10;
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
-  const [categories, setCategories] = useState<{ category_Id: number; name: string }[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -35,6 +44,11 @@ export default function AdminScreen() {
   const [pinInput, setPinInput] = useState('');
   const [pinDialogAction, setPinDialogAction] = useState<'sendNotification' | 'makeAdmin' | 'removeAdmin' | 'deleteUser'>('sendNotification');
   const [pinDialogTargetUser, setPinDialogTargetUser] = useState('');
+
+  const formattedSelectedVerseDate = useMemo(
+    () => formatDateUtil(verseOfDayDate.toISOString()),
+    [verseOfDayDate]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -61,7 +75,13 @@ export default function AdminScreen() {
     setLoadingVerseOfDays(true);
     try {
       const data = await getUpcomingVerseOfDay();
-      setVerseOfDays(data);
+      const normalized: VerseOfDayQueueItem[] = Array.isArray(data) ? data : [];
+      normalized.sort((a, b) => {
+        const aTime = new Date(a.versedDate).getTime();
+        const bTime = new Date(b.versedDate).getTime();
+        return aTime - bTime;
+      });
+      setVerseOfDays(normalized);
     } catch (error) {
       console.error('Failed to load verse of days:', error);
     } finally {
@@ -163,8 +183,13 @@ export default function AdminScreen() {
 
     setLoading(true);
     try {
-      await createVerseOfDay(verseOfDayReference, user.username);
+      await createVerseOfDay(verseOfDayReference, user.username, verseOfDayDate);
       setVerseOfDayReference('');
+      setVerseOfDayDate((prev) => {
+        const next = new Date(prev);
+        next.setDate(next.getDate() + 1);
+        return next;
+      });
       await loadVerseOfDays();
       alert('Verse of the day added to queue!');
     } catch (error: any) {
@@ -225,7 +250,9 @@ export default function AdminScreen() {
     }
   };
 
+registerTranslation('en', en);
   const formatDate = (dateString: string) => {
+    if (!dateString) return '—';
     return formatDateUtil(dateString);
   };
 
@@ -462,6 +489,26 @@ export default function AdminScreen() {
             />
 
             <TouchableOpacity
+              onPress={() => setShowVerseOfDayDatePicker(true)}
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 10,
+                borderWidth: 1,
+                borderColor: theme.colors.outline,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between'
+              }}
+            >
+              <Text style={{ color: theme.colors.onBackground, fontSize: 16, fontFamily: 'Inter' }}>
+                {formattedSelectedVerseDate}
+              </Text>
+              <Ionicons name="calendar-outline" size={18} color={theme.colors.onBackground} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={{...styles.button_filled}}
               onPress={handleCreateVerseOfDay}
               disabled={loading}
@@ -476,25 +523,17 @@ export default function AdminScreen() {
             <ScrollView horizontal style={{ marginTop: 10 }}>
               <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
                 <DataTable.Header>
+                  <DataTable.Title style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>ID</Text></DataTable.Title>
                   <DataTable.Title style={{ minWidth: 180 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Reference</Text></DataTable.Title>
-                  <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Status</Text></DataTable.Title>
-                  <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Created</Text></DataTable.Title>
+                  <DataTable.Title style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Verse Date</Text></DataTable.Title>
                   <DataTable.Title style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Action</Text></DataTable.Title>
                 </DataTable.Header>
 
                 {verseOfDays.map((vod) => (
                   <DataTable.Row key={vod.id}>
+                    <DataTable.Cell style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{vod.id}</Text></DataTable.Cell>
                     <DataTable.Cell style={{ minWidth: 180 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{vod.readableReference}</Text></DataTable.Cell>
-                    <DataTable.Cell style={{ minWidth: 100 }}>
-                      <Text style={{ 
-                        color: vod.isSent ? theme.colors.onSurfaceVariant : theme.colors.primary,
-                        fontFamily: 'Inter',
-                        fontWeight: '600'
-                      }}>
-                        {vod.isSent ? 'Sent' : 'Pending'}
-                      </Text>
-                    </DataTable.Cell>
-                    <DataTable.Cell style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(vod.createdDate)}</Text></DataTable.Cell>
+                    <DataTable.Cell style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(vod.versedDate)}</Text></DataTable.Cell>
                     <DataTable.Cell style={{ minWidth: 80 }}>
                       <TouchableOpacity
                         onPress={() => handleDeleteVerseOfDay(vod.id)}
@@ -643,6 +682,24 @@ export default function AdminScreen() {
           </View>
         </View>
 
+        <DatePickerModal
+          locale="en"
+          mode="single"
+          visible={showVerseOfDayDatePicker}
+          date={verseOfDayDate}
+          onDismiss={() => setShowVerseOfDayDatePicker(false)}
+          validRange={{ startDate: new Date() }}
+          label="Select Verse Date"
+          saveLabel="Save"
+          onConfirm={({ date }: { date?: Date }) => {
+            if (date) {
+              const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+              setVerseOfDayDate(normalized);
+            }
+            setShowVerseOfDayDatePicker(false);
+          }}
+        />
+
           {/* Categories Section */}
           <View style={{ marginBottom: 30 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
@@ -689,12 +746,12 @@ export default function AdminScreen() {
                   </DataTable.Header>
 
                   {categories.map((c) => (
-                    <DataTable.Row key={c.category_Id}>
-                      <DataTable.Cell style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{c.category_Id}</Text></DataTable.Cell>
+                    <DataTable.Row key={c.categoryId}>
+                      <DataTable.Cell style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{c.categoryId}</Text></DataTable.Cell>
                       <DataTable.Cell style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{c.name}</Text></DataTable.Cell>
                       <DataTable.Cell style={{ minWidth: 120 }}>
                         <TouchableOpacity
-                          onPress={() => handleDeleteCategory(c.category_Id)}
+                          onPress={() => handleDeleteCategory(c.categoryId)}
                           style={{
                             padding: 6,
                             paddingHorizontal: 12,

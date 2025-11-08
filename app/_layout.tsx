@@ -35,8 +35,27 @@ Notifications.setNotificationHandler({
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     'Noto Serif': require('../assets/fonts/Noto_Serif/NotoSerif-VariableFont_wdth,wght.ttf'),
+    'Noto Serif light': require('../assets/fonts/Noto_Serif/static/NotoSerif-Light.ttf'),
+    'Noto Serif extralight': require('../assets/fonts/Noto_Serif/static/NotoSerif-ExtraLight.ttf'),
+    'Noto Serif medium': require('../assets/fonts/Noto_Serif/static/NotoSerif-Medium.ttf'),
+    'Noto Serif semibold': require('../assets/fonts/Noto_Serif/static/NotoSerif-SemiBold.ttf'),
     'Noto Serif bold': require('../assets/fonts/Noto_Serif/static/NotoSerif-Bold.ttf'),
-    'Inter': require('../assets/fonts/Inter/Inter-VariableFont_opsz,wght.ttf'),
+    'Noto Serif extrabold': require('../assets/fonts/Noto_Serif/static/NotoSerif-ExtraBold.ttf'),
+    'Noto Serif black': require('../assets/fonts/Noto_Serif/static/NotoSerif-Black.ttf'),
+    'Noto Serif italic': require('../assets/fonts/Noto_Serif/static/NotoSerif-Italic.ttf'),
+    'Noto Serif bolditalic': require('../assets/fonts/Noto_Serif/static/NotoSerif-BoldItalic.ttf'),
+    Inter: require('../assets/fonts/Inter/Inter-VariableFont_opsz,wght.ttf'),
+    'Inter thin': require('../assets/fonts/Inter/static/Inter_18pt-Thin.ttf'),
+    'Inter extralight': require('../assets/fonts/Inter/static/Inter_18pt-ExtraLight.ttf'),
+    'Inter light': require('../assets/fonts/Inter/static/Inter_18pt-Light.ttf'),
+    'Inter regular': require('../assets/fonts/Inter/static/Inter_18pt-Regular.ttf'),
+    'Inter medium': require('../assets/fonts/Inter/static/Inter_18pt-Medium.ttf'),
+    'Inter semibold': require('../assets/fonts/Inter/static/Inter_18pt-SemiBold.ttf'),
+    'Inter bold': require('../assets/fonts/Inter/static/Inter_18pt-Bold.ttf'),
+    'Inter extrabold': require('../assets/fonts/Inter/static/Inter_18pt-ExtraBold.ttf'),
+    'Inter black': require('../assets/fonts/Inter/static/Inter_18pt-Black.ttf'),
+    'Inter italic': require('../assets/fonts/Inter/static/Inter_18pt-Italic.ttf'),
+    'Inter bolditalic': require('../assets/fonts/Inter/static/Inter_18pt-BoldItalic.ttf'),
   });
 
   const theme = useAppTheme();
@@ -186,6 +205,10 @@ export default function RootLayout() {
   ]
 
   React.useEffect(() => {
+    if (!loaded) {
+      return;
+    }
+
     const login = async () => {
       const TIMEOUT_MS = 4000; 
       const timeoutPromise = new Promise((_, reject) =>
@@ -321,6 +344,19 @@ export default function RootLayout() {
               name="activity"
               options={{ 
                 title: 'Activity Tracking & Sharing',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+              }} 
+            />
+            <Stack.Screen 
+              name="about"
+              options={{ 
+                title: 'About',
                 headerStyle: {
                   backgroundColor: theme.colors.background,
                 },

@@ -3,7 +3,7 @@ import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Snackbar } from 'react-native-paper';
-import { getUserCollections, memorizeUserVerse } from './db';
+import { getUserCollections, memorizeUserVerse, memorizeVerseOfDay } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -416,7 +416,18 @@ export default function PracticeSessionScreen() {
     if (editingUserVerse) {
       setLoading(true);
       editingUserVerse.progressPercent = 100;
-      await memorizeUserVerse(editingUserVerse);
+      editingUserVerse.lastPracticed = new Date(); // Update LAST_PRACTICED
+      
+      // Check if this is a verse of day practice (no id means it's not saved to user's collection)
+      const isVerseOfDay = !editingUserVerse.id || editingUserVerse.id === 0;
+      
+      if (isVerseOfDay) {
+        // For verse of day, use the special endpoint that doesn't require UserVerse
+        await memorizeVerseOfDay(user.username, editingUserVerse.readableReference);
+      } else {
+        // For regular user verses, use the normal endpoint
+        await memorizeUserVerse(editingUserVerse);
+      }
     } else {
       alert('Error sending update to server: editingUserVerse was undefined.');
     }

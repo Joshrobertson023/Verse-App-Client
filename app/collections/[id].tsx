@@ -2,16 +2,15 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { Divider, Portal, Snackbar, Text } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
-import PublishDialog from '../components/publishDialog';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
 import { formatISODate, getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedInfo, getUserCollections, getUserVersesPopulated, notifyAuthorCollectionSaved, publishCollection, refreshUser, unpublishCollection, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, notifyAuthorCollectionSaved, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -58,8 +57,6 @@ export default function Index() {
     const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [showPublish, setShowPublish] = useState(false);
-  const [publishedDescription, setPublishedDescription] = useState<string | null>(null);
     const isFetchingRef = useRef(false);
     const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
     
@@ -78,8 +75,6 @@ export default function Index() {
     (async () => {
       if (!collection?.collectionId) return;
       try {
-        const info = await getPublishedInfo(collection.collectionId);
-        setPublishedDescription(info?.description ?? null);
       } catch {}
     })();
   }, [collection?.collectionId]);
@@ -496,14 +491,6 @@ useEffect(() => {
                   width: '100%'
                 }}
               >
-          {publishedDescription && (
-            <View style={{ minWidth: '100%', padding: 14, borderRadius: 6, marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <Text style={{ ...styles.tinyText, flex: 1, marginRight: 10 }}>{publishedDescription}</Text>
-              </View>
-              <Divider />
-            </View>
-          )}
 
           <TouchableOpacity 
             style={{...styles.button_outlined, marginBottom: 30}}
@@ -698,29 +685,15 @@ useEffect(() => {
                             <Divider />
                             <TouchableOpacity
                               style={sheetItemStyle.settingsItem}
-                              onPress={async () => {
+                              onPress={() => {
                                 if (!collection?.collectionId) return;
-                                if (publishedDescription) {
-                                  // Unpublish
-                                  try {
-                                    await unpublishCollection(collection.collectionId);
-                                    setPublishedDescription(null);
-                                    setSnackbarMessage('Collection unpublished');
-                                    setSnackbarVisible(true);
-                                  } catch (e) {
-                                    console.error('Failed to unpublish collection', e);
-                                    setSnackbarMessage('Failed to unpublish collection');
-                                    setSnackbarVisible(true);
-                                  } finally {
-                                    closeSettingsSheet();
-                                  }
-                                } else {
-                                  closeSettingsSheet();
-                                  setShowPublish(true);
-                                }
+                                closeSettingsSheet();
+                                const setEditingCollection = useAppStore.getState().setEditingCollection;
+                                setEditingCollection(collection);
+                                router.push('./publishCollection');
                               }}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>{publishedDescription ? 'Unpublish' : 'Publish'}</Text>
+                                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
                               </View>
                             </TouchableOpacity>
                             <Divider />
@@ -849,25 +822,6 @@ useEffect(() => {
             )}
           </Portal>
 
-          <PublishDialog
-            visible={showPublish}
-            onDismiss={() => setShowPublish(false)}
-            onPublish={async (desc, categoryIds) => {
-              if (!collection?.collectionId) return;
-              await publishCollection(collection.collectionId, desc, categoryIds);
-              setPublishedDescription(desc || '');
-              // Ensure the collection is Public after publishing
-              try {
-                const updated = { ...collection, visibility: 'Public' } as any;
-                await updateCollectionDB(updated);
-                updateCollection(updated);
-              } catch (e) {
-                console.error('Failed to set visibility Public after publish', e);
-              }
-              setSnackbarMessage('Collection published');
-              setSnackbarVisible(true);
-            }}
-          />
 
           {/* Share Collection Sheet */}
           <ShareCollectionSheet

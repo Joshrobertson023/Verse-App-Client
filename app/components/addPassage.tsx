@@ -26,6 +26,7 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
     const user = useAppStore((state) => state.user);
     const addUserVerseToCollection = useAppStore((state) => state.addUserVerseToCollection);
     const newCollection = useAppStore((state) => state.newCollection);
+    const verseSaveAdjustments = useAppStore((state) => state.verseSaveAdjustments);
     const [errorSearching, setErrorSearching] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
 
@@ -128,7 +129,12 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
 
             
             {passageSearchResults && passageSearchResults.verses.length > 0 ? (
-                passageSearchResults.verses.map((verse, i) => (
+                passageSearchResults.verses.map((verse, i) => {
+                    const savedAdjustment = verseSaveAdjustments[verse.verse_reference] ?? 0;
+                    const savedCount = (verse.users_Saved_Verse ?? 0) + savedAdjustment;
+                    const savedLabel = savedCount === 1 ? 'save' : 'saves';
+                    const memorizedCount = verse.users_Memorized ?? 0;
+                    return (
                     passageSearchResults.searched_By_Passage === true ?
                     <View key={i} style={{paddingTop: 10}}>
                         <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 300, marginBottom: 10}}>
@@ -141,13 +147,13 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
                             <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',  width: 20}}>
                                 {verse.verse_Number ? <Ionicons name="people" size={20} color={theme.colors.onBackground} /> : null}
                                     <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                                {verse.verse_Number ? (verse.users_Saved_Verse + " saves") : null}
+                                                {verse.verse_Number ? (`${savedCount} ${savedLabel}`) : null}
                                     </Text>
                             </View>
                             <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start',  width: 20}}>
                                 {verse.verse_Number ? <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} /> : null}
                                 <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
-                                        {verse.verse_Number ? (verse.users_Memorized + " memorized") : null}
+                                        {verse.verse_Number ? (`${memorizedCount} memorized`) : null}
                                 </Text>
                             </View>
                         </View>
@@ -177,19 +183,19 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
                                 {errorSearching ? null : <Ionicons name="people" size={20} color={theme.colors.onBackground} />}
                                         <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
                                                 {errorSearching ? null :
-                                                 (verse.users_Saved_Verse + " saves")}
+                                                 (`${savedCount} ${savedLabel}`)}
                                         </Text>
                                 </View>
                                 <View style={{flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start'}}>
                                 {errorSearching ? null : <Ionicons name="checkmark-done" size={20} color={theme.colors.onBackground} />}
                                     <Text style={{...styles.text, fontFamily: 'Inter', margin: 0, padding: 0, fontSize: 12, marginBottom: 0, marginLeft: 5}}>
                                         {errorSearching ? null :
-                                        (verse.users_Memorized + " memorized")}
+                                        (`${memorizedCount} memorized`)}
                                     </Text>
                                 </View>
                             </View>
                         </View>
-                ) )
+                ) })
                 ) : <View></View>}
 
                 <View style={{height: 100}}></View>

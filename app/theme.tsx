@@ -1,9 +1,27 @@
 import { useColorScheme } from 'react-native';
-import { MD3LightTheme } from 'react-native-paper';
+import { MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
+import { useAppStore } from './store';
 
 export default function useAppTheme() {
-    const scheme = useColorScheme();
+    const systemScheme = useColorScheme();
+    const themePreference = useAppStore((state) => state.themePreference);
+    const scheme = themePreference === 'system' ? (systemScheme || 'light') : themePreference;
+
     return scheme === 'dark' ? {
+        ...MD3DarkTheme,
+        colors: {
+          ...MD3DarkTheme.colors,
+          primary: '#f8f8f8ff',
+          secondary: '#c14848ff',
+          background: '#151515ff',
+          surface: '#292929ff',
+          surface2: '#3d3d3dff',
+          onBackground: '#fff',
+          backdrop: '#2a2a2aff',
+          onPrimary: '#73675aff',
+          gray: '#737373ff'
+        }
+    } : {
         ...MD3LightTheme,
         colors: {
           ...MD3LightTheme.colors,
@@ -14,32 +32,8 @@ export default function useAppTheme() {
           surface2: '#cececeff',
           onBackground: '#000',
           backdrop: '#f5f5f5',
-          onPrimary: '#603f1bff'
-          // add more overrides as needed
-        // ...MD3DarkTheme,
-        // colors: {
-        //   ...MD3DarkTheme.colors,
-        //   primary: '#b9641aff',
-        //   secondary: '#b47837ff',
-        //   background: '#181818',
-        //   surface: '#292929ff',
-        //   surface2: '#3d3d3dff',
-        //   onBackground: colors.primaryWhite,
-        //   backdrop: '#2a2a2aff',
-        //   onPrimary: '#603f1bff'
-        }
-    } : {
-        ...MD3LightTheme,
-        colors: {
-          ...MD3LightTheme.colors,
-          primary: '#b9641aff',
-          secondary: '#b47837ff',
-          background: '#fff',
-          surface: '#f5f5f5',
-          surface2: '#cececeff',
-          onBackground: '#000',
-          backdrop: '#f5f5f5',
-          onPrimary: '#603f1bff'
+          onPrimary: '#603f1bff',
+          gray: '#919191ff',
           // add more overrides as needed
         }
     };

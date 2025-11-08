@@ -2,11 +2,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { BottomTabBar, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { router, Tabs, useRootNavigationState } from 'expo-router';
-import React, { useEffect } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Dimensions, Pressable, Text, TouchableOpacity, View } from 'react-native';
+import { Drawer } from 'react-native-drawer-layout';
 import { Badge } from 'react-native-paper';
+import ProfileContent from '../components/ProfileContent';
 import { getUnreadNotificationCount } from '../db';
-import { useAppStore } from '../store';
+import { defaultProfileDrawerControls, useAppStore } from '../store';
 import useAppTheme from '../theme';
 
 export default function TabLayout() {
@@ -14,8 +16,12 @@ export default function TabLayout() {
   const user = useAppStore((state) => state.user);
   const numNotifications = useAppStore((state) => state.numNotifications);
   const setNumNotifications = useAppStore((state) => state.setNumNotifications);
+  const setProfileDrawerControls = useAppStore((state) => state.setProfileDrawerControls);
+  const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+  const screenWidth = Dimensions.get('window').width;
+  const profileDrawerControls = useAppStore((state) => state.profileDrawerControls);
   const rootNavigationState = useRootNavigationState();
-  const inactiveColor = '#3e3e3e88';
+  const inactiveColor = theme.colors.gray;
 
   // Check for notifications every minute
   useEffect(() => {
@@ -40,6 +46,18 @@ export default function TabLayout() {
 
     return () => clearInterval(interval);
   }, [user.username, setNumNotifications]);
+
+  useEffect(() => {
+    setProfileDrawerControls({
+      openDrawer: () => setIsProfileDrawerOpen(true),
+      closeDrawer: () => setIsProfileDrawerOpen(false),
+      toggleDrawer: () => setIsProfileDrawerOpen(prev => !prev),
+    });
+
+    return () => setProfileDrawerControls(defaultProfileDrawerControls);
+  }, [setProfileDrawerControls]);
+
+  const drawerWidth = useMemo(() => Math.min(screenWidth * 0.85, 360), [screenWidth]);
 
 React.useEffect(() => {
   if (!rootNavigationState?.key) return; // ✅ Wait until ready
@@ -68,11 +86,21 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
 }
 
   return (
+    <Drawer
+      open={isProfileDrawerOpen}
+      onOpen={() => setIsProfileDrawerOpen(true)}
+      onClose={() => setIsProfileDrawerOpen(false)}
+      drawerPosition="right"
+      drawerType="front"
+      overlayStyle={{ backgroundColor: 'rgba(0, 0, 0, 0.4)' }}
+      drawerStyle={{ width: drawerWidth, backgroundColor: theme.colors.background }}
+      renderDrawerContent={() => <ProfileContent />}
+    >
     <Tabs
       tabBar={(props: BottomTabBarProps) => <CustomTabBar {...props} />}
       screenOptions={{
         tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: '#88888888',
+        tabBarInactiveTintColor: theme.colors.gray,
         tabBarLabelPosition: 'below-icon',
         tabBarItemStyle: {
           alignItems: 'center',
@@ -130,13 +158,13 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
                 </Badge>
               )}
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push('../user/profile')}>
+              <Pressable onPress={() => profileDrawerControls.toggleDrawer()}>
                 <View style={{borderRadius: 50, borderWidth: 1, borderColor: theme.colors.onBackground, width: 38, height: 38, flex: 1, justifyContent: 'center', alignItems: 'center', padding: 5, marginRight: 5}}>
                   <Text style={{color: theme.colors.onBackground, fontSize: 20}}>
                     {(user.firstName.at(0) || 'D').toUpperCase() + (user.lastName.at(0) || 'U').toUpperCase()}
                   </Text>
                 </View>
-              </TouchableOpacity>
+              </Pressable>
             </View>
           ),
           tabBarIcon: ({ color, focused }) => (
@@ -277,5 +305,6 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
         }}
       />
     </Tabs>
+    </Drawer>
   );
 }

@@ -6,7 +6,7 @@ import { ActivityIndicator, FlatList, Modal, ScrollView, Text, TouchableOpacity,
 import { Chip, Searchbar, Snackbar } from 'react-native-paper';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { SearchResultSkeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, checkRelationship, getVerseSearchResult, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB } from '../db';
+import { addUserVersesToNewCollection, checkRelationship, getPopularSearches, getVerseSearchResult, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB } from '../db';
 import { Collection, useAppStore, User, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -21,7 +21,10 @@ export default function SearchScreen() {
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const setCollections = useAppStore((state) => state.setCollections);
+  const verseSaveAdjustments = useAppStore((state) => state.verseSaveAdjustments);
+  const incrementVerseSaveAdjustment = useAppStore((state) => state.incrementVerseSaveAdjustment);
   const popularSearches = useAppStore((state) => state.popularSearches);
+  const setPopularSearches = useAppStore((state) => state.setPopularSearches);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<SearchTab>('passages');
   const [loading, setLoading] = useState(false);
@@ -41,6 +44,21 @@ export default function SearchScreen() {
   useEffect(() => {
     loadRecentSearches();
   }, []);
+
+  useEffect(() => {
+    const loadPopularSearches = async () => {
+      try {
+        const searches = await getPopularSearches(10);
+        setPopularSearches(searches);
+      } catch (error) {
+        console.error('Failed to load popular searches:', error);
+      }
+    };
+
+    if (!popularSearches || popularSearches.length === 0) {
+      loadPopularSearches();
+    }
+  }, [popularSearches, setPopularSearches]);
 
   const loadRecentSearches = async () => {
     try {
@@ -215,6 +233,10 @@ export default function SearchScreen() {
         c.collectionId === pickedCollection.collectionId ? updatedCollection : c
       ));
 
+      if (selectedVerse?.verse_reference) {
+        incrementVerseSaveAdjustment(selectedVerse.verse_reference);
+      }
+
       setShowCollectionPicker(false);
       setSelectedVerse(null);
       setPickedCollection(undefined);
@@ -241,7 +263,13 @@ export default function SearchScreen() {
     router.push(`../book/${encodedBookName}?chapter=${parsed.chapter}`);
   };
 
-  const renderPassageResult = ({ item }: { item: Verse }) => (
+  const renderPassageResult = ({ item }: { item: Verse }) => {
+    const savedAdjustment = verseSaveAdjustments[item.verse_reference] ?? 0;
+    const savedCount = (item.users_Saved_Verse ?? 0) + savedAdjustment;
+    const savedLabel = savedCount === 1 ? 'save' : 'saved';
+    const memorizedCount = item.users_Memorized ?? 0;
+
+    return (
     <View style={{
       marginVertical: 12,
       borderRadius: 12,
@@ -269,13 +297,13 @@ export default function SearchScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="people-outline" size={14} color={theme.colors.onSurfaceVariant} />
           <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
-            {item.users_Saved_Verse || 0} saved
+            {savedCount} {savedLabel}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.onSurfaceVariant} />
           <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
-            {item.users_Memorized || 0} memorized
+            {memorizedCount} memorized
           </Text>
         </View>
       </View>
@@ -304,6 +332,7 @@ export default function SearchScreen() {
       </View>
     </View>
   );
+  };
 
   const renderPeopleResult = ({ item }: { item: User }) => {
     const relationshipStatus = relationships.get(item.username) ?? -1;
@@ -455,11 +484,11 @@ export default function SearchScreen() {
               {recentSearches.length > 0 && (
                 <View style={{ marginBottom: 24 }}>
                   <Text style={{
-                    fontSize: 18,
-                    fontWeight: '600',
+                    ...styles.text,
+                    fontSize: 22,
+                    fontFamily: 'Inter bold',
                     color: theme.colors.onBackground,
                     marginBottom: 12,
-                    fontFamily: 'Inter'
                   }}>
                     Recent searches
                   </Text>
@@ -475,9 +504,7 @@ export default function SearchScreen() {
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        paddingVertical: 12,
-                        borderBottomWidth: index < recentSearches.length - 1 ? 1 : 0,
-                        borderBottomColor: theme.colors.surface
+                        paddingVertical: 12
                       }}
                     >
                       <Text style={{
@@ -487,7 +514,10 @@ export default function SearchScreen() {
                       }}>
                         {search}
                       </Text>
-                      <Ionicons name="chevron-forward" size={20} color={theme.colors.onSurfaceVariant} />
+                      <View style={{flexDirection: 'row', gap: 10}}>
+                        <Ionicons name="refresh-outline" size={20} color={theme.colors.onSurfaceVariant} />
+                        <Ionicons name="open-outline" size={20} color={theme.colors.onSurfaceVariant} />
+                      </View>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -495,11 +525,11 @@ export default function SearchScreen() {
               {popularSearches.length > 0 && (
                 <View style={{ marginBottom: 24 }}>
                   <Text style={{
-                    fontSize: 18,
-                    fontWeight: '600',
+                    ...styles.text,
+                    fontSize: 22,
+                    fontFamily: 'Inter bold',
                     color: theme.colors.onBackground,
                     marginBottom: 12,
-                    fontFamily: 'Inter'
                   }}>
                     Popular searches
                   </Text>
@@ -515,19 +545,18 @@ export default function SearchScreen() {
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        paddingVertical: 12,
-                        borderBottomWidth: index < popularSearches.length - 1 ? 1 : 0,
-                        borderBottomColor: theme.colors.surface
+                        paddingVertical: 12
                       }}
                     >
                       <Text style={{
                         fontSize: 16,
                         color: theme.colors.onBackground,
-                        fontFamily: 'Inter'
+                        fontFamily: 'Inter',
+                        marginRight: 10
                       }}>
                         {search}
                       </Text>
-                      <Ionicons name="chevron-forward" size={20} color={theme.colors.onSurfaceVariant} />
+                      <Ionicons name="open-outline" size={20} color={theme.colors.onSurfaceVariant} />
                     </TouchableOpacity>
                   ))}
                 </View>

@@ -6,7 +6,7 @@ import { Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SaveVerseToCollectionSheet from './components/saveVerseToCollectionSheet';
 import { formatRelativeTime, isDateExpired } from './dateUtils';
-import { addUserVersesToNewCollection, checkRelationship, getCollectionById, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, respondToFriendRequest, updateCollectionDB } from './db';
+import { addUserVersesToNewCollection, checkRelationship, getCollectionById, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, populateVersesForUserVerses, respondToFriendRequest, updateCollectionDB } from './db';
 import { Collection, Notification, UserVerse, Verse, useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -29,6 +29,7 @@ export default function NotificationsScreen() {
   const [verseFromNotification, setVerseFromNotification] = useState<Verse | null>(null);
   const collections = useAppStore((s) => s.collections);
   const setCollections = useAppStore((s) => s.setCollections);
+  const incrementVerseSaveAdjustment = useAppStore((s) => s.incrementVerseSaveAdjustment);
   const [isSavingToCollection, setIsSavingToCollection] = useState(false);
 
   useFocusEffect(
@@ -173,7 +174,18 @@ export default function NotificationsScreen() {
     try {
       console.log('Fetching collection with ID:', collectionInfo.collectionId);
       const collectionMetadata = await getCollectionById(collectionInfo.collectionId);
-      const userVerses = await getUserVersesByCollectionWithVerses(collectionInfo.collectionId);
+      if (!collectionMetadata) {
+        throw new Error('COLLECTION_NOT_FOUND');
+      }
+      let userVerses = await getUserVersesByCollectionWithVerses(collectionInfo.collectionId);
+      if (userVerses.length > 0) {
+        try {
+          userVerses = await populateVersesForUserVerses(userVerses);
+        } catch (populateError) {
+          console.warn('Failed to populate verses for shared collection:', populateError);
+        }
+      }
+
       const updatedUserVerses = userVerses.map((uv) => ({
         ...uv,
         id: undefined,
@@ -199,8 +211,20 @@ export default function NotificationsScreen() {
       
       router.push('../collections/addnew');
     } catch (error) {
-      console.error('Failed to view shared collection:', error);
-      setSnackbarMessage('Failed to load collection');
+      const message = (error as Error)?.message ?? '';
+      const normalized = message.toLowerCase();
+      const isNetworkError = error instanceof TypeError || normalized.includes('failed to fetch') || normalized.includes('network request failed');
+      if (
+        normalized.includes('notfound') ||
+        normalized.includes('not found') ||
+        normalized.includes('does not exist') ||
+        normalized.includes('collection_not_found') ||
+        isNetworkError
+      ) {
+        setSnackbarMessage('This collection has been deleted by the author.');
+      } else {
+        setSnackbarMessage('Failed to load collection');
+      }
       setSnackbarVisible(true);
     }
   };
@@ -212,11 +236,10 @@ export default function NotificationsScreen() {
           width: 48,
           height: 48,
           borderRadius: 24,
-          backgroundColor: theme.colors.surface,
           justifyContent: 'center',
           alignItems: 'center',
           borderWidth: 2,
-          borderColor: theme.colors.onBackground
+          borderColor: theme.colors.onBackground,
         }}>
           <Ionicons name="shield" size={24} color="#fff" />
         </View>
@@ -228,7 +251,6 @@ export default function NotificationsScreen() {
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: theme.colors.surface,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
@@ -252,9 +274,12 @@ export default function NotificationsScreen() {
       <View
         style={{
           flexDirection: 'row',
-          padding: 12,
-          backgroundColor: theme.colors.surface,
-          marginBottom: 1
+          marginVertical: 12,
+          marginHorizontal: 15,
+          paddingBottom: 15,
+          marginBottom: 1,
+          borderBottomColor: theme.colors.gray,
+          borderBottomWidth: 0.3,
         }}
       >
         {/* Unread indicator */}
@@ -271,7 +296,7 @@ export default function NotificationsScreen() {
         {!isUnread && <View style={{ width: 8, marginRight: 8 }} />}
 
         {/* Icon */}
-        <View style={{ marginRight: 12 }}>
+        <View style={{ marginRight: 12, marginLeft: -15, marginTop: 2 }}>
           {renderNotificationIcon(item)}
         </View>
 
@@ -289,7 +314,7 @@ export default function NotificationsScreen() {
           
           <Text style={{
             fontSize: 14,
-            color: theme.colors.onSurfaceVariant,
+            color: theme.colors.onBackground,
             fontFamily: 'Inter',
             lineHeight: 20
           }}>
@@ -299,7 +324,7 @@ export default function NotificationsScreen() {
           
           <Text style={{
             fontSize: 12,
-            color: theme.colors.onSurfaceVariant,
+            color: theme.colors.onBackground,
             marginTop: 4,
             fontFamily: 'Inter'
           }}>
@@ -314,13 +339,12 @@ export default function NotificationsScreen() {
                   flex: 1,
                   paddingVertical: 8,
                   borderRadius: 8,
-                  backgroundColor: theme.colors.surface,
                   alignItems: 'center',
                   borderWidth: 1,
-                  borderColor: theme.colors.onSurfaceVariant
+                  borderColor: theme.colors.onBackground
                 }}>
                   <Text style={{
-                    color: theme.colors.onSurfaceVariant,
+                    color: theme.colors.onBackground,
                     fontFamily: 'Inter',
                     fontWeight: '600'
                   }}>
@@ -381,7 +405,7 @@ export default function NotificationsScreen() {
                 style={{
                   paddingVertical: 8,
                   borderRadius: 8,
-                  backgroundColor: theme.colors.surface2,
+                  backgroundColor: theme.colors.surface,
                   alignItems: 'center'
                 }}
               >
@@ -400,13 +424,13 @@ export default function NotificationsScreen() {
           {isSharedVerse && (
             <View style={{ marginTop: 12 }}>
               {verseRefMatch && (
-                <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter', fontWeight: '600', marginBottom: 6 }}>
-                  {verseRefMatch[1]}
+                <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter bold', marginBottom: 0 }}>
+                  {verseRefMatch[1]}:
                 </Text>
               )}
               {verseTextMatch && (
-                <Text style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'Inter', marginBottom: 10 }}>
-                  {verseTextMatch[1]}
+                <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter', marginBottom: 10 }}>
+                  {"\""+ verseTextMatch[1] + "\""}
                 </Text>
               )}
               <TouchableOpacity
@@ -455,6 +479,9 @@ export default function NotificationsScreen() {
         const updatedCollections = await getUserCollections(user.username);
         setCollections(updatedCollections);
       } catch {}
+      if (verseFromNotification?.verse_reference) {
+        incrementVerseSaveAdjustment(verseFromNotification.verse_reference);
+      }
       setShowSavePicker(false);
       setVerseFromNotification(null);
       setPickedCollection(undefined);
@@ -482,11 +509,11 @@ export default function NotificationsScreen() {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-          <Ionicons name="notifications-off" size={64} color={theme.colors.onSurfaceVariant} />
+          <Ionicons name="notifications-off" size={64} color={theme.colors.onBackground} />
           <Text style={{
             fontSize: 18,
             fontWeight: '500',
-            color: theme.colors.onSurfaceVariant,
+            color: theme.colors.onBackground,
             marginTop: 16,
             fontFamily: 'Inter'
           }}>
@@ -516,7 +543,7 @@ export default function NotificationsScreen() {
           )}
         ListEmptyComponent={
           <View style={{ padding: 20 }}>
-            <Text style={{ textAlign: 'center', color: theme.colors.onSurfaceVariant }}>
+            <Text style={{ textAlign: 'center', color: theme.colors.onBackground }}>
               No notifications
             </Text>
           </View>
@@ -538,9 +565,9 @@ export default function NotificationsScreen() {
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}
         duration={3000}
-        style={{ backgroundColor: theme.colors.surface }}
+        style={{ backgroundColor: theme.colors.background }}
       >
-        <Text style={{ color: theme.colors.onSurface }}>
+        <Text style={{ color: theme.colors.onBackground }}>
           {snackbarMessage}
         </Text>
       </Snackbar>

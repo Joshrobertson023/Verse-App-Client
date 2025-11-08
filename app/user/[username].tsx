@@ -1,16 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import FriendCollectionItem from '../components/friendCollectionItem';
+import { ProfileDrawerLink } from '../components/ProfileContent';
 import { ProfileSkeleton } from '../components/skeleton';
 import { minutesSince, parseUTCDate } from '../dateUtils';
-import { getMemorizedUserVerses, getStreakLength, getUserFriendCollections, getUserProfile } from '../db';
-import { Collection, useAppStore, User } from '../store';
+import { getFriendActivity, getMemorizedUserVerses, getStreakLength, getUserFriendCollections, getUserProfile } from '../db';
+import { Activity, Collection, useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
  
-import { useNavigation } from 'expo-router';
 import { useLayoutEffect } from 'react';
 
 const sheetItemStyle = StyleSheet.create({
@@ -26,12 +26,15 @@ export default function UserProfileScreen() {
   const theme = useAppTheme();
   const { username } = useLocalSearchParams<{ username: string }>();
   const currentUser = useAppStore((state) => state.user);
-  const navigation = useNavigation();
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [streakLength, setStreakLength] = useState(0);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [memorizedCount, setMemorizedCount] = useState<number>(0);
+  const [friendActivity, setFriendActivity] = useState<Activity[]>([]);
+  const [friendActivityLoading, setFriendActivityLoading] = useState(false);
+  const [friendActivityLoaded, setFriendActivityLoaded] = useState(false);
+  const [friendActivityError, setFriendActivityError] = useState<string | null>(null);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -120,10 +123,10 @@ export default function UserProfileScreen() {
     loadProfile();
   }, [username]);
   useLayoutEffect(() => {
-    navigation.setOptions({
-      title: username ? `@${username}` : 'Profile',
-    });
-  }, [navigation, username]);
+    // navigation.setOptions({
+    //   title: username ? `@${username}` : 'Profile',
+    // });
+  }, [username]);
 
 
   const loadProfile = async () => {
@@ -147,6 +150,21 @@ export default function UserProfileScreen() {
       } catch (error) {
         alert('Failed to fetch collections:' + error);
         setCollections([]);
+      }
+
+      setFriendActivityLoading(true);
+      setFriendActivityLoaded(false);
+      setFriendActivityError(null);
+      try {
+        const activity = await getFriendActivity(username!, currentUser.username, 10);
+        setFriendActivity(activity || []);
+      } catch (error) {
+        console.error('Failed to fetch friend activity:', error);
+        setFriendActivity([]);
+        setFriendActivityError(error instanceof Error ? error.message : 'Failed to load activity');
+      } finally {
+        setFriendActivityLoading(false);
+        setFriendActivityLoaded(true);
       }
 
       try {
@@ -173,11 +191,7 @@ export default function UserProfileScreen() {
     } finally {
       setLoading(false);
     }
-  };
-
-  
-
-  
+  };  
 
   if (loading) {
   return (
@@ -344,6 +358,19 @@ export default function UserProfileScreen() {
               </Text>
             </View>
           </View>
+        </View>
+
+        <View style={{ marginTop: 20, gap: 10 }}>
+          <ProfileDrawerLink
+            icon="calendar"
+            label="Streak Calendar"
+            onPress={() => router.push(`/user/${username}/streak`)}
+          />
+          <ProfileDrawerLink
+            icon="checkmark-done"
+            label="Memorized Passages"
+            onPress={() => router.push(`/user/${username}/memorizedVerses`)}
+          />
         </View>
 
         {collections.length > 0 && (
