@@ -87,6 +87,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
 
   return (
     <Drawer
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
       open={isProfileDrawerOpen}
       onOpen={() => setIsProfileDrawerOpen(true)}
       onClose={() => setIsProfileDrawerOpen(false)}
@@ -154,7 +155,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
                     fontSize: 12,
                   }}
                 >
-                  {numNotifications}
+                  {useAppStore.getState().numNotifications}
                 </Badge>
               )}
               </TouchableOpacity>

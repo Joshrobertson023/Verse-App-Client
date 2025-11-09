@@ -22,6 +22,7 @@ export default function LoginScreen() {
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
   const setCollections = useAppStore((state) => state.setCollections);
+  const [showPassword, setShowPassword] = useState(false);
 
 const handleTextChange = (field: string, text: string) => {    
     setLoginInfo({ ...loginInfo, [field]: text });
@@ -109,7 +110,10 @@ const nextClick = async () => {
                             autoCapitalize="none"
                             autoCorrect={false}
                             autoComplete="password"
-                            textContentType="password" label="Password" mode="outlined" style={styles.input} value={password} 
+                            textContentType="password"
+                            secureTextEntry={!showPassword}
+                            label="Password" mode="outlined" style={styles.input} value={password} 
+                            right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword((prev) => !prev)} />}
                             onChangeText={(text) => handleTextChange('password', text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
@@ -121,6 +125,14 @@ const nextClick = async () => {
                         <Text style={styles.buttonText_filled}>Login</Text>
                     )}
                 </TouchableOpacity>
+                <View style={{ marginTop: 16, width: '100%', flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <TouchableOpacity onPress={() => router.push('/(auth)/forgotUsername')}>
+                        <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Forgot Username?</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => router.push('/(auth)/forgotPassword')}>
+                        <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Forgot Password?</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
         </SafeAreaView>
     )

@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ExploreCollectionCard from '../components/exploreCollectionCard';
@@ -34,37 +34,94 @@ export default function ExploreScreen() {
   const [isAddingToCollection, setIsAddingToCollection] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
-  const { width } = Dimensions.get('window');
   const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const selectedCategoryRef = useRef<number | null>(null);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const loadedCategories = await getAllCategories();
-        setCategories(loadedCategories);
-        if (loadedCategories.length > 0) {
-          setSelectedCategoryId(loadedCategories[0].categoryId);
-          try {
-            setIsCategoryLoading(true);
-            const categoryPublished: PublishedCollection[] = await getCollectionsByCategory(loadedCategories[0].categoryId);
-            setCategoryCollections(categoryPublished);
-          } catch {
-            setCategoryCollections([]);
-          } finally {
-            setIsCategoryLoading(false);
-          }
-        }
-        setPopular(await getPopularPublishedCollections());
-        setRecent(await getRecentPublishedCollections());
-        setTopSaved(await getTopSavedVerses());
-        setTopMemorized(await getTopMemorizedVerses());
-        setIsLoading(false);
-      } catch (e) {
-        console.error('Failed to load explore data', e);
-        setIsLoading(false);
-      }
-    })();
+    selectedCategoryRef.current = selectedCategoryId;
+  }, [selectedCategoryId]);
+
+  const sortCollectionsBySaves = useCallback((cols: PublishedCollection[]) => {
+    return [...cols].sort((a, b) => {
+      const savesA = typeof a.numSaves === 'number' ? a.numSaves : 0;
+      const savesB = typeof b.numSaves === 'number' ? b.numSaves : 0;
+      return savesB - savesA;
+    });
   }, []);
+
+  const fetchCategoryCollections = useCallback(async (id: number | null) => {
+    if (id == null) {
+      setCategoryCollections([]);
+      setIsCategoryLoading(false);
+      return;
+    }
+    setIsCategoryLoading(true);
+    try {
+      const cols = await getCollectionsByCategory(id);
+      setCategoryCollections(sortCollectionsBySaves(cols));
+    } catch (e) {
+      setCategoryCollections([]);
+    } finally {
+      setIsCategoryLoading(false);
+    }
+  }, [sortCollectionsBySaves]);
+
+  const loadExploreData = useCallback(async (initial = false) => {
+    if (initial) {
+      setIsLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    try {
+      const loadedCategories = await getAllCategories();
+      setCategories(loadedCategories);
+
+      let categoryId = selectedCategoryRef.current;
+
+      if (!categoryId || !loadedCategories.some((c) => c.categoryId === categoryId)) {
+        categoryId = loadedCategories.length > 0 ? loadedCategories[0].categoryId : null;
+        setSelectedCategoryId(categoryId);
+        selectedCategoryRef.current = categoryId;
+      } else {
+        selectedCategoryRef.current = categoryId;
+      }
+
+      if (categoryId != null) {
+        await fetchCategoryCollections(categoryId);
+      } else {
+        setCategoryCollections([]);
+      }
+
+      const [pop, rec, saved, memorized] = await Promise.all([
+        getPopularPublishedCollections(),
+        getRecentPublishedCollections(),
+        getTopSavedVerses(),
+        getTopMemorizedVerses()
+      ]);
+
+      setPopular(pop);
+      setRecent(rec);
+      setTopSaved(saved);
+      setTopMemorized(memorized);
+    } catch (e) {
+      console.error('Failed to load explore data', e);
+      if (!initial) {
+        setSnackbarMessage('Failed to refresh explore data');
+        setSnackbarVisible(true);
+      }
+    } finally {
+      if (initial) {
+        setIsLoading(false);
+      } else {
+        setRefreshing(false);
+      }
+    }
+  }, [fetchCategoryCollections]);
+
+  useEffect(() => {
+    loadExploreData(true);
+  }, [loadExploreData]);
 
 
   const SectionHeader = ({ title, route }: { title: string; route: string }) => (
@@ -105,24 +162,17 @@ export default function ExploreScreen() {
 
   const onSelectCategory = async (id: number) => {
     setSelectedCategoryId(id);
-    setIsCategoryLoading(true);
-    try {
-      const cols = await getCollectionsByCategory(id);
-      setCategoryCollections(cols);
-    } catch (e) {
-      setCategoryCollections([]);
-    } finally {
-      setIsCategoryLoading(false);
-    }
+    selectedCategoryRef.current = id;
+    await fetchCategoryCollections(id);
   };
 
   const CategoryChips = () => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 96, marginBottom: -50 }} contentContainerStyle={{ paddingHorizontal: 12 }}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, columnGap: 8, height: 96 }}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ paddingHorizontal: 12, alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 8 }}>
         {categories.map(c => (
-          <TouchableOpacity key={c.categoryId} onPress={() => onSelectCategory(c.categoryId)}>
-            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: selectedCategoryId === c.categoryId ? '#FFFFFF' : theme.colors.surface, borderWidth: 1, borderColor: theme.colors.outline }}>
-              <Text style={{ color: selectedCategoryId === c.categoryId ? theme.colors.onBackground : theme.colors.onSurface }}>{c.name}</Text>
+          <TouchableOpacity activeOpacity={0.8} key={c.categoryId} onPress={() => onSelectCategory(c.categoryId)}>
+            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: selectedCategoryId === c.categoryId ? theme.colors.primary : theme.colors.background, borderWidth: selectedCategoryId === c.categoryId ? 0 : 1, borderColor: theme.colors.outline }}>
+              <Text style={{ color: selectedCategoryId === c.categoryId ? theme.colors.background : theme.colors.onSurface }}>{c.name}</Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -228,7 +278,17 @@ export default function ExploreScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['top']}>
-    <ScrollView style={{backgroundColor: theme.colors.background}}>
+    <ScrollView
+      style={{backgroundColor: theme.colors.background}}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => loadExploreData(false)}
+          colors={[theme.colors.primary]}
+          tintColor={theme.colors.primary}
+        />
+      }
+    >
       
       {/* Category header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 16 }}>
@@ -237,8 +297,8 @@ export default function ExploreScreen() {
       {/* Category chips below header */}
       <View style={{ marginTop: 8 }}>
         {isLoading && categories.length === 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ height: 96 }} contentContainerStyle={{ paddingHorizontal: 12 }}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 8, columnGap: 8, height: 96 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 8 }}>
               {[1,2,3,4,5,6].map(i => (
                 <Skeleton key={i} width={90} height={32} borderRadius={20} />
               ))}

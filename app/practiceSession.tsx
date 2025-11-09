@@ -3,7 +3,7 @@ import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Snackbar } from 'react-native-paper';
-import { getUserCollections, memorizeUserVerse, memorizeVerseOfDay } from './db';
+import { getAllUserVerses, getUserActivity, getUserCollections, memorizeUserVerse, memorizeVerseOfDay } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -50,6 +50,9 @@ export default function PracticeSessionScreen() {
   const setCollections = useAppStore((state) => state.setCollections);
   const [loading, setLoading] = useState(false);
   const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
+    const profileCache = useAppStore((state) => state.profileCache);
+    const setProfileCache = useAppStore((state) => state.setProfileCache);
+    const resetProfileCache = useAppStore((state) => state.resetProfileCache);
 
   const createWord = (id: number, word: string, isNumber: boolean, showSpace: boolean): Word => ({
     id,
@@ -313,7 +316,7 @@ export default function PracticeSessionScreen() {
 
     if (isPunctuation) {
       setUserInput(currentWord.word);
-      setTimeout(() => handleCorrectWord(), 100);
+      setTimeout(() => handleCorrectWord(), 1);
       return;
     }
 
@@ -334,7 +337,7 @@ export default function PracticeSessionScreen() {
         
         // Go to next Word
         if (newInput === currentWord.word) {
-          setTimeout(() => handleCorrectWord(), 100);
+          setTimeout(() => handleCorrectWord(), 1);
         }
       } else if (textNoSpaces.length <= currentExpectedNoSpaces.length) {
         // Entered space
@@ -361,7 +364,7 @@ export default function PracticeSessionScreen() {
           
           if (firstChar === wordFirstChar) {
             setUserInput(currentWord.word);
-            setTimeout(() => handleCorrectWord(), 100);
+            setTimeout(() => handleCorrectWord(), 1);
           } else {
             handleIncorrectInput();
           }
@@ -408,13 +411,14 @@ export default function PracticeSessionScreen() {
 
   const handleCompleted = () => {
     setCompleted(true);
-    setSnackbarMessage('You memorized this verse!');
-    setSnackbarVisible(true);
+    handleBack();
   }
 
   const handleBack = async () => {
     if (editingUserVerse) {
       setLoading(true);
+      setSnackbarMessage('You memorized this verse!');
+      setSnackbarVisible(true);
       editingUserVerse.progressPercent = 100;
       editingUserVerse.lastPracticed = new Date(); // Update LAST_PRACTICED
       
@@ -433,6 +437,25 @@ export default function PracticeSessionScreen() {
     }
     setCollections(await getUserCollections(user.username));
     setShouldReloadPracticeList(true);
+
+    setProfileCache({ isLoading: true, error: null });
+    const [verses, activity] = await Promise.all([
+      getAllUserVerses(user.username),
+      getUserActivity(user.username, 5),
+    ]);
+
+    const memorized = (verses || []).filter((verse: any) => verse.progressPercent === 100).length;
+
+    setProfileCache({
+      memorizedCount: memorized,
+      activity: activity || [],
+      isLoaded: true,
+      isLoading: false,
+      lastFetchedAt: Date.now(),
+      username: user.username,
+      error: null,
+    });
+
     setLoading(false);
     router.back();
   }
@@ -608,10 +631,10 @@ export default function PracticeSessionScreen() {
           
           <View style={{ position: 'relative', marginBottom: 20, minHeight: MIN_STAGE_HEIGHT }}>
             {/* Background text */}
-            <View style={{ 
-              padding: 20, 
+            <View style={{
               borderRadius: 8, 
-              backgroundColor: theme.colors.surface 
+              backgroundColor: theme.colors.background,
+              width: '90%'
             }}>
               <Text style={{
                 ...styles.text,
@@ -644,9 +667,9 @@ export default function PracticeSessionScreen() {
             <View style={{ 
               position: 'absolute', 
               top: 0, left: 0, right: 0, bottom: 0,
-              padding: 20,
               borderRadius: 8, 
-              backgroundColor: 'transparent' 
+              backgroundColor: 'transparent',
+              width: '90%'
             }}>
               <TextInput
                 ref={inputRef}
@@ -677,28 +700,30 @@ export default function PracticeSessionScreen() {
           )}
         </ScrollView>
         
-        <Snackbar
-          visible={snackbarVisible}
-          onDismiss={() => setSnackbarVisible(false)}
-          duration={3000}
-          style={{ 
-            backgroundColor: theme.colors.primary,
-            position: 'absolute',
-            top: 0, left: 0, right: 0, margin: 0
-          }}
-          wrapperStyle={{ top: 0 }}
-        >
-          {snackbarMessage}
-        </Snackbar>
       </View>
       {loading && (
         <View style={{
           position: 'absolute',
-          width: 100,
-          height: 100,
+          width: '100%',
+          height: '100%',
+          justifyContent: 'center',
+          alignItems: 'center',
           backgroundColor: theme.colors.surface
         }}>
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Snackbar
+            visible={snackbarVisible}
+            onDismiss={() => setSnackbarVisible(false)}
+            duration={3000}
+            style={{ 
+              backgroundColor: theme.colors.primary,
+              position: 'absolute',
+              top: 0, left: 0, right: 0, margin: 0
+            }}
+            wrapperStyle={{ top: 0 }}
+          >
+            {snackbarMessage}
+          </Snackbar>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       )}
     </>

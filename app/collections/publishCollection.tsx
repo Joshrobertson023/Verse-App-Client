@@ -188,7 +188,7 @@ export default function PublishCollection() {
           label="Description (optional)"
           value={description}
           onChangeText={setDescription}
-          style={{...styles.input, height: 30}}
+          style={{...styles.input, height: 60, padding: -10, paddingBottom: -30}}
           mode="outlined"
           multiline={true}
           numberOfLines={4}
@@ -212,7 +212,9 @@ export default function PublishCollection() {
                   onClose={() => toggleCategory(category.categoryId)}
                   style={{ backgroundColor: theme.colors.surface }}
                 >
-                  {category.name}
+                  <Text style={styles.tinyText}>
+                    {category.name}
+                  </Text>
                 </Chip>
               ))}
             </View>
@@ -290,7 +292,7 @@ export default function PublishCollection() {
         <Dialog
           visible={categoryDialogVisible}
           onDismiss={() => setCategoryDialogVisible(false)}
-          style={{ backgroundColor: theme.colors.surface }}
+          style={{ backgroundColor: theme.colors.surface2 }}
         >
           <Dialog.Title>Select Categories</Dialog.Title>
           <Dialog.Content>
@@ -305,10 +307,12 @@ export default function PublishCollection() {
                       marginBottom: 8,
                       backgroundColor: selectedCategoryIds.has(category.categoryId)
                         ? theme.colors.surface2
-                        : theme.colors.surface
+                        : theme.colors.surface2
                     }}
                   >
-                    {category.name}
+                    <Text style={styles.tinyText}>
+                      {category.name}
+                    </Text>
                   </Chip>
                 ))}
               </View>

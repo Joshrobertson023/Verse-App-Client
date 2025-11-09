@@ -59,6 +59,13 @@ export default function EditCollection() {
     const [reorderedUserVerses, setReorderedUserVerses] = useState<UserVerse[]>([]);
     const updateCollectionStore = useAppStore((state) => state.updateCollection);
     const setEditingCollection = useAppStore((state) => state.setEditingCollection);
+    const buildVerseOrderString = (verses: UserVerse[]): string => {
+      return verses
+        .map((uv) => uv.readableReference?.trim())
+        .filter((ref): ref is string => Boolean(ref && ref.length > 0))
+        .join(',');
+    };
+
 
     // Get collection from store
     const editingCollection = useAppStore((state) => state.editingCollection);
@@ -265,17 +272,8 @@ export default function EditCollection() {
               visibility: visibility,
             };
             
-            // Create verseOrder from reordered user verses using IDs
-            let verseOrder = '';
-            reorderedUserVerses.forEach((userVerse: UserVerse) => {
-              if (userVerse.id) {
-                verseOrder += userVerse.id + ',';
-              } else {
-                // For new verses that don't have an ID yet, use readableReference
-                verseOrder += userVerse.readableReference + ',';
-              }
-            })
-            updatedCollection.verseOrder = verseOrder;
+            // Create verseOrder from reordered user verses using readable references
+            updatedCollection.verseOrder = buildVerseOrderString(reorderedUserVerses);
             updatedCollection.userVerses = reorderedUserVerses;
             
             if (title.trim() === 'Favorites') {
@@ -323,12 +321,33 @@ export default function EditCollection() {
     }
 
       const handleDeleteUV = (userVerse: UserVerse) => {
-        const updatedUserVerses = reorderedUserVerses.filter(uv => uv.readableReference !== userVerse.readableReference);
+        const updatedUserVerses = reorderedUserVerses.filter(
+          (uv) => uv.readableReference !== userVerse.readableReference
+        );
+        const updatedVerseOrder = buildVerseOrderString(updatedUserVerses);
         setReorderedUserVerses(updatedUserVerses);
+        const current = useAppStore.getState().editingCollection;
+        if (current) {
+          setEditingCollection({
+            ...current,
+            userVerses: updatedUserVerses,
+            verseOrder: updatedVerseOrder,
+          });
+        }
       }
 
       const addUserVerseToCollection = (userVerse: UserVerse) => {
-        setReorderedUserVerses([...reorderedUserVerses, userVerse]);
+        const updatedUserVerses = [...reorderedUserVerses, userVerse];
+        const updatedVerseOrder = buildVerseOrderString(updatedUserVerses);
+        setReorderedUserVerses(updatedUserVerses);
+        const current = useAppStore.getState().editingCollection;
+        if (current) {
+          setEditingCollection({
+            ...current,
+            userVerses: updatedUserVerses,
+            verseOrder: updatedVerseOrder,
+          });
+        }
       }
 
       // Handle Android back button to close sheets

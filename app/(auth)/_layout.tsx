@@ -14,6 +14,9 @@ export default function RootLayout() {
         backgroundColor: theme.colors.background,
       },
       headerTintColor: theme.colors.onBackground,
+      contentStyle: {
+        backgroundColor: theme.colors.background,
+      },
     }}>
         <Stack.Screen 
         name="createName"
@@ -75,6 +78,48 @@ export default function RootLayout() {
               headerTintColor: theme.colors.onBackground,
               headerShadowVisible: false
              }} 
+        />
+        <Stack.Screen
+        name="forgotUsername"
+        options={{
+              headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitle: "Forgot Username",
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false
+            }}
+        />
+        <Stack.Screen
+        name="forgotPassword"
+        options={{
+              headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitle: "Forgot Password",
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false
+            }}
+        />
+        <Stack.Screen
+        name="resetPassword"
+        options={{
+              headerStyle: {
+                backgroundColor: theme.colors.background,
+              },
+              headerTitle: "Reset Password",
+              headerTitleStyle: {
+                color: theme.colors.onBackground,
+              },
+              headerTintColor: theme.colors.onBackground,
+              headerShadowVisible: false
+            }}
         />
     </Stack>
   )

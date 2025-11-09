@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Chip, Searchbar, Snackbar } from 'react-native-paper';
+import ExploreCollectionCard from '../components/exploreCollectionCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { SearchResultSkeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, checkRelationship, getPopularSearches, getVerseSearchResult, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB } from '../db';
+import { addUserVersesToNewCollection, checkRelationship, getPopularSearches, getUserCollections, getVerseSearchResult, PublishedCollection, searchPublishedCollections, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB } from '../db';
 import { Collection, useAppStore, User, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -30,6 +31,7 @@ export default function SearchScreen() {
   const [loading, setLoading] = useState(false);
   const [passageResults, setPassageResults] = useState<Verse[]>([]);
   const [peopleResults, setPeopleResults] = useState<User[]>([]);
+  const [collectionResults, setCollectionResults] = useState<PublishedCollection[]>([]);
   const [relationships, setRelationships] = useState<Map<string, number>>(new Map());
   const [showCollectionPicker, setShowCollectionPicker] = useState(false);
   const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
@@ -40,6 +42,21 @@ export default function SearchScreen() {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
+
+  const normalizedSearchTerm = useMemo(
+    () => searchQuery.trim().toLowerCase(),
+    [searchQuery]
+  );
+
+  const verseReferenceSet = useMemo(() => {
+    const set = new Set<string>();
+    passageResults.forEach((verse) => {
+      if (verse.verse_reference) {
+        set.add(verse.verse_reference.trim().toLowerCase());
+      }
+    });
+    return set;
+  }, [passageResults]);
 
   useEffect(() => {
     loadRecentSearches();
@@ -93,6 +110,7 @@ export default function SearchScreen() {
     await trackSearch(searchTerm);
     await saveRecentSearch(searchTerm);
     
+    setCollectionResults([]);
     setLoading(true);
     try {
       const [passageSearchResult, peopleSearchResults] = await Promise.all([
@@ -125,6 +143,17 @@ export default function SearchScreen() {
       }
       
       setPeopleResults(peopleSearchResults);
+      
+      const verseReferences = (passageSearchResult.verses || [])
+        .map((verse) => verse.verse_reference)
+        .filter((ref): ref is string => typeof ref === 'string' && ref.trim().length > 0);
+
+      const collections = await searchPublishedCollections({
+        query: searchTerm,
+        verseReferences,
+        limit: 50,
+      });
+      setCollectionResults(collections);
       
       const relationshipMap = new Map<string, number>();
       for (const resultUser of peopleSearchResults) {
@@ -229,9 +258,16 @@ export default function SearchScreen() {
       };
       
       await updateCollectionDB(updatedCollection);
-      setCollections(collections.map(c => 
-        c.collectionId === pickedCollection.collectionId ? updatedCollection : c
-      ));
+      try {
+        const refreshedCollections = await getUserCollections(user.username);
+        setCollections(refreshedCollections);
+      } catch (error) {
+        console.error('Failed to refresh collections after adding verse:', error);
+        // fallback to optimistic update if fetch fails
+        setCollections(collections.map(c =>
+          c.collectionId === pickedCollection.collectionId ? updatedCollection : c
+        ));
+      }
 
       if (selectedVerse?.verse_reference) {
         incrementVerseSaveAdjustment(selectedVerse.verse_reference);
@@ -333,6 +369,12 @@ export default function SearchScreen() {
     </View>
   );
   };
+
+  const renderCollectionResult = ({ item }: { item: PublishedCollection }) => (
+    <View style={{ paddingHorizontal: 20, marginVertical: 12 }}>
+      <ExploreCollectionCard collection={item} fullWidth />
+    </View>
+  );
 
   const renderPeopleResult = ({ item }: { item: User }) => {
     const relationshipStatus = relationships.get(item.username) ?? -1;
@@ -472,7 +514,7 @@ export default function SearchScreen() {
               fontFamily: 'Inter',
               marginBottom: 16
             }}>
-              Search for passages, collections, or people
+              Search the Bible, published collections, or people
             </Text>
           )}
         </View>
@@ -593,7 +635,6 @@ export default function SearchScreen() {
               <Chip
                 selected={activeTab === 'collections'}
                 onPress={() => setActiveTab('collections')}
-                disabled={true}
                 icon={() => null}
                 style={{
                   backgroundColor: activeTab === 'collections' 
@@ -661,6 +702,22 @@ export default function SearchScreen() {
                     ) : null
                   }
                   contentContainerStyle={{ paddingHorizontal: 20 }}
+                />
+              ) : activeTab === 'collections' ? (
+                <FlatList
+                  data={collectionResults}
+                  keyExtractor={(item) => item.publishedId.toString()}
+                  renderItem={renderCollectionResult}
+                  ListEmptyComponent={
+                    collectionResults.length === 0 ? (
+                      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100 }}>
+                        <Text style={{ fontSize: 16, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
+                          No collections found
+                        </Text>
+                      </View>
+                    ) : null
+                  }
+                  contentContainerStyle={{ paddingBottom: 40 }}
                 />
               ) : (
                 <FlatList

@@ -3,20 +3,33 @@ import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
-import { PublishedCollection } from '../db';
-import { useAppStore } from '../store';
+import {
+  addUserVersesToNewCollection,
+  createCollectionDB,
+  getMostRecentCollectionId,
+  getPublishedCollection,
+  getUserCollections,
+  getUserVersesByCollectionWithVerses,
+  incrementPublishedCollectionSaveCount,
+  PublishedCollection,
+  refreshUser,
+  updateCollectionsOrder,
+} from '../db';
+import { Collection, useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 interface Props {
   collection: PublishedCollection;
   onSaved?: (publishedId: number) => void | Promise<void>;
+  fullWidth?: boolean;
 }
 
-export default function ExploreCollectionCard({ collection, onSaved }: Props) {
+export default function ExploreCollectionCard({ collection, onSaved, fullWidth = false }: Props) {
   const styles = useStyles();
   const theme = useAppTheme();
   const user = useAppStore((s) => s.user);
+  const collections = useAppStore((s) => s.collections);
   const setCollections = useAppStore((s) => s.setCollections);
   const setUser = useAppStore((s) => s.setUser);
 
@@ -25,90 +38,213 @@ export default function ExploreCollectionCard({ collection, onSaved }: Props) {
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
-  // const handleSave = async () => {
-  //   if (isSaving) return;
-  //   setIsSaving(true);
-  //   try {
-  //     // Fetch fresh metadata and verses by collection ID (robust against stale props)
-  //     const metadata = await getCollectionById(collection.publishedId!);
-  //     const sourceUserVerses = await getUserVersesByCollectionWithVerses(collection.publishedId!);
+  const handleSave = async () => {
+    if (isSaving) return;
+    if (!user?.username || user.username === 'Default User') {
+      setSnackbarMessage('Sign in to save collections');
+      setSnackbarVisible(true);
+      return;
+    }
 
-  //     // Prepare userVerses for insertion under current user
-  //     const preparedUserVerses = (sourceUserVerses || []).map(uv => ({
-  //       ...uv,
-  //       id: undefined,
-  //       username: user.username,
-  //       collectionId: undefined,
-  //       progressPercent: 0,
-  //       timesMemorized: 0,
-  //       lastPracticed: undefined,
-  //       dateMemorized: undefined,
-  //       dateAdded: undefined,
-  //     }));
+    setIsSaving(true);
+    try {
+      const published = await getPublishedCollection(collection.publishedId);
+      if (!published) {
+        setSnackbarMessage('This collection is no longer available');
+        setSnackbarVisible(true);
+        return;
+      }
 
-      // Create a new collection in the user's account but keep original author attribution
-    //   const duplicateCollection: Collection = {
-    //   	title: metadata.title,
-    //   	authorUsername: user.username, // set owner to current user so it appears in their collections
-    //   	visibility: metadata.visibility,
-    //   	verseOrder: metadata.verseOrder,
-    //   	userVerses: preparedUserVerses,
-    //   	favorites: false,
-    //   } as any;
+      if (collections.length >= 40) {
+        setSnackbarMessage('You can create up to 40 collections');
+        setSnackbarVisible(true);
+        return;
+      }
 
-    //   await createCollectionDB(duplicateCollection, user.username);
-    //   const newCollectionId = await getMostRecentCollectionId(user.username);
+      const normalizeReference = (reference: string | undefined | null) =>
+        reference?.trim().replace(/\s+/g, ' ');
 
-    //   if (preparedUserVerses.length > 0) {
-    //     await addUserVersesToNewCollection(preparedUserVerses, newCollectionId);
-    //   }
+      const publishedVerses = await getUserVersesByCollectionWithVerses(collection.publishedId);
+      const preparedUserVerses: UserVerse[] = (publishedVerses || []).map((uv) => {
+        const readableReference = normalizeReference(uv.readableReference) ?? '';
+        const seenVerseRefs = new Set<string>();
+        const dedupedVerses = (uv.verses || []).filter((verse) => {
+          const ref = normalizeReference(verse.verse_reference);
+          if (!ref) return false;
+          const key = ref.toLowerCase();
+          if (seenVerseRefs.has(key)) {
+            return false;
+          }
+          seenVerseRefs.add(key);
+          verse.verse_reference = ref;
+          return true;
+        });
 
-    //   try {
-    //     const updatedCollections = await getUserCollections(user.username);
-    //     setCollections(updatedCollections);
-    //   } catch {}
+        return {
+          ...uv,
+          id: undefined,
+          username: user.username,
+          collectionId: undefined,
+          progressPercent: 0,
+          timesMemorized: 0,
+          lastPracticed: undefined,
+          dateMemorized: undefined,
+          dateAdded: undefined,
+          verses: dedupedVerses,
+          readableReference,
+        };
+      });
 
-    //   const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
-    //   const newOrder = currentOrder ? `${currentOrder},${newCollectionId}` : newCollectionId.toString();
-    //   setUser({ ...user, collectionsOrder: newOrder });
-    //   try { await updateCollectionsOrder(newOrder, user.username); } catch {}
-    //   try { const refreshedUser = await refreshUser(user.username); setUser(refreshedUser); } catch {}
-    //   try { await notifyAuthorCollectionSaved(user.username, collection.collectionId!); } catch {}
-    //   try { await incrementCollectionSaves(collection.collectionId!); } catch {}
+      const dedupedUserVerseMap = new Map<string, UserVerse>();
+      preparedUserVerses.forEach((uv) => {
+        const ref = uv.readableReference;
+        if (!ref) return;
+        const key = ref.toLowerCase();
+        const existing = dedupedUserVerseMap.get(key);
+        if (existing) {
+          const combined = existing.verses ? [...existing.verses] : [];
+          const seenVerseRefs = new Set(combined.map((v) => (v.verse_reference ?? '').toLowerCase()));
+          (uv.verses || []).forEach((v) => {
+            const verseRef = (v.verse_reference ?? '').toLowerCase();
+            if (!verseRef || seenVerseRefs.has(verseRef)) return;
+            seenVerseRefs.add(verseRef);
+            combined.push(v);
+          });
+          existing.verses = combined;
+        } else {
+          dedupedUserVerseMap.set(key, { ...uv, readableReference: ref, verses: [...(uv.verses || [])] });
+        }
+      });
 
-    //   setSavedCount((c) => c + 1);
-    //   try { await onSaved?.(collection.collectionId!); } catch {}
-    //   setSnackbarMessage('Collection saved');
-    //   setSnackbarVisible(true);
-    // } catch (e) {
-    //   setSnackbarMessage('Failed to save collection');
-    //   setSnackbarVisible(true);
-    // } finally {
-    //   setIsSaving(false);
-    // }
-  //};
+      const publishedOrder = (published.verseOrder || '')
+        .split(',')
+        .map((ref) => normalizeReference(ref))
+        .filter(Boolean) as string[];
+      const uniqueOrder: string[] = [];
+      const seenOrder = new Set<string>();
+      publishedOrder.forEach((ref) => {
+        const key = ref.toLowerCase();
+        if (!seenOrder.has(key)) {
+          uniqueOrder.push(ref);
+          seenOrder.add(key);
+        }
+      });
+
+      const orderedUserVerses: UserVerse[] = [];
+      uniqueOrder.forEach((ref) => {
+        const uv = dedupedUserVerseMap.get(ref.toLowerCase());
+        if (uv) {
+          orderedUserVerses.push(uv);
+          dedupedUserVerseMap.delete(ref.toLowerCase());
+        }
+      });
+      const remainingVerses = Array.from(dedupedUserVerseMap.values());
+      const dedupedUserVerses = [...orderedUserVerses, ...remainingVerses].map((uv) => ({
+        ...uv,
+        readableReference: normalizeReference(uv.readableReference) ?? '',
+        verses: (uv.verses || []).map((v) => ({
+          ...v,
+          verse_reference: normalizeReference(v.verse_reference) ?? v.verse_reference,
+        })),
+      }));
+
+      if (dedupedUserVerses.length > 30) {
+        setSnackbarMessage('Collections can contain up to 30 passages');
+        setSnackbarVisible(true);
+        return;
+      }
+
+      const duplicateCollection: Collection = {
+        title: published.title,
+        authorUsername: published.author,
+        username: user.username,
+        visibility: 'Private',
+        verseOrder: uniqueOrder.join(','),
+        userVerses: [],
+        favorites: false,
+      };
+
+      await createCollectionDB(duplicateCollection, user.username);
+      const newCollectionId = await getMostRecentCollectionId(user.username);
+
+      if (dedupedUserVerses.length > 0) {
+        await addUserVersesToNewCollection(dedupedUserVerses, newCollectionId);
+      }
+
+      try {
+        await incrementPublishedCollectionSaveCount(collection, user.username);
+      } catch (error) {
+        console.error('Failed to increment published collection saves', error);
+      }
+
+      try {
+        const updatedCollections = await getUserCollections(user.username);
+        setCollections(updatedCollections);
+      } catch (error) {
+        console.error('Failed to refresh collections after saving published collection', error);
+      }
+
+      const currentOrder = user.collectionsOrder ? user.collectionsOrder.split(',').filter(Boolean) : [];
+      if (!currentOrder.includes(newCollectionId.toString())) {
+        currentOrder.push(newCollectionId.toString());
+      }
+      const newOrder = currentOrder.join(',');
+      const updatedUser = { ...user, collectionsOrder: newOrder };
+      setUser(updatedUser);
+
+      try {
+        await updateCollectionsOrder(newOrder, user.username);
+      } catch (error) {
+        console.error('Failed to update collections order after saving published collection', error);
+      }
+
+      try {
+        const refreshedUser = await refreshUser(user.username);
+        setUser(refreshedUser);
+      } catch (error) {
+        console.error('Failed to refresh user after saving published collection', error);
+      }
+
+      setSavedCount((count) => count + 1);
+      try {
+        await onSaved?.(collection.publishedId);
+      } catch (error) {
+        console.error('onSaved callback failed', error);
+      }
+
+      setSnackbarMessage('Collection saved');
+    } catch (error) {
+      console.error('Failed to save published collection', error);
+      const message = error instanceof Error ? error.message : 'Failed to save collection';
+      setSnackbarMessage(message || 'Failed to save collection');
+    } finally {
+      setSnackbarVisible(true);
+      setIsSaving(false);
+    }
+  };
 
   return (
     <TouchableOpacity
       onPress={() => router.push(`../explore/collection/${collection.publishedId}` as any)}
       style={{
-        width: 300,
+        width: fullWidth ? '100%' : 300,
         borderRadius: 14,
         padding: 14,
-        marginHorizontal: 8,
+        marginHorizontal: fullWidth ? 0 : 8,
         backgroundColor: theme.colors.surface,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text numberOfLines={1} style={{ ...styles.text, fontWeight: 700, marginRight: 12 }}>{collection.title}</Text>
         <TouchableOpacity
-          //onPress={handleSave}
+          onPress={handleSave}
           disabled={isSaving}
           style={{
             paddingHorizontal: 20,
             paddingVertical: 4,
+            marginTop: -12,
             borderRadius: 8,
-            backgroundColor: theme.colors.surfaceVariant,
+            backgroundColor: theme.colors.surface2,
             opacity: isSaving ? 0.6 : 1,
           }}
         >
@@ -120,13 +256,13 @@ export default function ExploreCollectionCard({ collection, onSaved }: Props) {
         </TouchableOpacity>
       </View>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 }}>
-        <Ionicons name="people" size={16} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
-        <Text style={styles.tinyText}>{savedCount} Saves</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: -4 }}>
+        <Ionicons name="people" size={14} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
+        <Text style={{...styles.tinyText, fontSize: 14}}>{savedCount} {(savedCount === 1 ? 'Save' : 'Saves')}</Text>
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-        <Text style={styles.tinyText}>Collection - {collection.userVerses?.length ?? 0} {(collection.userVerses?.length ?? 0) === 1 ? 'verse' : 'verses'}</Text>
+        <Text style={styles.tinyText}>{collection.userVerses?.length ?? 0} {(collection.userVerses?.length ?? 0) === 1 ? 'passage' : 'passages'}</Text>
         <Text style={styles.tinyText}>@{collection.author}</Text>
       </View>
       <Snackbar

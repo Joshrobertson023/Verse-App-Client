@@ -3,13 +3,13 @@ import { router, Stack, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BackHandler, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { ActivityIndicator, Button, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
+import { ActivityIndicator, Banner, Button, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
 import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import CollectionItem from '../components/collectionItem';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getOverdueVerses, getRecentPractice, getUpcomingVerseOfDay, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getOverdueVerses, getRecentPractice, getSiteBanner, getUpcomingVerseOfDay, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
 import { Collection, SearchData, useAppStore, UserVerse, Verse, VerseOfDay as VodType } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -89,6 +89,8 @@ export default function Index() {
   const homePageStats = useAppStore((state) => state.homePageStats);
   const setCollections = useAppStore((state) => state.setCollections);
   const setUser = useAppStore((state) => state.setUser);
+  const siteBanner = useAppStore((state) => state.siteBanner);
+  const setSiteBanner = useAppStore((state) => state.setSiteBanner);
   const [settingsCollection, setSettingsCollection] = useState<Collection | undefined>(undefined);
   const [isSettingsSheetOpen, setIsSettingsSheetOpen] = useState(false);
   const [isCreatingCopy, setIsCreatingCopy] = useState(false);
@@ -103,6 +105,34 @@ export default function Index() {
   const [orderedCollections, setOrderedCollections] = useState<Collection[]>(collections);
   const [isSettingsCollectionPublished, setIsSettingsCollectionPublished] = useState<boolean | null>(null);
   const [shouldReloadPracticeList, setShouldReloadPracticeList] = useState(false);
+  const [isBannerLoading, setIsBannerLoading] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+
+  const computeOwnership = (collection?: Collection) => {
+    if (!collection) return false;
+    const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+    const owner = collection.username ? normalize(collection.username) : undefined;
+    const author = collection.authorUsername ? normalize(collection.authorUsername) : undefined;
+    const currentUser = normalize(user.username);
+
+    if (!owner) {
+      return author ? author === currentUser : currentUser.length > 0;
+    }
+
+    if (owner !== currentUser) {
+      return false;
+    }
+
+    if (author && author !== owner) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const isOwnedCollection = computeOwnership(settingsCollection);
+
+  const deleteDialogIsOwned = computeOwnership(deleteDialogCollection);
 
   const [visible, setVisible] = React.useState(false);
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
@@ -145,6 +175,36 @@ export default function Index() {
     ? currentVodVerses[0].users_Memorized ?? 0
     : 0;
   const displayedVodSavedCount = currentVodSavedCount + (currentVod?.readableReference ? (verseSaveAdjustments[currentVod.readableReference] ?? 0) : 0);
+
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      setIsBannerLoading(true);
+      try {
+        const result = await getSiteBanner();
+        if (!isMounted) {
+          return;
+        }
+        const normalizedMessage = result.hasBanner && result.message ? result.message.trim() : '';
+        const message = normalizedMessage.length > 0 ? normalizedMessage : null;
+        setSiteBanner({ message });
+      } catch (error) {
+        console.error('Failed to load site banner', error);
+      } finally {
+        if (isMounted) {
+          setIsBannerLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [setSiteBanner]);
+
+  useEffect(() => {
+    setBannerDismissed(false);
+  }, [siteBanner.message]);
 
   useEffect(() => {
     (async () => {
@@ -399,12 +459,25 @@ export default function Index() {
   }
 
   const handleCreateCopy = async (collectionToCopy: Collection) => {
+    if (collections.length >= 40) {
+      setSnackbarMessage('You can create up to 40 collections');
+      setSnackbarVisible(true);
+      return;
+    }
+    if ((collectionToCopy.userVerses?.length ?? 0) > 30) {
+      setSnackbarMessage('Collections can contain up to 30 passages');
+      setSnackbarVisible(true);
+      return;
+    }
+
     setIsCreatingCopy(true);
     try {
       const duplicateCollection: Collection = {
         ...collectionToCopy,
         title: `${collectionToCopy.title} (Copy)`,
         collectionId: undefined,
+        authorUsername: collectionToCopy.authorUsername ?? user.username,
+        username: user.username,
       };
 
       await createCollectionDB(duplicateCollection, user.username);
@@ -432,6 +505,9 @@ export default function Index() {
       setUser(refreshedUser);
     } catch (error) {
       console.error('Failed to create collection copy:', error);
+      const message = error instanceof Error ? error.message : 'Failed to create collection copy';
+      setSnackbarMessage(message);
+      setSnackbarVisible(true);
     } finally {
       setIsCreatingCopy(false);
     }
@@ -768,6 +844,8 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
     )
   }
 
+  const[bannerVisible, setBannerVisible] = useState(true);
+
   return (
     <>
       <Stack.Screen
@@ -798,6 +876,33 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           width: '100%'
         }}
       >
+        {isBannerLoading && !siteBanner.message ? (
+          <View style={{ width: '100%', marginBottom: 20, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          </View>
+        ) : null}
+        {siteBanner.message && !bannerDismissed ? (
+          <Banner
+            visible
+            icon="information-outline"
+            style={{
+              width: '100%',
+              marginBottom: 20,
+              backgroundColor: theme.colors.surface
+            }}
+            actions={[
+              {
+                label: 'Close',
+                onPress: () => setBannerDismissed(true)
+              }
+            ]}
+          >
+            <Text style={{ ...styles.tinyText, color: theme.colors.onSurface, fontFamily: 'Inter', marginRight: 12, height: '100% ' }}>
+              {siteBanner.message}
+            </Text>
+          </Banner>
+        ) : null}
+
         {/* Verse Of The Day */}
         <View style={{ width: '100%', marginBottom: 20 }}>
           <View style={{ paddingHorizontal: 2, marginBottom: 4, marginTop: -10 }}>
@@ -1046,10 +1151,22 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         )}
 
 
-        <Text style={{ ...styles.subheading }}>My Verses</Text>
-        <TouchableOpacity style={{alignSelf: 'flex-end', position: 'relative', top: -28, marginBottom: -15}} activeOpacity={0.1} onPress={() => openCollectionsSettingsSheet()}>
-          <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: -10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 20 }}>
+            <TouchableOpacity
+              activeOpacity={0.1}
+              onPress={() => router.push('../collections/myPublished')}
+              accessibilityRole="button"
+              accessibilityLabel="Open my published collections"
+            >
+              <Ionicons name="globe" size={26} color={theme.colors.onBackground} />
+            </TouchableOpacity>
+          </View>
+            <Text style={{ ...styles.subheading, marginBottom: 0 }}>My Verses</Text>
+          <TouchableOpacity activeOpacity={0.1} onPress={() => openCollectionsSettingsSheet()}>
+            <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
+          </TouchableOpacity>
+        </View>
         <View style={styles.collectionsContainer}>
 
           {orderedCollections.map((collection) => (
@@ -1126,101 +1243,121 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           </GestureDetector>
 
           <Divider style={{margin: 0}} />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={() => {
-              closeSettingsSheet();
-              if (settingsCollection) {
-                const setEditingCollection = useAppStore.getState().setEditingCollection;
-                setEditingCollection(settingsCollection);
-                router.push('../collections/editCollection');
-              }
-            }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', gap: 8 }}>
-              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
-            </View>
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={async () => {
-              closeSettingsSheet();
-              if (settingsCollection) {
-                await handleCreateCopy(settingsCollection);
-              }
-            }}
-            disabled={isCreatingCopy}>
-            {isCreatingCopy ? (
-              <ActivityIndicator size="small" color={theme.colors.onBackground} />
-            ) : (
-              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
-            )}
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={async () => {
-              if (!settingsCollection?.collectionId) return;
-              
-              try {
-                const newVisibility = settingsCollection.visibility === 'Public' ? 'Private' : 'Public';
-                const updatedCollection = {
-                  ...settingsCollection,
-                  visibility: newVisibility
-                };
-                await updateCollectionDB(updatedCollection);
-                const updatedCollections = collections.map(c => 
-                  c.collectionId === settingsCollection.collectionId ? updatedCollection : c
-                );
-                setCollections(updatedCollections);
-                closeSettingsSheet();
-              } catch (error) {
-                console.error('Failed to toggle visibility:', error);
-                alert('Failed to update collection visibility');
-              }
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
-              {settingsCollection?.visibility === 'Public' ? 'Make Private' : 'Make Public'}
-            </Text>
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={() => {
-              closeSettingsSheet();
-              setIsShareSheetVisible(true);
-            }}>
-              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={() => {
-              if (!settingsCollection?.collectionId) return;
-              closeSettingsSheet();
-              const setEditingCollection = useAppStore.getState().setEditingCollection;
-              setEditingCollection(settingsCollection);
-              router.push('../collections/publishCollection');
-            }}>
-              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
-           </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={() => {
-              closeSettingsSheet();
-              setDeleteDialogVisible(true);
-              setDeleteDialogCollection(settingsCollection);
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
-          </TouchableOpacity>
-          <Divider />
+          {isOwnedCollection ? (
+            <>
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                activeOpacity={0.1}
+                onPress={() => {
+                  closeSettingsSheet();
+                  if (settingsCollection) {
+                    const setEditingCollection = useAppStore.getState().setEditingCollection;
+                    setEditingCollection(settingsCollection);
+                    router.push('../collections/editCollection');
+                  }
+                }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', width: '100%', gap: 8 }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
+                </View>
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                activeOpacity={0.1}
+                onPress={async () => {
+                  closeSettingsSheet();
+                  if (settingsCollection) {
+                    await handleCreateCopy(settingsCollection);
+                  }
+                }}
+                disabled={isCreatingCopy}>
+                {isCreatingCopy ? (
+                  <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                ) : (
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
+                )}
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                activeOpacity={0.1}
+                onPress={async () => {
+                  if (!settingsCollection?.collectionId) return;
+                  
+                  try {
+                    const newVisibility = settingsCollection.visibility === 'Public' ? 'Private' : 'Public';
+                    const updatedCollection = {
+                      ...settingsCollection,
+                      visibility: newVisibility
+                    };
+                    await updateCollectionDB(updatedCollection);
+                    const updatedCollections = collections.map(c => 
+                      c.collectionId === settingsCollection.collectionId ? updatedCollection : c
+                    );
+                    setCollections(updatedCollections);
+                    closeSettingsSheet();
+                  } catch (error) {
+                    console.error('Failed to toggle visibility:', error);
+                    alert('Failed to update collection visibility');
+                  }
+                }}>
+                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
+                  {settingsCollection?.visibility === 'Public' ? 'Make Private' : 'Make Public'}
+                </Text>
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                activeOpacity={0.1}
+                onPress={() => {
+                  closeSettingsSheet();
+                  setIsShareSheetVisible(true);
+                }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                activeOpacity={0.1}
+                onPress={() => {
+                  if (!settingsCollection?.collectionId) return;
+                  closeSettingsSheet();
+                  const setEditingCollection = useAppStore.getState().setEditingCollection;
+                  setEditingCollection(settingsCollection);
+                  router.push('../collections/publishCollection');
+                }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
+               </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                activeOpacity={0.1}
+                onPress={() => {
+                  if (!settingsCollection) return;
+                  closeSettingsSheet();
+                  setDeleteDialogVisible(true);
+                  setDeleteDialogCollection(settingsCollection);
+                }}>
+                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
+              </TouchableOpacity>
+              <Divider />
+            </>
+          ) : (
+            <>
+              <TouchableOpacity
+                style={sheetItemStyle.settingsItem}
+                activeOpacity={0.1}
+                onPress={() => {
+                  if (!settingsCollection) return;
+                  closeSettingsSheet();
+                  setDeleteDialogVisible(true);
+                  setDeleteDialogCollection(settingsCollection);
+                }}>
+                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Remove</Text>
+              </TouchableOpacity>
+              <Divider />
+            </>
+          )}
         </Animated.View>
       </Portal>
 
@@ -1331,14 +1468,14 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
       <Portal>
       <Dialog visible={deleteDialogVisible} onDismiss={hideDialog}>
         <Dialog.Content>
-          <Text style={{...styles.tinyText}}>Are you sure you want to delete the collection "{settingsCollection?.title}"?</Text>
+          <Text style={{...styles.tinyText}}>Are you sure you want to {deleteDialogIsOwned ? 'delete' : 'remove'} the collection "{deleteDialogCollection?.title}"?</Text>
         </Dialog.Content>
         <Dialog.Actions>
           <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} activeOpacity={0.1} onPress={() => hideDeleteDialog()}>
             <Text style={{...styles.buttonText_outlined}}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} activeOpacity={0.1} onPress={() => deleteCollectionHandle()}>
-            <Text style={{...styles.buttonText_outlined, color: theme.colors.error}}>Delete</Text>
+            <Text style={{...styles.buttonText_outlined, color: theme.colors.error}}>{deleteDialogIsOwned ? 'Delete' : 'Remove'}</Text>
           </TouchableOpacity>
         </Dialog.Actions>
       </Dialog>

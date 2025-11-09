@@ -6,7 +6,7 @@ import FriendCollectionItem from '../components/friendCollectionItem';
 import { ProfileDrawerLink } from '../components/ProfileContent';
 import { ProfileSkeleton } from '../components/skeleton';
 import { minutesSince, parseUTCDate } from '../dateUtils';
-import { getFriendActivity, getMemorizedUserVerses, getStreakLength, getUserFriendCollections, getUserProfile } from '../db';
+import { getFriendActivity, getStreakLength, getUserFriendCollections, getUserProfile } from '../db';
 import { Activity, Collection, useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -167,13 +167,7 @@ export default function UserProfileScreen() {
         setFriendActivityLoaded(true);
       }
 
-      try {
-        const memorized = await getMemorizedUserVerses(username!);
-        setMemorizedCount(memorized.length);
-      } catch (error) {
-        console.error('Failed to fetch memorized count for friend:', error);
-        setMemorizedCount(0);
-      }
+      setMemorizedCount(user.versesMemorized ?? 0);
 
       if (user.lastSeen) {
         const lastSeen = parseUTCDate(user.lastSeen);
@@ -365,11 +359,6 @@ export default function UserProfileScreen() {
             icon="calendar"
             label="Streak Calendar"
             onPress={() => router.push(`/user/${username}/streak`)}
-          />
-          <ProfileDrawerLink
-            icon="checkmark-done"
-            label="Memorized Passages"
-            onPress={() => router.push(`/user/${username}/memorizedVerses`)}
           />
         </View>
 

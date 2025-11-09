@@ -15,6 +15,7 @@ export default function PracticeScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
   const user = useAppStore((state) => state.user);
+  const collections = useAppStore((state) => state.collections);
   const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
   const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
   const [versesInProgress, setVersesInProgress] = useState<UserVerse[]>([]);
@@ -30,20 +31,32 @@ export default function PracticeScreen() {
         setLoading(false);
         return;
       }
+      const validCollectionIds = new Set(
+        collections
+          .map((collection) => collection.collectionId)
+          .filter((id): id is number => id !== undefined && id !== null)
+      );
+      const filterByCollection = (items: UserVerse[]) =>
+        items.filter(
+          (item) =>
+            item.collectionId !== undefined &&
+            item.collectionId !== null &&
+            validCollectionIds.has(item.collectionId)
+        );
       const [memorized, inProgress, notStarted] = await Promise.all([
         getUnpopulatedMemorizedUserVerses(user.username),
         getUserVersesInProgress(user.username),
         getUserVersesNotStarted(user.username)
       ]);
-      setVersesMemorized(memorized);
-      setVersesInProgress(inProgress);
-      setVersesNotStarted(notStarted);
+      setVersesMemorized(filterByCollection(memorized));
+      setVersesInProgress(filterByCollection(inProgress));
+      setVersesNotStarted(filterByCollection(notStarted));
     } catch (error) {
       console.error('Failed to fetch user verses:', error);
     } finally {
       setLoading(false);
     }
-  }, [user.username]);
+  }, [user.username, collections]);
 
   useEffect(() => {
     fetchUserVerses();

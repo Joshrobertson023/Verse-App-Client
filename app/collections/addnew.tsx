@@ -7,7 +7,7 @@ import { ActivityIndicator, Divider, Portal, TextInput } from 'react-native-pape
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
 import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, refreshUser, updateCollectionsOrder } from '../db';
-import { useAppStore, UserVerse, Verse } from '../store';
+import { useAppStore, UserVerse, Verse, Collection } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -23,14 +23,27 @@ export default function Index() {
     const setNewCollection = useAppStore((state) => state.setNewCollection);
     const resetNewCollection = useAppStore((state) => state.resetNewCollection);
     const user = useAppStore((state) => state.user);
+    const collections = useAppStore((state) => state.collections);
+    const setCollections = useAppStore((state) => state.setCollections);
     const [creatingCollection, setCreatingCollection] = useState(false);
     const [progressPercent, setProgressPercent] = useState(0.0);
-    const setCollections = useAppStore((state) => state.setCollections);
     const [loading, setLoading] = useState(false);
     const [visibility, setVisibility] = useState('Private');
     const [sheetVisible, setSheetVisible] = useState(false);
     const addUserVerseToCollection = useAppStore((state) => state.addUserVerseToCollection)
     const setUser = useAppStore((state) => state.setUser);
+
+    const buildVerseOrderString = (verses: UserVerse[]): string => {
+      return verses
+        .map((uv) => uv.readableReference?.trim())
+        .filter((ref): ref is string => Boolean(ref && ref.length > 0))
+        .join(',');
+    };
+
+    const updateNewCollectionOrder = (userVerses: UserVerse[]) => {
+      const updatedVerseOrder = buildVerseOrderString(userVerses);
+      setNewCollection({ ...newCollection, userVerses, verseOrder: updatedVerseOrder });
+    };
 
     // Initialize title and visibility if newCollection has data (e.g., from shared collection)
     useEffect(() => {
@@ -172,55 +185,59 @@ export default function Index() {
 
       const handleCreateCollection = async () => {
             if (newCollection.userVerses.length === 0) return;
-            setCreatingCollection(true);
+            if (collections.length >= 40) {
+              setErrorMessage('You can create up to 40 collections.');
+              return;
+            }
+            if (newCollection.userVerses.length > 30) {
+              setErrorMessage('Collections can contain up to 30 passages.');
+              return;
+            }
 
-            newCollection.authorUsername = user.username;
-            newCollection.visibility = visibility;
-            
-            // Create verseOrder from user verses (only if not already set)
-            if (!newCollection.verseOrder) {
-              let verseOrder = '';
-              newCollection.userVerses.forEach((userVerse: UserVerse) => {
-                verseOrder += userVerse.readableReference + ',';
-              })
-              newCollection.verseOrder = verseOrder;
-            }
-            
-            if (title.trim() === '') {
-              newCollection.title = 'New Collection';
-            } else if (title.trim() === 'Favorites') {
-              newCollection.title = 'Favorites-Other'
-            } else {
-              newCollection.title = title;
-            }
-            setProgressPercent(.50);
-            await createCollectionDB(newCollection, user.username);
-            const id = await getMostRecentCollectionId(user.username);
-            await addUserVersesToNewCollection(newCollection.userVerses, id);
-            
-            // Update collections list
-            const collections = await getUserCollections(user.username);
-            setCollections(collections);
-            
-            // Add new collection ID to the collections order
-            const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
-            const newOrder = currentOrder ? `${currentOrder},${id}` : id.toString();
-            const updatedUser = { ...user, collectionsOrder: newOrder };
-            setUser(updatedUser);
-            
-            // Update in database
-            await updateCollectionsOrder(newOrder, user.username);
-            
-            // Fetch updated user from server
-            const refreshedUser = await refreshUser(user.username);
-            setUser(refreshedUser);
-            
-            resetNewCollection();
-            setTitle('');
+            setCreatingCollection(true);
             setErrorMessage('');
-            setProgressPercent(1);
-            setCreatingCollection(false);
-            router.replace("/");
+
+            const preparedCollection: Collection = {
+              ...newCollection,
+              authorUsername: newCollection.authorUsername ?? user.username,
+              username: user.username,
+              visibility: visibility,
+              verseOrder: buildVerseOrderString(newCollection.userVerses),
+              title: (() => {
+                if (title.trim() === '') return 'New Collection';
+                if (title.trim() === 'Favorites') return 'Favorites-Other';
+                return title;
+              })(),
+            };
+
+            try {
+              await createCollectionDB(preparedCollection, user.username);
+              const id = await getMostRecentCollectionId(user.username);
+              await addUserVersesToNewCollection(newCollection.userVerses, id);
+              const collections = await getUserCollections(user.username);
+              setCollections(collections);
+
+              const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
+              const newOrder = currentOrder ? `${currentOrder},${id}` : id.toString();
+              const updatedUser = { ...user, collectionsOrder: newOrder };
+              setUser(updatedUser);
+
+              await updateCollectionsOrder(newOrder, user.username);
+
+              const refreshedUser = await refreshUser(user.username);
+              setUser(refreshedUser);
+
+              resetNewCollection();
+              setTitle('');
+              setProgressPercent(1);
+              setCreatingCollection(false);
+              router.replace("/");
+            } catch (error) {
+              console.error('Failed to create collection', error);
+              const message = error instanceof Error ? error.message : 'Failed to create collection';
+              setErrorMessage(message);
+              setCreatingCollection(false);
+            }
       }
           
       const clickPlus = (verse: Verse) => {
@@ -251,13 +268,16 @@ export default function Index() {
         console.log(userVerse.readableReference);
         console.log(userVerse.verses.at(0)?.verse_reference);
         addUserVerseToCollection(userVerse);
+        updateNewCollectionOrder([...newCollection.userVerses, userVerse]);
         
         closeSheet();
       }
 
       const handleDeleteUV = (userVerse: UserVerse) => {
-        const updatedUserVerses = newCollection.userVerses.filter(uv => uv.readableReference !== userVerse.readableReference);
-        setNewCollection({...newCollection, userVerses: updatedUserVerses});
+        const updatedUserVerses = newCollection.userVerses.filter(
+          (uv) => uv.readableReference !== userVerse.readableReference
+        );
+        updateNewCollectionOrder(updatedUserVerses);
       }
 
       // Handle Android back button to close sheets

@@ -4,9 +4,9 @@ import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { Surface, Text } from 'react-native-paper';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedCollection, getUserCollections, getUserVersesByCollectionWithVerses, refreshUser, updateCollectionsOrder, PublishedCollection } from '../../db';
-import { Collection, UserVerse, useAppStore } from '../../store';
+import { ActivityIndicator, Surface, Text } from 'react-native-paper';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedCollection, getUserCollections, getUserVersesByCollectionWithVerses, incrementPublishedCollectionSaveCount, PublishedCollection, refreshUser, updateCollectionsOrder } from '../../db';
+import { Collection, useAppStore, UserVerse } from '../../store';
 import useStyles from '../../styles';
 import useAppTheme from '../../theme';
 
@@ -19,11 +19,14 @@ export default function PublishedCollectionView() {
 
   const user = useAppStore((s) => s.user);
   const setCollections = useAppStore((s) => s.setCollections);
+  const collections = useAppStore((s) => s.collections);
   const setUser = useAppStore((s) => s.setUser);
 
   const [collection, setCollection] = useState<PublishedCollection | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [savedCount, setSavedCount] = useState<number>(0);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   useLayoutEffect(() => {
     if (collection) {
@@ -62,6 +65,7 @@ export default function PublishedCollectionView() {
             ...published,
             userVerses: preparedVerses
           });
+          setSavedCount(published.numSaves ?? 0);
           setErrorMessage(null);
         }
       } catch (e) {
@@ -75,14 +79,37 @@ export default function PublishedCollectionView() {
   }, [id]);
 
   const numVerses = useMemo(() => collection?.userVerses?.length ?? 0, [collection]);
+  const publishedDateText = useMemo(() => {
+    if (!collection?.publishedDate) return null;
+    const date = new Date(collection.publishedDate);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }, [collection?.publishedDate]);
 
   const handleSave = async () => {
     if (!collection) return;
+    if (collections.length >= 40) {
+      setErrorMessage('You can create up to 40 collections.');
+      return;
+    }
+    if ((collection.userVerses?.length ?? 0) > 30) {
+      setErrorMessage('Collections can contain up to 30 passages.');
+      return;
+    }
+    setErrorMessage(null);
+    setIsSaving(true);
     try {
       const duplicateCollection: Collection = {
         title: `${collection.title} (Copy)`,
-        authorUsername: user.username,
-        visibility: 'private',
+        authorUsername: collection.author,
+        username: user.username,
+        visibility: 'Private',
         verseOrder: collection.verseOrder,
         userVerses: [],
         collectionId: undefined,
@@ -92,22 +119,20 @@ export default function PublishedCollectionView() {
       await createCollectionDB(duplicateCollection, user.username);
       const newCollectionId = await getMostRecentCollectionId(user.username);
 
-      const duplicateUserVerses = (collection.userVerses || []).map((uv) => ({
-        ...uv,
-        id: undefined,
-        collectionId: undefined,
-        username: user.username,
-        progressPercent: 0,
-        timesMemorized: 0,
-        lastPracticed: undefined,
-        dateAdded: undefined,
-        dateMemorized: undefined,
-        verses: uv.verses || []
-      }));
-
-      if (duplicateUserVerses.length > 0) {
-        await addUserVersesToNewCollection(duplicateUserVerses, newCollectionId);
+      if (collection.userVerses && collection.userVerses.length > 0) {
+        await addUserVersesToNewCollection(collection.userVerses, newCollectionId);
       }
+
+      try {
+        await incrementPublishedCollectionSaveCount(collection, user.username);
+        setCollection((prev) =>
+          prev ? { ...prev, numSaves: (prev.numSaves ?? 0) + 1 } : prev
+        );
+        setSavedCount((count) => count + 1);
+      } catch (error) {
+        console.error('Failed to increment published collection saves', error);
+      }
+
       const updatedCollections = await getUserCollections(user.username);
       setCollections(updatedCollections);
       const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
@@ -117,12 +142,18 @@ export default function PublishedCollectionView() {
       try { const refreshedUser = await refreshUser(user.username); setUser(refreshedUser); } catch {}
     } catch (e) {
       console.error('Failed to save published collection', e);
+      const message = e instanceof Error ? e.message : 'Failed to save published collection';
+      setErrorMessage(message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: theme.colors.background }} />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background }}>
+        <ActivityIndicator animating size="large" color={theme.colors.primary} />
+      </View>
     );
   }
 
@@ -143,17 +174,35 @@ export default function PublishedCollectionView() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <TouchableOpacity
             onPress={handleSave}
-            style={{ paddingHorizontal: 20, paddingVertical: 6, borderRadius: 8, backgroundColor: theme.colors.surfaceVariant }}
+            disabled={isSaving}
+            style={{
+              paddingHorizontal: 20,
+              paddingVertical: 6,
+              borderRadius: 8,
+              backgroundColor: theme.colors.surface2,
+              opacity: isSaving ? 0.6 : 1
+            }}
           >
-            <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0 }}>Save</Text>
+            {isSaving ? (
+              <ActivityIndicator animating size="small" color={theme.colors.onSurface} />
+            ) : (
+              <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0 }}>Save</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 6 }}>
-        <Ionicons name="people" size={16} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
-        <Text style={styles.tinyText}>{collection.numSaves ?? 0} Saves</Text>
+      
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: -4 }}>
+        <Ionicons name="people" size={14} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
+        <Text style={{...styles.tinyText, fontSize: 14}}>{savedCount} {(savedCount === 1 ? 'Save' : 'Saves')}</Text>
       </View>
+
+      {!!publishedDateText && (
+        <Text style={{ ...styles.tinyText, marginTop: 6 }}>
+          Published on {publishedDateText}
+        </Text>
+      )}
 
       <Text style={{ ...styles.tinyText, marginTop: 6 }}>
         Created by @{collection.author}
@@ -173,13 +222,22 @@ export default function PublishedCollectionView() {
             <Surface style={{ minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface }} elevation={4}>
               <View>
                 <Text style={{ ...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600 }}>{uv.readableReference}</Text>
-                {(uv.verses || []).map((v, vIdx) => (
-                  <View key={v.verse_reference || `${uv.readableReference}-v-${vIdx}`}> 
-                    <Text style={{ ...styles.text, fontFamily: 'Noto Serif', fontSize: 18 }}>
-                      {v.verse_Number}: {v.text}
-                    </Text>
-                  </View>
-                ))}
+                {(uv.verses || []).map((v, vIdx) => {
+                  const verseNumberText = (() => {
+                    if (v.verse_Number === null || v.verse_Number === undefined) {
+                      return (vIdx + 1).toString();
+                    }
+                    const asString = `${v.verse_Number}`.trim();
+                    return asString.length > 0 ? asString : (vIdx + 1).toString();
+                  })();
+                  return (
+                    <View key={v.verse_reference || `${uv.readableReference}-v-${vIdx}`}>
+                      <Text style={{ ...styles.text, fontFamily: 'Noto Serif', fontSize: 18 }}>
+                        {`${verseNumberText}: ${v.text}`}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </Surface>
           </View>

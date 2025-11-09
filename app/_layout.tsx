@@ -1,3 +1,6 @@
+import { Lora_400Regular, Lora_700Bold } from '@expo-google-fonts/lora';
+import { Merriweather_400Regular, Merriweather_700Bold } from '@expo-google-fonts/merriweather';
+import { SourceSansPro_400Regular, SourceSansPro_600SemiBold } from '@expo-google-fonts/source-sans-pro';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from 'expo-font';
@@ -7,14 +10,23 @@ import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Platform, Text, TouchableOpacity, type TouchableOpacityProps, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, Portal } from 'react-native-paper';
-import { getPopularSearches, getStreakLength, getUserCollections, loginUserWithToken, updateLastSeen } from './db';
+import { getAdminUsernames, getPopularSearches, getStreakLength, getUserCollections, loginUserWithToken, updateLastSeen } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
+
+const TouchableOpacityWithDefaults = TouchableOpacity as typeof TouchableOpacity & {
+  defaultProps?: Partial<TouchableOpacityProps>;
+};
+
+TouchableOpacityWithDefaults.defaultProps = {
+  ...(TouchableOpacityWithDefaults.defaultProps ?? {}),
+  activeOpacity: 0.8,
+};
 
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
 
@@ -56,6 +68,12 @@ export default function RootLayout() {
     'Inter black': require('../assets/fonts/Inter/static/Inter_18pt-Black.ttf'),
     'Inter italic': require('../assets/fonts/Inter/static/Inter_18pt-Italic.ttf'),
     'Inter bolditalic': require('../assets/fonts/Inter/static/Inter_18pt-BoldItalic.ttf'),
+    Merriweather: Merriweather_400Regular,
+    'Merriweather bold': Merriweather_700Bold,
+    Lora: Lora_400Regular,
+    'Lora bold': Lora_700Bold,
+    'Source Sans Pro': SourceSansPro_400Regular,
+    'Source Sans Pro semibold': SourceSansPro_600SemiBold,
   });
 
   const theme = useAppTheme();
@@ -232,16 +250,29 @@ export default function RootLayout() {
                 if (user.username === 'Default User') {
                   try {
                     const fetchedUser = await loginUserWithToken(token);
+
+                    let adminUsernames: string[] = [];
+                    try {
+                      adminUsernames = await getAdminUsernames();
+                    } catch (error) {
+                      console.error('Failed to load admin usernames:', error);
+                    }
+
+                    const userWithAdminFlag = {
+                      ...fetchedUser,
+                      isAdmin: adminUsernames.includes(fetchedUser.username),
+                    };
+
                     // Fetch streakLength from API
                     try {
-                      fetchedUser.streakLength = await getStreakLength(fetchedUser.username);
+                      userWithAdminFlag.streakLength = await getStreakLength(userWithAdminFlag.username);
                     } catch (error) {
                       console.error('Failed to fetch streak length:', error);
-                      fetchedUser.streakLength = 0;
+                      userWithAdminFlag.streakLength = 0;
                     }
                     // versesMemorized, versesOverdue, and numberPublishedCollections come from the database
-                    setUser(fetchedUser);
-                    const collections = await getUserCollections(fetchedUser.username);
+                    setUser(userWithAdminFlag);
+                    const collections = await getUserCollections(userWithAdminFlag.username);
                     setCollections(collections);
                   } catch (loginError) {
                     console.error('Failed to login with token:', loginError);
@@ -293,7 +324,7 @@ export default function RootLayout() {
   }
 
   return ( 
-    <GestureHandlerRootView style={{flex: 1}}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <PaperProvider theme={theme}>
           <Portal.Host>
           <Stack
@@ -478,6 +509,20 @@ export default function RootLayout() {
           name="collections/editCollection"
           options={{
             title: 'Edit Collection',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+                headerShadowVisible: false,
+              }} 
+            />
+            <Stack.Screen
+          name="collections/publishCollection"
+          options={{
+            title: 'Publish Collection',
                 headerStyle: {
                   backgroundColor: theme.colors.background,
                 },

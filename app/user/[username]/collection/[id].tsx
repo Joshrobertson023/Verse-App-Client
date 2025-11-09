@@ -1,9 +1,7 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { Divider } from 'react-native-paper';
-import { getFriendCollectionWithVerses } from '../../../db';
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { getFriendCollectionWithVerses, getUserVersesPopulated } from '../../../db';
 import { Collection, useAppStore, UserVerse } from '../../../store';
 import useStyles from '../../../styles';
 import useAppTheme from '../../../theme';
@@ -16,65 +14,57 @@ function orderByDateAdded(userVerses: UserVerse[]): UserVerse[] {
   });
 }
 
-function orderByProgress(userVerses: UserVerse[]): UserVerse[] {
-  return [...userVerses].sort((a, b) => {
-    const aProgress = a.progressPercent || 0;
-    const bProgress = b.progressPercent || 0;
-    return bProgress - aProgress;
-  });
-}
-
 export default function FriendCollectionScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
-  const router = useRouter();
   const { username, id } = useLocalSearchParams<{ username: string; id: string }>();
+  const currentUser = useAppStore((state) => state.user);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState<'newest' | 'progress'>('newest');
+  const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
 
   useEffect(() => {
     loadCollection();
-  }, [id]);
+  }, [id, currentUser?.username]);
 
   const loadCollection = async () => {
     try {
       setLoading(true);
-      const data = await getFriendCollectionWithVerses(parseInt(id));
-      setCollection(data);
+      const data = await getFriendCollectionWithVerses(parseInt(id), currentUser?.username);
+      if (!data) {
+        setCollection(null);
+        setUserVerses([]);
+        return;
+      }
+      let populated = data;
+      try {
+        if (data.userVerses && data.userVerses.length > 0) {
+          const payload = { ...data, UserVerses: data.userVerses ?? [] };
+          populated = await getUserVersesPopulated(payload as unknown as Collection);
+        }
+      } catch (err) {
+        console.error('Failed to populate friend collection verses:', err);
+      }
+      setCollection(populated);
+      setUserVerses(populated.userVerses ?? []);
     } catch (error) {
       console.error('Failed to load collection:', error);
       setCollection(null);
+      setUserVerses([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const orderedUserVerses: UserVerse[] = useMemo(() => {
-    if (!collection?.userVerses) return [];
-
+  const orderedUserVerses = useMemo(() => {
+    if (!userVerses || userVerses.length === 0) return [];
     const uniqueMap = new Map<string, UserVerse>();
-    collection.userVerses.forEach((uv) => {
-      if (!uv.readableReference) return;
-      if (!uniqueMap.has(uv.readableReference)) {
-        uniqueMap.set(uv.readableReference, uv);
-      }
+    userVerses.forEach((uv) => {
+      if (!uv.readableReference || uniqueMap.has(uv.readableReference)) return;
+      uniqueMap.set(uv.readableReference, uv);
     });
-
-    const verses = Array.from(uniqueMap.values());
-
-    if (sortBy === 'progress') {
-      return orderByProgress(verses);
-    }
-
-    return orderByDateAdded(verses);
-  }, [collection?.userVerses, sortBy]);
-
-  const handlePractice = (userVerse: UserVerse) => {
-    const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-    setEditingUserVerse(userVerse);
-    router.push('/practiceSession');
-  };
+    return orderByDateAdded(Array.from(uniqueMap.values()));
+  }, [userVerses]);
 
   if (loading) {
     return (
@@ -120,204 +110,29 @@ export default function FriendCollectionScreen() {
         }}
       />
       <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-        <View style={{ padding: 20 }}>
-          <View
-            style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 16,
-              padding: 20,
-              marginBottom: 20,
-              borderWidth: 1,
-              borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 24,
-                fontWeight: 'bold',
-                color: theme.colors.onBackground,
-                marginBottom: 8,
-                fontFamily: 'Inter',
-              }}
-            >
-              {collection.title}
-            </Text>
-            <Text
-              style={{
-                fontSize: 14,
-                color: theme.colors.onSurfaceVariant,
-                fontFamily: 'Inter',
-                marginBottom: 4,
-              }}
-            >
-              {collection.userVerses?.length || 0} passages • {collection.visibility}
-            </Text>
-            <Text
-              style={{
-                fontSize: 12,
-                color: theme.colors.onSurfaceVariant,
-                fontFamily: 'Inter',
-              }}
-            >
-              Shared by @{username}
-            </Text>
-          </View>
-
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: 16,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 18,
-                fontWeight: '600',
-                color: theme.colors.onBackground,
-                fontFamily: 'Inter',
-              }}
-            >
-              Verses
-            </Text>
-            <View style={{ flexDirection: 'row', borderRadius: 999, borderWidth: 1, borderColor: theme.colors.outline }}>
-              <TouchableOpacity
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  backgroundColor: sortBy === 'newest' ? theme.colors.primary : 'transparent',
-                }}
-                onPress={() => setSortBy('newest')}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontFamily: 'Inter',
-                    color: sortBy === 'newest' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant,
-                    fontWeight: sortBy === 'newest' ? '600' : '400',
-                  }}
-                >
-                  Newest
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  backgroundColor: sortBy === 'progress' ? theme.colors.primary : 'transparent',
-                }}
-                onPress={() => setSortBy('progress')}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    fontFamily: 'Inter',
-                    color: sortBy === 'progress' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant,
-                    fontWeight: sortBy === 'progress' ? '600' : '400',
-                  }}
-                >
-                  Progress
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
+        <View style={{ paddingHorizontal: 20, paddingTop: 20, paddingBottom: 100 }}>
           {orderedUserVerses.length === 0 ? (
-            <View
-              style={{
-                backgroundColor: theme.colors.surface,
-                borderRadius: 12,
-                padding: 20,
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: theme.colors.outlineVariant ?? theme.colors.outline,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter',
-                }}
-              >
-                No verses in this collection
-              </Text>
+            <View style={{ alignItems: 'center', backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant ?? theme.colors.outline, borderRadius: 12, borderWidth: 1, padding: 20 }}>
+              <Text style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'Inter', fontSize: 14 }}>No verses in this collection</Text>
             </View>
           ) : (
             orderedUserVerses.map((userVerse, index) => (
-              <View
-                key={userVerse.readableReference || `${userVerse.username}-${index}`}
-                style={{
-                  backgroundColor: theme.colors.surface,
-                  borderRadius: 16,
-                  padding: 20,
-                  marginBottom: 16,
-                  borderWidth: 1,
-                  borderColor: theme.colors.surfaceVariant ?? 'transparent',
-                }}
-              >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                  <View style={{ flex: 1, marginRight: 12 }}>
-                    <Text
-                      style={{
-                        fontFamily: 'Noto Serif bold',
-                        fontSize: 20,
-                        color: theme.colors.onBackground,
-                      }}
-                    >
-                      {userVerse.readableReference}
-                    </Text>
-                    <Text
-                      style={{
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        color: theme.colors.onSurfaceVariant,
-                        marginTop: 4,
-                      }}
-                    >
-                      Memorized {Math.round(userVerse.progressPercent || 0)}%
-                    </Text>
+              <View key={userVerse.readableReference || `userVerse-${index}`} style={{ minWidth: '100%', marginBottom: 20 }}>
+                <View style={{ backgroundColor: theme.colors.surface, borderRadius: 3, minWidth: '100%', padding: 20 }}>
+                  <View>
+                    <Text style={{ ...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600 }}>{userVerse.readableReference}</Text>
+                    {(userVerse.verses || []).map((verse, verseIndex) => (
+                      <View key={verse.verse_reference || `${userVerse.readableReference}-verse-${verseIndex}`}>
+                        <View>
+                          <Text style={{ ...styles.text, fontFamily: 'Noto Serif', fontSize: 18 }}>
+                            {verse.verse_Number ? `${verse.verse_Number}: ` : ''}
+                            {verse.text}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
                   </View>
-                  <TouchableOpacity
-                    style={{ padding: 4 }}
-                    onPress={() => handlePractice(userVerse)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="flash-outline" size={22} color={theme.colors.primary} />
-                  </TouchableOpacity>
                 </View>
-
-                <Divider style={{ marginBottom: 12, backgroundColor: theme.colors.surfaceVariant ?? theme.colors.outline }} />
-
-                <View style={{ gap: 10 }}>
-                  {(userVerse.verses || []).map((verse, verseIndex) => (
-                    <View key={verse.verse_reference || `${userVerse.readableReference}-${verseIndex}`}>
-                      <Text
-                        style={{
-                          fontFamily: 'Noto Serif',
-                          fontSize: 16,
-                          color: theme.colors.onBackground,
-                          lineHeight: 24,
-                        }}
-                      >
-                        {verse.text}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-
-                <TouchableOpacity
-                  style={{ ...styles.button_outlined, marginTop: 16 }}
-                  onPress={() => handlePractice(userVerse)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.buttonText_outlined}>Practice</Text>
-                </TouchableOpacity>
               </View>
             ))
           )}

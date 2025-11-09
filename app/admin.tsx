@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
-import { Category, createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory } from './db';
+import { AdminSummary, Category, createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory, getSiteBanner, updateSiteBanner, deleteSiteBanner, getAdmins } from './db';
 import { formatDate as formatDateUtil } from './dateUtils';
 
 type VerseOfDayQueueItem = {
@@ -22,7 +22,9 @@ export default function AdminScreen() {
   const theme = useAppTheme();
   const router = useRouter();
   const user = useAppStore((state) => state.user);
+  const setUserStore = useAppStore((state) => state.setUser);
   const [users, setUsers] = useState<any[]>([]);
+  const [admins, setAdmins] = useState<AdminSummary[]>([]);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -32,6 +34,7 @@ export default function AdminScreen() {
   const [verseOfDays, setVerseOfDays] = useState<VerseOfDayQueueItem[]>([]);
   const [loadingVerseOfDays, setLoadingVerseOfDays] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
   const [page, setPage] = useState(0);
   const itemsPerPage = 10;
   const [reports, setReports] = useState<ReportItem[]>([]);
@@ -42,24 +45,44 @@ export default function AdminScreen() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [pinInput, setPinInput] = useState('');
-  const [pinDialogAction, setPinDialogAction] = useState<'sendNotification' | 'makeAdmin' | 'removeAdmin' | 'deleteUser'>('sendNotification');
+  const [pinDialogAction, setPinDialogAction] = useState<'sendNotification' | 'makeAdmin' | 'removeAdmin' | 'deleteUser' | 'saveBanner' | 'deleteBanner'>('sendNotification');
   const [pinDialogTargetUser, setPinDialogTargetUser] = useState('');
+  const [bannerMessage, setBannerMessage] = useState('');
+  const [loadingBanner, setLoadingBanner] = useState(false);
+  const [pendingBannerMessage, setPendingBannerMessage] = useState<string | null>(null);
+  const siteBanner = useAppStore((state) => state.siteBanner);
+  const setSiteBanner = useAppStore((state) => state.setSiteBanner);
 
   const formattedSelectedVerseDate = useMemo(
     () => formatDateUtil(verseOfDayDate.toISOString()),
     [verseOfDayDate]
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      loadUsers();
-      loadVerseOfDays();
-      loadReports();
-      loadCategories();
-    }, [])
-  );
+  const syncCurrentUserAdminFlag = useCallback((adminList: AdminSummary[]) => {
+    if (!user?.username) {
+      return;
+    }
 
-  const loadUsers = async () => {
+    const isAdminNow = adminList.some((admin) => admin?.username === user.username);
+    if (user.isAdmin !== isAdminNow) {
+      setUserStore({ ...user, isAdmin: isAdminNow });
+    }
+  }, [setUserStore, user]);
+
+  const loadAdmins = useCallback(async () => {
+    setLoadingAdmins(true);
+    try {
+      const data = await getAdmins();
+      setAdmins(data);
+      syncCurrentUserAdminFlag(data);
+    } catch (error) {
+      console.error('Failed to load admins:', error);
+    } finally {
+      setLoadingAdmins(false);
+    }
+  }, [syncCurrentUserAdminFlag]);
+
+  const loadUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
       const data = await getAllUsers(searchText || undefined);
@@ -69,9 +92,9 @@ export default function AdminScreen() {
     } finally {
       setLoadingUsers(false);
     }
-  };
+  }, [searchText]);
 
-  const loadVerseOfDays = async () => {
+  const loadVerseOfDays = useCallback(async () => {
     setLoadingVerseOfDays(true);
     try {
       const data = await getUpcomingVerseOfDay();
@@ -87,7 +110,7 @@ export default function AdminScreen() {
     } finally {
       setLoadingVerseOfDays(false);
     }
-  };
+  }, []);
 
   const handleDeleteVerseOfDay = async (id: number) => {
     try {
@@ -123,6 +146,7 @@ export default function AdminScreen() {
       return;
     }
 
+    const currentPin = pinInput;
     setShowPinDialog(false);
     setPinInput('');
     
@@ -142,6 +166,7 @@ export default function AdminScreen() {
       setLoading(true);
       try {
         await makeUserAdmin(pinDialogTargetUser);
+        await loadAdmins();
         await loadUsers();
       } catch (error) {
         console.error('Failed to make user admin:', error);
@@ -153,6 +178,7 @@ export default function AdminScreen() {
       setLoading(true);
       try {
         await removeUserAdmin(pinDialogTargetUser);
+        await loadAdmins();
         await loadUsers();
       } catch (error) {
         console.error('Failed to remove admin:', error);
@@ -164,6 +190,7 @@ export default function AdminScreen() {
       setLoading(true);
       try {
         await deleteUser(pinDialogTargetUser);
+        await loadAdmins();
         await loadUsers();
         alert(`${pinDialogTargetUser}'s account has been deleted.`);
       } catch (error) {
@@ -171,6 +198,39 @@ export default function AdminScreen() {
         alert('Failed to delete user');
       } finally {
         setLoading(false);
+      }
+    } else if (pinDialogAction === 'saveBanner') {
+      if (!pendingBannerMessage || !pendingBannerMessage.trim()) {
+        alert('Banner message cannot be empty');
+        return;
+      }
+      setLoadingBanner(true);
+      try {
+        const result = await updateSiteBanner(pendingBannerMessage.trim(), user.username, currentPin);
+        const normalizedMessage = result.hasBanner && result.message ? result.message.trim() : '';
+        setBannerMessage(normalizedMessage);
+        setSiteBanner({ message: normalizedMessage.length > 0 ? normalizedMessage : null });
+        alert('Banner updated');
+      } catch (error) {
+        console.error('Failed to update banner:', error);
+        alert('Failed to update banner');
+      } finally {
+        setPendingBannerMessage(null);
+        setLoadingBanner(false);
+      }
+    } else if (pinDialogAction === 'deleteBanner') {
+      setLoadingBanner(true);
+      try {
+        await deleteSiteBanner(user.username, currentPin);
+        setBannerMessage('');
+        setSiteBanner({ message: null });
+        alert('Banner removed');
+      } catch (error) {
+        console.error('Failed to delete banner:', error);
+        alert('Failed to delete banner');
+      } finally {
+        setPendingBannerMessage(null);
+        setLoadingBanner(false);
       }
     }
   };
@@ -201,7 +261,28 @@ export default function AdminScreen() {
     }
   };
 
-  const loadReports = async () => {
+  const handleRequestSaveBanner = () => {
+    const trimmed = bannerMessage.trim();
+    if (!trimmed) {
+      alert('Please enter a banner message');
+      return;
+    }
+    setPendingBannerMessage(trimmed);
+    setPinDialogAction('saveBanner');
+    setShowPinDialog(true);
+  };
+
+  const handleRequestRemoveBanner = () => {
+    if (!siteBanner.message) {
+      alert('There is no active banner to remove.');
+      return;
+    }
+    setPendingBannerMessage(null);
+    setPinDialogAction('deleteBanner');
+    setShowPinDialog(true);
+  };
+
+  const loadReports = useCallback(async () => {
     setLoadingReports(true);
     try {
       const data = await getAllReports();
@@ -211,9 +292,9 @@ export default function AdminScreen() {
     } finally {
       setLoadingReports(false);
     }
-  };
+  }, []);
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     setLoadingCategories(true);
     try {
       const data = await getAllCategories();
@@ -223,7 +304,32 @@ export default function AdminScreen() {
     } finally {
       setLoadingCategories(false);
     }
-  };
+  }, []);
+
+  const loadBanner = useCallback(async () => {
+    setLoadingBanner(true);
+    try {
+      const data = await getSiteBanner();
+      const normalizedMessage = data.hasBanner && data.message ? data.message.trim() : '';
+      setBannerMessage(normalizedMessage);
+      setSiteBanner({ message: normalizedMessage.length > 0 ? normalizedMessage : null });
+    } catch (error) {
+      console.error('Failed to load banner:', error);
+    } finally {
+      setLoadingBanner(false);
+    }
+  }, [setSiteBanner]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUsers();
+      loadAdmins();
+      loadVerseOfDays();
+      loadReports();
+      loadCategories();
+      loadBanner();
+    }, [loadAdmins, loadBanner, loadCategories, loadReports, loadUsers, loadVerseOfDays])
+  );
 
   const handleAddCategory = async () => {
     const name = newCategoryName.trim();
@@ -267,7 +373,7 @@ registerTranslation('en', en);
               All Admins
             </Text>
             
-            {loadingUsers ? (
+            {loadingAdmins ? (
               <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
             ) : (
               <ScrollView horizontal style={{ marginTop: 10 }}>
@@ -279,16 +385,28 @@ registerTranslation('en', en);
                     <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Action</Text></DataTable.Title>
                   </DataTable.Header>
 
-                  {users.filter(u => u.isAdmin === true).map((userItem, index) => (
-                    <DataTable.Row key={index}>
-                      <DataTable.Cell style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{userItem.username}</Text></DataTable.Cell>
-                      <DataTable.Cell style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{userItem.firstName} {userItem.lastName}</Text></DataTable.Cell>
-                      <DataTable.Cell style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{userItem.email}</Text></DataTable.Cell>
+                  {admins.map((adminItem, index) => {
+                    const matchingUser = users.find((u) => u.username === adminItem.username);
+                    const fullName = matchingUser ? `${matchingUser.firstName ?? ''} ${matchingUser.lastName ?? ''}`.trim() : '';
+                    const email = adminItem.email ?? matchingUser?.email ?? '—';
+                    return (
+                    <DataTable.Row key={adminItem.username}>
+                      <DataTable.Cell style={{ minWidth: 150 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{adminItem.username}</Text>
+                      </DataTable.Cell>
+                      <DataTable.Cell style={{ minWidth: 150 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>
+                          {fullName.length > 0 ? fullName : '—'}
+                        </Text>
+                      </DataTable.Cell>
+                      <DataTable.Cell style={{ minWidth: 200 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{email}</Text>
+                      </DataTable.Cell>
                       <DataTable.Cell style={{ minWidth: 100 }}>
                         <TouchableOpacity
                           onPress={() => {
                             setPinDialogAction('removeAdmin');
-                            setPinDialogTargetUser(userItem.username);
+                            setPinDialogTargetUser(adminItem.username);
                             setShowPinDialog(true);
                           }}
                           style={{
@@ -309,10 +427,81 @@ registerTranslation('en', en);
                         </TouchableOpacity>
                       </DataTable.Cell>
                     </DataTable.Row>
-                  ))}
+                  )})}
                 </DataTable>
               </ScrollView>
             )}
+          </View>
+
+          {/* Site Banner Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              Site Banner
+            </Text>
+
+            <TextInput
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 10,
+                color: theme.colors.onBackground,
+                fontSize: 16,
+                minHeight: 80,
+                textAlignVertical: 'top',
+              }}
+              placeholder="Enter banner message to show on the home page..."
+              placeholderTextColor={theme.colors.onSurfaceVariant}
+              value={bannerMessage}
+              onChangeText={setBannerMessage}
+              multiline
+              editable={!loadingBanner}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={[styles.button_filled, { flex: 1, opacity: loadingBanner ? 0.6 : 1 }]}
+                onPress={handleRequestSaveBanner}
+                disabled={loadingBanner}
+              >
+                {loadingBanner && pinDialogAction === 'saveBanner' ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.buttonText_filled}>Save Banner</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.button_filled,
+                  {
+                    flex: 1,
+                    backgroundColor: 'red',
+                    opacity: loadingBanner || !siteBanner.message ? 0.6 : 1,
+                  },
+                ]}
+                onPress={handleRequestRemoveBanner}
+                disabled={loadingBanner || !siteBanner.message}
+              >
+                {loadingBanner && pinDialogAction === 'deleteBanner' ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.buttonText_filled}>Remove Banner</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <Text
+              style={{
+                marginTop: 8,
+                color: theme.colors.onSurfaceVariant,
+                fontFamily: 'Inter',
+                fontSize: 14,
+              }}
+            >
+              {siteBanner.message
+                ? 'A banner is currently visible to all users.'
+                : 'No banner is currently visible.'}
+            </Text>
           </View>
 
           {/* Users Section */}
@@ -368,7 +557,7 @@ registerTranslation('en', en);
                       <DataTable.Cell style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{userItem.email}</Text></DataTable.Cell>
                       <DataTable.Cell style={{ minWidth: 200 }}>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
-                          {!userItem.isAdmin && (
+                          {!admins.some((admin) => admin.username === userItem.username) && (
                             <TouchableOpacity
                               onPress={() => {
                                 setPinDialogAction('makeAdmin');

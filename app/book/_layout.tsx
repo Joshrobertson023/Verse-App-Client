@@ -15,6 +15,9 @@ export default function BookLayout() {
         headerTitleStyle: {
           color: theme.colors.onBackground,
         },
+        contentStyle: {
+          backgroundColor: theme.colors.background,
+        },
       }}
     >
       <Stack.Screen name="[bookName]" />

@@ -215,7 +215,7 @@ export default function FriendsScreen() {
               marginTop: 16,
               fontFamily: 'Inter'
             }}>
-              No friends yet
+              No friends yet. Go to the search page to find people you know.
             </Text>
           </View>
         ) : (

@@ -81,6 +81,16 @@ export default function Index() {
 
   const handleCreateCopy = async () => {
     if (!collection) return;
+    if (collections.length >= 40) {
+      setSnackbarMessage('You can create up to 40 collections');
+      setSnackbarVisible(true);
+      return;
+    }
+    if ((collection.userVerses?.length ?? 0) > 30) {
+      setSnackbarMessage('Collections can contain up to 30 passages');
+      setSnackbarVisible(true);
+      return;
+    }
     
     setIsCreatingCopy(true);
     try {
@@ -88,6 +98,8 @@ export default function Index() {
         ...collection,
         title: `${collection.title} (Copy)`,
         collectionId: undefined,
+        authorUsername: collection.authorUsername ?? user.username,
+        username: user.username,
       };
 
       await createCollectionDB(duplicateCollection, user.username);
@@ -117,10 +129,13 @@ export default function Index() {
       try {
         await notifyAuthorCollectionSaved(user.username, collection.collectionId!);
       } catch (e) {
-        console.warn('Failed to notify author about save:', e);
+        console.error(e);
       }
     } catch (error) {
       console.error('Failed to create collection copy:', error);
+      const message = error instanceof Error ? error.message : 'Failed to create collection copy';
+      setSnackbarMessage(message);
+      setSnackbarVisible(true);
     } finally {
       setIsCreatingCopy(false);
     }
@@ -478,6 +493,28 @@ useEffect(() => {
             </View>
         )
     } else {
+      const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+  const isOwnedCollection = (() => {
+    if (!collection) return false;
+    const owner = collection.username ? normalize(collection.username) : undefined;
+    const author = collection.authorUsername ? normalize(collection.authorUsername) : undefined;
+    const currentUser = normalize(user.username);
+
+    if (!owner) {
+      return author ? author === currentUser : currentUser.length > 0;
+    }
+
+    if (owner !== currentUser) {
+      return false;
+    }
+
+    if (author && author !== owner) {
+      return false;
+    }
+
+    return true;
+  })();
+
       return (
         <View style={{ flex: 1 }}>
               <ScrollView
@@ -614,7 +651,7 @@ useEffect(() => {
                         </GestureDetector>
               
                         <Divider />
-                        {(collection?.authorUsername === user.username) && (
+                        {isOwnedCollection && (
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
                           onPress={() => {
@@ -643,7 +680,7 @@ useEffect(() => {
                           )}
                         </TouchableOpacity>
                         <Divider />
-                        {(collection?.authorUsername === user.username) && (
+                        {isOwnedCollection && (
                         <TouchableOpacity
                           style={sheetItemStyle.settingsItem}
                           onPress={async () => {
@@ -680,7 +717,7 @@ useEffect(() => {
                             <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
                           </View>
                         </TouchableOpacity>
-                        {(collection?.title !== 'Favorites' && collection?.authorUsername === user.username) && (
+                        {(collection?.title !== 'Favorites' && isOwnedCollection) && (
                           <>
                             <Divider />
                             <TouchableOpacity
@@ -742,7 +779,7 @@ useEffect(() => {
                   ></View>
                 </View>
               </GestureDetector>
-              {(collection?.authorUsername === user.username) && (
+              {isOwnedCollection && (
                 <AddPassage onAddPassage={addPassage} onClickPlus={clickPlus} />
               )}
             </Animated.View>

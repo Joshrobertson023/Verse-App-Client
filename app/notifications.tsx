@@ -5,7 +5,7 @@ import { ActivityIndicator, FlatList, Text, TouchableOpacity, View } from 'react
 import { Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SaveVerseToCollectionSheet from './components/saveVerseToCollectionSheet';
-import { formatRelativeTime, isDateExpired } from './dateUtils';
+import { formatRelativeTime, isDateExpired, minutesSince } from './dateUtils';
 import { addUserVersesToNewCollection, checkRelationship, getCollectionById, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, populateVersesForUserVerses, respondToFriendRequest, updateCollectionDB } from './db';
 import { Collection, Notification, UserVerse, Verse, useAppStore } from './store';
 import useStyles from './styles';
@@ -31,6 +31,7 @@ export default function NotificationsScreen() {
   const setCollections = useAppStore((s) => s.setCollections);
   const incrementVerseSaveAdjustment = useAppStore((s) => s.incrementVerseSaveAdjustment);
   const [isSavingToCollection, setIsSavingToCollection] = useState(false);
+    const numNotifications = useAppStore((state) => state.numNotifications);
 
   useFocusEffect(
     useCallback(() => {
@@ -146,7 +147,12 @@ export default function NotificationsScreen() {
   };
 
   const isExpired = (notification: Notification) => {
-    return isDateExpired(notification.expirationDate);
+    if (isDateExpired(notification.expirationDate)) {
+      return true;
+    }
+
+    const ageInMinutes = minutesSince(notification.createdDate);
+    return ageInMinutes !== null && ageInMinutes >= 1440;
   };
 
   const parseSharedCollectionInfo = (message: string): { collectionId?: number; collectionTitle?: string } => {
@@ -160,6 +166,12 @@ export default function NotificationsScreen() {
   };
 
   const handleViewSharedCollection = async (notification: Notification) => {
+    if (isExpired(notification)) {
+      setSnackbarMessage('This share link has expired.');
+      setSnackbarVisible(true);
+      return;
+    }
+
     const collectionInfo = parseSharedCollectionInfo(notification.message);
     console.log('Notification message:', notification.message);
     console.log('Parsed collectionInfo:', collectionInfo);

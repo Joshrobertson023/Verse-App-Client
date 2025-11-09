@@ -15,6 +15,8 @@ export default function CreatePasswordScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const theme = useAppTheme();
   const loginInfo = useAppStore.getState().loginInfo;
   const setUser = useAppStore((state) => state.setUser);
@@ -35,6 +37,12 @@ const nextClick = async () => {
 
         if (password !== confirmPassword) {
             setErrorMessage('Passwords do not match');
+            setLoading(false);
+            return;
+        }
+
+        if (password.length < 12) {
+            setErrorMessage('Password must be at least 12 characters long');
             setLoading(false);
             return;
         }
@@ -65,6 +73,7 @@ const nextClick = async () => {
             userVerses: [],
             favorites: true,
             authorUsername: loggedInUser.username,
+            username: loggedInUser.username,
         }
         await createCollectionDB(favoritesCollection, loggedInUser.username);
         const collections = await getUserCollections(loggedInUser.username);
@@ -93,13 +102,19 @@ const nextClick = async () => {
                             autoCapitalize="none"
                             autoCorrect={false}
                             autoComplete="password"
-                            textContentType="password" label="Password" mode="outlined" style={styles.input} value={password}
+                            textContentType="password"
+                            secureTextEntry={!showPassword}
+                            label="Password" mode="outlined" style={styles.input} value={password}
+                            right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword((prev) => !prev)} />}
                             onChangeText={(text) => setPassword(text)} />
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
                             autoCorrect={false}
                             autoComplete="password"
-                            textContentType="password" label="Confirm Password" mode="outlined" style={styles.input} value={confirmPassword} 
+                            textContentType="password"
+                            secureTextEntry={!showConfirmPassword}
+                            label="Confirm Password" mode="outlined" style={styles.input} value={confirmPassword} 
+                            right={<TextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword((prev) => !prev)} />}
                             onChangeText={(text) => setConfirmPassword(text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>

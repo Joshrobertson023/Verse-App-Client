@@ -18,6 +18,34 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
   const openMenu = () => setMenuVisible(true);
   const closeMenu = () => setMenuVisible(false);
   const user = useAppStore((state) => state.user);
+  const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+  const ownerUsernameRaw = collection.username ?? collection.authorUsername;
+  const authorUsernameRaw = collection.authorUsername;
+  const isPublishedCopy = Boolean(
+    authorUsernameRaw && collection.username && normalize(authorUsernameRaw) !== normalize(collection.username)
+  );
+  const isOwnedCollection = (() => {
+    const owner = ownerUsernameRaw ? normalize(ownerUsernameRaw) : undefined;
+    const author = authorUsernameRaw ? normalize(authorUsernameRaw) : undefined;
+    const currentUser = normalize(user.username);
+
+    if (!owner) {
+      return author ? author === currentUser : currentUser.length > 0;
+    }
+
+    if (owner !== currentUser) {
+      return false;
+    }
+
+    if (author && author !== owner) {
+      return false;
+    }
+
+    return true;
+  })();
+  const visibilityLabel = isPublishedCopy && authorUsernameRaw
+    ? `@${authorUsernameRaw}`
+    : collection.visibility ?? '';
 
   return (
       <Pressable
@@ -48,8 +76,8 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
             </View>
             <View>
 
-              {/* visibility */}
-              <Text style={styles.tinyText}>{collection.visibility}</Text>
+              {/* visibility or author */}
+              <Text style={styles.tinyText}>{visibilityLabel}</Text>
             </View>
           </View>
           <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'flex-end'}}>
@@ -69,14 +97,10 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
             <View>
 
               {/* author */}
-              {collection.title === 'Favorites' ? (
+              {collection.title === 'Favorites' || isOwnedCollection ? (
                 null
               ) : (
-                collection.authorUsername === user.username ? (
-                  null
-                ) : (
-                  <Text>{collection.authorUsername}</Text>
-                )
+                <Text>@{collection.authorUsername}</Text>
               )}
             </View>
           </View>

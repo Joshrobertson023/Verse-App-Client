@@ -2,6 +2,25 @@ import { Activity, Collection, SearchData, User, UserVerse, Verse } from "./stor
 
 const baseUrl = 'http://10.137.126.121:5160'
 
+const normalizeUser = <T extends Partial<User> & Record<string, any>>(user: T): T & { isAdmin?: boolean } => {
+    if (!user) {
+        return user;
+    }
+    const rawValue = user.isAdmin ?? user.IsAdmin;
+    const normalizedIsAdmin = rawValue === true || rawValue === 'true'
+        ? true
+        : rawValue === false || rawValue === 'false'
+            ? false
+            : typeof rawValue === 'number'
+                ? rawValue === 1
+                : Boolean(rawValue);
+
+    return {
+        ...user,
+        isAdmin: normalizedIsAdmin,
+    };
+};
+
 export default async function checkUsernameAvailable(username: string): Promise<boolean> {
     try {
         const response = await fetch(`${baseUrl}/users/${username}`);
@@ -38,8 +57,13 @@ export async function loginUser(user: User): Promise<User> {
     try {
         const response = await fetch(`${baseUrl}/users/${user.username}`);
         if (response.ok) {
-            const loggedInUser: User = await response.json();
-            return loggedInUser;
+            const loggedInUser = normalizeUser(await response.json());
+            try {
+                loggedInUser.isAdmin = await checkIfAdmin(loggedInUser.username);
+            } catch (error) {
+                console.error('Failed to check admin status:', error);
+            }
+            return loggedInUser as User;
         } else {
             throw new Error('Login failed');
         }
@@ -52,8 +76,13 @@ export async function refreshUser(username: string): Promise<User> {
     try {
         const response = await fetch(`${baseUrl}/users/${username}`);
         if (response.ok) {
-            const user: User = await response.json();
-            return user;
+            const user = normalizeUser(await response.json());
+            try {
+                user.isAdmin = await checkIfAdmin(user.username);
+            } catch (error) {
+                console.error('Failed to check admin status:', error);
+            }
+            return user as User;
         } else {
             throw new Error('Failed to refresh user');
         }
@@ -66,8 +95,13 @@ export async function loginUserWithToken(token: string): Promise<User> {
     try {
         const response = await fetch(`${baseUrl}/users/token/${token}`);
         if (response.ok) {
-            const loggedInUser: User = await response.json();
-            return loggedInUser;
+            const loggedInUser = normalizeUser(await response.json());
+            try {
+                loggedInUser.isAdmin = await checkIfAdmin(loggedInUser.username);
+            } catch (error) {
+                console.error('Failed to check admin status:', error);
+            }
+            return loggedInUser as User;
         } else {
             const responseText = await response.text();
             throw new Error('Login with token failed' + responseText);
@@ -86,6 +120,89 @@ export async function getUserPasswordHash(username: string): Promise<string | nu
         } else {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to fetch password hash');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function requestUsernameReminder(firstName: string, lastName: string, email: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/forgot-username`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ firstName, lastName, email }),
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('No usernames found matching the provided details.');
+            }
+
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to send username reminder.');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function requestPasswordResetOtp(username: string, email: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/forgot-password/request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, email }),
+        });
+
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('No account matches the provided username and email.');
+            }
+
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to send password reset code.');
+        }
+    } catch (error) {
+        throw error;
+    }
+}
+
+export interface VerifyOtpResponse {
+    valid: boolean;
+    reason?: 'invalid' | 'expired';
+}
+
+export async function verifyPasswordResetOtp(username: string, otp: string): Promise<VerifyOtpResponse> {
+    try {
+        const response = await fetch(`${baseUrl}/users/forgot-password/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, otp }),
+        });
+
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to verify password reset code.');
+        }
+
+        return await response.json();
+    } catch (error) {
+        throw error;
+    }
+}
+
+export async function resetPasswordWithOtp(username: string, otp: string, newPassword: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/forgot-password/reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, otp, newPassword }),
+        });
+
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to reset password.');
         }
     } catch (error) {
         throw error;
@@ -127,20 +244,26 @@ export async function getMostRecentCollectionId(username: string): Promise<numbe
 
 export async function createCollectionDB(collection: Collection, username: string) {
     try {
-        console.log('creating collection: ' + collection);
+        const payload: Collection = {
+            ...collection,
+            authorUsername: collection.authorUsername ?? username,
+            username,
+        };
+
         const response = await fetch(`${baseUrl}/collections`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(collection),
+            body: JSON.stringify(payload),
         });
         if (!response.ok) {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to create collection');
         }
     } catch (error) {
-        alert(error);
+        const message = error instanceof Error ? error.message : 'Failed to create collection';
+        alert(message);
         throw error;
     }
 }
@@ -167,22 +290,6 @@ export async function addUserVersesToNewCollection(userVerses: UserVerse[], coll
 export async function getUserVersesByCollectionWithVerses(collectionId: number): Promise<UserVerse[]> {
     try {
         const response = await fetch(`${baseUrl}/userverses/collection/${collectionId}`);
-        if (response.ok) {
-            const data: UserVerse[] = await response.json();
-            return data;
-        } else {
-            const responseText = await response.text();
-            throw new Error(responseText || 'Failed to fetch user verses');
-        }
-    } catch (error) {
-        console.error(error);
-        throw error;
-    }
-}
-
-export async function getMemorizedUserVerses(username: string): Promise<UserVerse[]> {
-    try {
-        const response = await fetch(`${baseUrl}/userverses/memorized/${username}`);
         if (response.ok) {
             const data: UserVerse[] = await response.json();
             return data;
@@ -273,6 +380,35 @@ export async function getCollectionById(collectionId: number): Promise<Collectio
     }
 }
 
+export async function getCollectionByPublishedId(publishedId: number): Promise<Collection | null> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/published/${publishedId}/source`);
+        if (response.ok) {
+            const data: Collection = await response.json();
+            return data;
+        }
+
+        if (response.status === 404) {
+            return null;
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch collection');
+    } catch (error) {
+        const message = (error as Error)?.message?.toLowerCase() ?? '';
+        if (
+            message.includes('failed to fetch collection') ||
+            message.includes('not found') ||
+            message.includes('does not exist')
+        ) {
+            return null;
+        }
+
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function getUserCollections(username: string): Promise<Collection[]> {
     try {
         const response = await fetch(`${baseUrl}/collections/all/${username}`);
@@ -327,9 +463,10 @@ export async function getUserFriendCollections(username: string, viewerUsername:
     }
 }
 
-export async function getFriendCollectionWithVerses(collectionId: number): Promise<Collection> {
+export async function getFriendCollectionWithVerses(collectionId: number, viewerUsername?: string): Promise<Collection> {
     try {
-        const response = await fetch(`${baseUrl}/collections/friend/${collectionId}/verses`);
+        const query = viewerUsername ? `?viewerUsername=${encodeURIComponent(viewerUsername)}` : '';
+        const response = await fetch(`${baseUrl}/collections/friend/${collectionId}/verses${query}`);
         if (response.ok) {
             const data: Collection = await response.json();
             return data;
@@ -956,11 +1093,57 @@ export async function getAllUsers(search?: string) {
         const response = await fetch(url);
         if (response.ok) {
             const data = await response.json();
+            if (Array.isArray(data)) {
+                return data.map((user: any) => normalizeUser(user));
+            }
             return data;
         } else {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to get users');
         }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getAdminUsernames(): Promise<string[]> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/usernames`);
+        if (response.ok) {
+            const data: string[] = await response.json();
+            return Array.isArray(data) ? data : [];
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to get admin usernames');
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export interface AdminSummary {
+    username: string;
+    email?: string | null;
+}
+
+export async function getAdmins(): Promise<AdminSummary[]> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/admins`);
+        if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data)) {
+                return data.map((admin: any) => ({
+                    username: admin?.username ?? admin?.Username,
+                    email: admin?.email ?? admin?.Email ?? null,
+                }));
+            }
+            return [];
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to get admins');
     } catch (error) {
         console.error(error);
         throw error;
@@ -1310,6 +1493,7 @@ export interface PublishedCollection {
     title: string,
     verseOrder: string,
     author: string,
+    collectionId?: number | null,
     categoryIds?: number[],
     publishedDate: Date,
     userVerses: UserVerse[]
@@ -1415,6 +1599,69 @@ export async function getRecentPublishedCollections(top: number = 50): Promise<P
     }
 }
 
+export async function getPublishedCollectionsByAuthor(username: string): Promise<PublishedCollection[]> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/published/author/${encodeURIComponent(username)}`);
+        if (response.ok) {
+            const data: PublishedCollection[] = await response.json();
+            return data;
+        }
+        if (response.status === 404) {
+            return [];
+        }
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch published collections');
+    } catch (error) {
+        console.error('Failed to fetch published collections by author:', error);
+        throw error;
+    }
+}
+
+export interface SearchPublishedCollectionsPayload {
+    query: string;
+    verseReferences: string[];
+    limit?: number;
+}
+
+export async function searchPublishedCollections({ query, verseReferences, limit = 50 }: SearchPublishedCollectionsPayload): Promise<PublishedCollection[]> {
+    try {
+        const uniqueReferences = Array.from(
+            new Set(
+                (verseReferences ?? [])
+                    .filter((ref) => typeof ref === 'string' && ref.trim().length > 0)
+                    .map((ref) => ref.trim())
+            )
+        );
+
+        const response = await fetch(`${baseUrl}/collections/published/search`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                query,
+                verseReferences: uniqueReferences,
+                limit,
+            }),
+        });
+
+        if (response.ok) {
+            const data: PublishedCollection[] = await response.json();
+            return data;
+        }
+
+        if (response.status === 404) {
+            return [];
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to search published collections');
+    } catch (error) {
+        console.error('searchPublishedCollections failed:', error);
+        return [];
+    }
+}
+
 export async function getPublishedCollection(publishedId: number): Promise<PublishedCollection | null> {
     try {
         const response = await fetch(`${baseUrl}/collections/published/${publishedId}`);
@@ -1463,6 +1710,89 @@ export async function getTopMemorizedVerses(): Promise<Verse[]> {
     }
 }
 
+export interface SiteBannerResponse {
+    hasBanner: boolean;
+    message: string | null;
+}
+
+const normalizeSiteBanner = (data: any): SiteBannerResponse => ({
+    hasBanner: Boolean(data?.hasBanner),
+    message: data?.message != null ? data.message.toString() : null,
+});
+
+export async function getSiteBanner(): Promise<SiteBannerResponse> {
+    try {
+        const response = await fetch(`${baseUrl}/banner`);
+        if (response.ok) {
+            const raw = await response.json();
+            return normalizeSiteBanner(raw);
+        }
+
+        if (response.status === 404) {
+            return { hasBanner: false, message: null };
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch site banner');
+    } catch (error) {
+        console.error('Failed to fetch site banner:', error);
+        throw error;
+    }
+}
+
+export async function updateSiteBanner(message: string, username: string, pin: string): Promise<SiteBannerResponse> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/banner`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message,
+                username,
+                pin,
+            }),
+        });
+
+        if (response.ok) {
+            const raw = await response.json();
+            return normalizeSiteBanner(raw);
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to update site banner');
+    } catch (error) {
+        console.error('Failed to update site banner:', error);
+        throw error;
+    }
+}
+
+export async function deleteSiteBanner(username: string, pin: string): Promise<SiteBannerResponse> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/banner`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username,
+                pin,
+            }),
+        });
+
+        if (response.ok) {
+            const raw = await response.json();
+            return normalizeSiteBanner(raw);
+        }
+
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to delete site banner');
+    } catch (error) {
+        console.error('Failed to delete site banner:', error);
+        throw error;
+    }
+}
+
 export interface PublishCollectionInfo {
     collection: Collection,
     description: string,
@@ -1496,6 +1826,21 @@ export async function publishCollection(collection: Collection, description: str
         }
     } catch (error) {
         console.error('Failed to publish collection:', error);
+        throw error;
+    }
+}
+
+export async function unpublishCollection(collectionId: number): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/${collectionId}/publish`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to unpublish collection');
+        }
+    } catch (error) {
+        console.error('Failed to unpublish collection:', error);
         throw error;
     }
 }
@@ -1576,6 +1921,44 @@ export async function getFriendActivity(username: string, viewerUsername: string
         }
     } catch (error) {
         console.error('Failed to get friend activity:', error);
+        throw error;
+    }
+}
+
+export async function setUserSavedCollection(collectionId: number) {
+    try {
+        const response = await fetch(`${baseUrl}/collections/userSaved`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(collectionId),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to set collection as saved');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function incrementPublishedCollectionSaveCount(collection: PublishedCollection, usernameSaving: string) {
+    try {
+        const response = await fetch(`${baseUrl}/collections/published/saved/${usernameSaving}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(collection),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to increment published collection saves');
+        }
+    } catch (error) {
+        console.error(error);
         throw error;
     }
 }

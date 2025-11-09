@@ -19,7 +19,9 @@ export default function useAppTheme() {
           onBackground: '#fff',
           backdrop: '#2a2a2aff',
           onPrimary: '#73675aff',
-          gray: '#737373ff'
+          gray: '#737373ff',
+          onSurfaceVariant: '#fff',
+          onSurface: '#fff'
         }
     } : {
         ...MD3LightTheme,
@@ -34,6 +36,8 @@ export default function useAppTheme() {
           backdrop: '#f5f5f5',
           onPrimary: '#603f1bff',
           gray: '#919191ff',
+          onSurfaceVariant: '#000',
+          onSurface: '#000'
           // add more overrides as needed
         }
     };

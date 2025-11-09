@@ -12,6 +12,7 @@ export interface Collection {
     collectionId?: number;
     title: string;
     authorUsername?: string;
+    username?: string;
     visibility?: string;
     dateCreated?: Date;
     verseOrder?: string;
@@ -112,6 +113,10 @@ export interface Notification {
     notificationType: string;
 }
 
+export interface SiteBannerState {
+    message: string | null;
+}
+
 export interface VerseOfDay {
     id: number;
     readableReference: string;
@@ -130,6 +135,8 @@ const defaultCollectionsSheetControls = {
 
 const defaultCollection: Collection = {
     title: 'Favorites',
+    authorUsername: 'Default User',
+    username: 'Default User',
     visibility: 'Private',
     userVerses: [],
     dateCreated: new Date(),
@@ -145,6 +152,10 @@ const defaultNewUserVerse: UserVerse = {
 
 const defaultCollections: Collection[] = []
 
+const defaultSiteBanner: SiteBannerState = {
+    message: null,
+};
+
 const emptyLoginInfo: loginInfo = {
     firstName: '',
     lastName: '',
@@ -156,6 +167,8 @@ const emptyLoginInfo: loginInfo = {
 
 const emptyNewCollection: Collection = {
     title: 'New Collection',
+    authorUsername: undefined,
+    username: undefined,
     userVerses: [],
     favorites: false,
 }
@@ -224,6 +237,7 @@ interface AppState {
   profileDrawerControls: ProfileDrawerControls;
   themePreference: ThemePreference;
   verseSaveAdjustments: Record<string, number>;
+  siteBanner: SiteBannerState;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -250,6 +264,7 @@ interface AppState {
   setThemePreference: (preference: ThemePreference) => void;
   incrementVerseSaveAdjustment: (reference: string, amount?: number) => void;
   resetVerseSaveAdjustment: (reference?: string) => void;
+  setSiteBanner: (banner: SiteBannerState) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -271,6 +286,7 @@ export const useAppStore = create<AppState>((set) => ({
     profileDrawerControls: defaultProfileDrawerControls,
     themePreference: 'system',
     verseSaveAdjustments: {},
+    siteBanner: defaultSiteBanner,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -292,12 +308,22 @@ export const useAppStore = create<AppState>((set) => ({
     setSendVerseOfDayNotifications: (send: boolean) => set({ sendVerseOfDayNotifications: send }),
     setNewCollection: (collection: Collection) => set({newCollection: collection}),
     addUserVerseToCollection: (userVerse: UserVerse) =>
-    set((state) => ({
-        newCollection: {
-            ...state.newCollection!,
-            userVerses: [...(state.newCollection?.userVerses || []), userVerse],
-        },
-    })),
+    set((state) => {
+        const existingUserVerses = state.newCollection?.userVerses || [];
+        const updatedUserVerses = [...existingUserVerses, userVerse];
+        const verseOrder = updatedUserVerses
+            .map((uv) => uv.readableReference?.trim())
+            .filter((ref): ref is string => Boolean(ref && ref.length > 0))
+            .join(',');
+
+        return {
+            newCollection: {
+                ...state.newCollection!,
+                userVerses: updatedUserVerses,
+                verseOrder,
+            },
+        };
+    }),
     resetNewCollection: () =>
         set(() => ({
             newCollection: emptyNewCollection
@@ -351,4 +377,5 @@ export const useAppStore = create<AppState>((set) => ({
             return { verseSaveAdjustments: next };
         });
     },
+    setSiteBanner: (banner: SiteBannerState) => set({ siteBanner: banner }),
 }))

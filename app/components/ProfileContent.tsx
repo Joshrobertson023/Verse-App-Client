@@ -39,7 +39,7 @@ export default function ProfileContent() {
       const diffWeeks = Math.floor(diffDays / 7);
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
       const timeAgo =
-        diffWeeks > 0 ? `${diffWeeks}w` : diffDays > 0 ? `${diffDays}d` : diffHours > 0 ? `${diffHours}h` : 'Today';
+        diffWeeks > 0 ? `${diffWeeks}w` : diffDays > 0 ? `${diffDays}d` : diffHours > 0 ? `${diffHours}h` : 'Just now';
       return {
         ...activity,
         timeAgo,
@@ -83,7 +83,7 @@ export default function ProfileContent() {
         setProfileCache({ isLoading: true, error: null });
         const [verses, activity] = await Promise.all([
           getAllUserVerses(user.username),
-          getUserActivity(user.username, 10),
+          getUserActivity(user.username, 5),
         ]);
 
         if (isCancelled) return;
@@ -327,23 +327,18 @@ export default function ProfileContent() {
         </View>
 
         <ProfileDrawerLink
+          icon="calendar"
+          label="Streak Calendar"
+          onPress={() => router.push('/user/streak')}
+        />
+        <View style={{height: 10}} />
+        <ProfileDrawerLink
           icon="people-outline"
           label="Friends"
           onPress={() => router.push('/user/friends')}
         />
 
-        <View style={{ marginTop: 20, paddingTop: 20, gap: 10 }}>
-          <ProfileDrawerLink
-            icon="calendar"
-            label="Streak Calendar"
-            onPress={() => router.push('/user/streak')}
-          />
-
-          <ProfileDrawerLink
-            icon="checkmark-done"
-            label="Memorized Passages"
-            onPress={() => router.push('/user/memorizedVerses')}
-          />
+        <View style={{ gap: 10 }}>
 
           {isLoadingProfile && (
             <View
@@ -416,7 +411,7 @@ export default function ProfileContent() {
                   >
                     <View style={{
                       width: 4,
-                      height: 35,
+                      height: '120%',
                       marginLeft: 8,
                       position: 'absolute',
                       borderRadius: 999,
@@ -428,7 +423,6 @@ export default function ProfileContent() {
                         fontSize: 14,
                         color: theme.colors.onBackground,
                         flex: 1,
-                        height: 25,
                         marginLeft: 25
                       }}
                     >
@@ -467,7 +461,7 @@ export default function ProfileContent() {
           )}
         </View>
 
-        <View style={{ marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: theme.colors.onSurfaceVariant, gap: 10 }}>
+        <View style={{ marginTop: 10, paddingTop: 20, gap: 10 }}>
           <ProfileDrawerLink
             icon="settings"
             label="Settings"
