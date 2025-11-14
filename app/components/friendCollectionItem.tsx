@@ -39,7 +39,9 @@ export default function FriendCollectionItem({ collection, authorUsername }: Fri
             </View>
             <View>
               {/* visibility */}
-              <Text style={styles.tinyText}>{collection.visibility}</Text>
+              <Text style={styles.tinyText}>
+                {collection.visibility === 'Public' ? 'Visible to Friends' : collection.visibility === 'Private' ? 'Not Visible to Friends' : collection.visibility}
+              </Text>
             </View>
           </View>
           <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'flex-end'}}>

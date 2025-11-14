@@ -30,7 +30,7 @@ export default function UserProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [streakLength, setStreakLength] = useState(0);
   const [collections, setCollections] = useState<Collection[]>([]);
-  const [memorizedCount, setMemorizedCount] = useState<number>(0);
+  const [points, setPoints] = useState<number>(0);
   const [friendActivity, setFriendActivity] = useState<Activity[]>([]);
   const [friendActivityLoading, setFriendActivityLoading] = useState(false);
   const [friendActivityLoaded, setFriendActivityLoaded] = useState(false);
@@ -167,7 +167,7 @@ export default function UserProfileScreen() {
         setFriendActivityLoaded(true);
       }
 
-      setMemorizedCount(user.versesMemorized ?? 0);
+      setPoints(user.points ?? 0);
 
       if (user.lastSeen) {
         const lastSeen = parseUTCDate(user.lastSeen);
@@ -314,20 +314,13 @@ export default function UserProfileScreen() {
             </View>
           </View>
 
-          {/* Verses in Memory */}
+          {/* Points */}
           <View style={{
             flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
             paddingHorizontal: 15,
           }}>
-            <View style={{
-              justifyContent: 'center',
-              marginTop: -18,
-              marginRight: 5
-            }}>
-              <Ionicons name="checkmark-done" size={58} color={theme.colors.onBackground} />
-            </View>
             <View style={{
               flexDirection: 'column',
               justifyContent: 'center',
@@ -340,7 +333,7 @@ export default function UserProfileScreen() {
                   fontWeight: 800,
                   color: theme.colors.onBackground,
                 }}>
-                {memorizedCount}
+                {points}
               </Text>
               <Text style={{
                 ...styles.text, 
@@ -348,19 +341,12 @@ export default function UserProfileScreen() {
                 fontSize: 14,
                 color: theme.colors.onSurfaceVariant,
               }}>
-                Memorized
+                Points
               </Text>
             </View>
           </View>
         </View>
 
-        <View style={{ marginTop: 20, gap: 10 }}>
-          <ProfileDrawerLink
-            icon="calendar"
-            label="Streak Calendar"
-            onPress={() => router.push(`/user/${username}/streak`)}
-          />
-        </View>
 
         {collections.length > 0 && (
           <View style={{ marginTop: 15 }}>

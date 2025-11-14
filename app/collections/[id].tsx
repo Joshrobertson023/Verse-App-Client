@@ -1,17 +1,20 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { Divider, Portal, Snackbar, Text } from 'react-native-paper';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
+import SaveVerseToCollectionSheet from '../components/saveVerseToCollectionSheet';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
+import ShareVerseSheet from '../components/shareVerseSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
 import { formatISODate, getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, notifyAuthorCollectionSaved, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
-import { useAppStore, UserVerse } from '../store';
+import { addUserVersesToNewCollection, createCollectionDB, deleteUserVerse, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, insertUserVerse, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { Collection, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -33,6 +36,42 @@ function orderByProgress(userVerses: UserVerse[]): UserVerse[] {
   });
 }
 
+function orderByVerseOrder(userVerses: UserVerse[], verseOrder?: string): UserVerse[] {
+  if (!verseOrder || !verseOrder.trim()) return userVerses;
+  
+  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '').map(ref => ref.trim());
+  const ordered: UserVerse[] = [];
+  const unordered: UserVerse[] = [];
+  
+  // Create a map for quick lookup (case-insensitive)
+  const verseMap = new Map<string, UserVerse>();
+  userVerses.forEach(uv => {
+    if (uv.readableReference) {
+      const key = uv.readableReference.trim().toLowerCase();
+      if (!verseMap.has(key)) {
+        verseMap.set(key, uv);
+      }
+    }
+  });
+  
+  // First, add verses in the order specified
+  orderArray.forEach(ref => {
+    const key = ref.toLowerCase();
+    const verse = verseMap.get(key);
+    if (verse) {
+      ordered.push(verse);
+      verseMap.delete(key);
+    }
+  });
+  
+  // Then add any verses not in the order
+  verseMap.forEach(verse => {
+    unordered.push(verse);
+  });
+  
+  return [...ordered, ...unordered];
+}
+
 export default function Index() {
   const styles = useStyles();
   const theme = useAppTheme();
@@ -51,14 +90,33 @@ export default function Index() {
     const [loadingVerses, setLoadingVerses] = useState(false);
     const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
     const [orderedUserVerses, setOrderedUserVerses] = useState<UserVerse[]>([]);
-    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = date added, 1 = progress
+    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order (verseOrder) or date added, 1 = progress
     const [isVersesSettingsSheetOpen, setIsVersesSettingsSheetOpen] = useState(false);
     const [isCreatingCopy, setIsCreatingCopy] = useState(false);
+    
+    // Bottom sheet refs for settings
+    const collectionSettingsSheetRef = useRef<BottomSheet>(null);
+    const versesSettingsSheetRef = useRef<BottomSheet>(null);
+    const userVerseSettingsSheetRef = useRef<BottomSheet>(null);
+    
+    // Snap points for settings sheets
+    const collectionSettingsSnapPoints = useMemo(() => ['50%'], []);
+    const versesSettingsSnapPoints = useMemo(() => ['40%'], []);
+    const userVerseSettingsSnapPoints = useMemo(() => ['40%'], []);
+    
+    const [isUserVerseSettingsSheetOpen, setIsUserVerseSettingsSheetOpen] = useState(false);
     const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
     const isFetchingRef = useRef(false);
     const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
+    const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
+    const [selectedUserVerse, setSelectedUserVerse] = useState<UserVerse | null>(null);
+    const [showSaveToCollectionSheet, setShowSaveToCollectionSheet] = useState(false);
+    const [showShareVerseSheet, setShowShareVerseSheet] = useState(false);
+    const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
+    const [userVerseActionLoading, setUserVerseActionLoading] = useState(false);
+    const [creatingNewCollection, setCreatingNewCollection] = useState(false);
     
     const collection = useAppStore((state) =>
       state.collections.find((c) => c.collectionId?.toString() === params.id)
@@ -125,12 +183,6 @@ export default function Index() {
 
       const refreshedUser = await refreshUser(user.username);
       setUser(refreshedUser);
-
-      try {
-        await notifyAuthorCollectionSaved(user.username, collection.collectionId!);
-      } catch (e) {
-        console.error(e);
-      }
     } catch (error) {
       console.error('Failed to create collection copy:', error);
       const message = error instanceof Error ? error.message : 'Failed to create collection copy';
@@ -158,18 +210,14 @@ useEffect(() => {
       const data = await getUserVersesPopulated(colToSend);
       setUserVerses(data.userVerses ?? []);
       updateCollection(data);
-      
-      const setShouldReloadPracticeList = useAppStore.getState().setShouldReloadPracticeList;
-      if (setShouldReloadPracticeList) {
-        setShouldReloadPracticeList(false);
-      }
+      setShouldReloadPracticeList(false);
     } catch (err) {
       console.error('Failed to reload collection after practice:', err);
     }
   };
   
   reloadCollection();
-}, [shouldReloadPracticeList, collection, updateCollection]);
+}, [shouldReloadPracticeList, collection, updateCollection, setShouldReloadPracticeList]);
 
 useFocusEffect(
   useCallback(() => {
@@ -227,7 +275,12 @@ useEffect(() => {
   let ordered: UserVerse[] = [];
   
   if (versesSortBy === 0) {
-    ordered = orderByDateAdded(uniqueUserVerses);
+    // Use custom order (verseOrder) if available, otherwise use date added
+    if (collection?.verseOrder && collection.verseOrder.trim()) {
+      ordered = orderByVerseOrder(uniqueUserVerses, collection.verseOrder);
+    } else {
+      ordered = orderByDateAdded(uniqueUserVerses);
+    }
   } else if (versesSortBy === 1) {
     ordered = orderByProgress(uniqueUserVerses);
   } else {
@@ -235,7 +288,7 @@ useEffect(() => {
   }
   
   setOrderedUserVerses(ordered);
-}, [userVerses, versesSortBy]);
+}, [userVerses, versesSortBy, collection?.verseOrder]);
 
 useLayoutEffect(() => {
   if (collection) {
@@ -289,13 +342,7 @@ useLayoutEffect(() => {
     };
 
     const openSettingsSheet = () => {
-      settingsTranslateY.value = withSpring(settingsOpenPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-      setSheetVisible(true);
+      collectionSettingsSheetRef.current?.snapToIndex(0);
     }
 
     const closeSheet = () => {
@@ -309,14 +356,12 @@ useLayoutEffect(() => {
     };
 
     const closeSettingsSheet = () => {
-      settingsTranslateY.value = withSpring(settingsClosedPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-      setSheetVisible(true);
+      collectionSettingsSheetRef.current?.close();
     }
+    
+    const handleCollectionSettingsSheetChange = useCallback((index: number) => {
+      // Handle sheet state changes if needed
+    }, []);
 
     const animatedStyle = useAnimatedStyle(() => ({
       transform: [{ translateY: translateY.value }],
@@ -388,29 +433,46 @@ useLayoutEffect(() => {
         }
       });
 
-// End animations
-
 const openVersesSettingsSheet = () => {
-  versesSettingsTranslateY.value = withSpring(settingsOpenPosition, {       
-  stiffness: 900,
-  damping: 110,
-  mass: 2,
-  overshootClamping: true,
-  energyThreshold: 6e-9,});
   setIsVersesSettingsSheetOpen(true);
-  setSheetVisible(true);
+  versesSettingsSheetRef.current?.snapToIndex(0);
 };
 
 const closeVersesSettingsSheet = () => {
-  versesSettingsTranslateY.value = withSpring(settingsClosedPosition, {       
-  stiffness: 900,
-  damping: 110,
-  mass: 2,
-  overshootClamping: true,
-  energyThreshold: 6e-9,});
   setIsVersesSettingsSheetOpen(false);
-  setSheetVisible(false);
+  versesSettingsSheetRef.current?.close();
 };
+
+const handleVersesSettingsSheetChange = useCallback((index: number) => {
+  setIsVersesSettingsSheetOpen(index !== -1);
+}, []);
+
+const openUserVerseSettingsSheet = (userVerse: UserVerse) => {
+  // Close any open modals first
+  if (showSaveToCollectionSheet) {
+    setShowSaveToCollectionSheet(false);
+  }
+  if (showShareVerseSheet) {
+    setShowShareVerseSheet(false);
+  }
+  setSelectedUserVerse(userVerse);
+  setIsUserVerseSettingsSheetOpen(true);
+  userVerseSettingsSheetRef.current?.snapToIndex(0);
+};
+
+const closeUserVerseSettingsSheet = () => {
+  setIsUserVerseSettingsSheetOpen(false);
+  userVerseSettingsSheetRef.current?.close();
+};
+
+const handleUserVerseSettingsSheetChange = useCallback((index: number) => {
+  setIsUserVerseSettingsSheetOpen(index !== -1);
+  // Don't clear selectedUserVerse when sheet closes - it might be needed for modals
+  // Only clear if modals are not being shown
+  if (index === -1 && !showSaveToCollectionSheet && !showShareVerseSheet) {
+    setSelectedUserVerse(null);
+  }
+}, [showSaveToCollectionSheet, showShareVerseSheet]);
 
 const versesSettingsAnimatedStyle = useAnimatedStyle(() => ({
   transform: [{ translateY: versesSettingsTranslateY.value }],
@@ -455,6 +517,9 @@ const versesSettingsPanGesture = Gesture.Pan()
     }
   });
 
+
+// End animations
+
 const clickPlus = () => {
 
 }
@@ -464,25 +529,159 @@ const addPassage = () => {
 
 }
 
-// Handle Android back button to close sheets
-useEffect(() => {
-  const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-    if (sheetVisible) {
-      closeSheet();
-      closeSettingsSheet();
-      closeVersesSettingsSheet();
-      return true; // Prevent default back action
+const reloadCollectionData = useCallback(async () => {
+  if (!collection?.collectionId) return;
+  try {
+    const refreshed = await getCollectionById(collection.collectionId);
+    if (refreshed) {
+      setUserVerses(refreshed.userVerses ?? []);
+      updateCollection(refreshed);
     }
-    if (isVersesSettingsSheetOpen) {
-      closeVersesSettingsSheet();
-      return true; // Prevent default back action
+  } catch (error) {
+    console.error('Failed to reload collection:', error);
+  }
+}, [collection?.collectionId, updateCollection]);
+
+const availableCollections = useMemo(() => {
+  const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+  const currentUser = normalize(user.username);
+  const currentCollectionId = collection?.collectionId;
+
+  return collections.filter((col) => {
+    if (!col.collectionId || col.collectionId === currentCollectionId) {
+      return false;
     }
-    // If no sheets are open, allow default back action to navigate away
+
+    const owner = normalize(col.username);
+    const author = normalize(col.authorUsername);
+
+    if (owner && owner === currentUser) {
+      return true;
+    }
+
+    if (!owner && author && author === currentUser) {
+      return true;
+    }
+
+    if (col.favorites && currentUser.length > 0) {
+      return true;
+    }
+
     return false;
   });
+}, [collections, user.username, collection?.collectionId]);
 
-  return () => backHandler.remove();
-}, [sheetVisible, isVersesSettingsSheetOpen]);
+const handleSaveToCollection = useCallback(async () => {
+  if (!selectedUserVerse || !pickedCollection?.collectionId) {
+    return;
+  }
+
+  setUserVerseActionLoading(true);
+  try {
+    await insertUserVerse({
+      username: user.username,
+      readableReference: selectedUserVerse.readableReference,
+      collectionId: pickedCollection.collectionId,
+      verses: selectedUserVerse.verses ?? [],
+    });
+
+    const updatedCollections = await getUserCollections(user.username);
+    setCollections(updatedCollections);
+
+    setSnackbarMessage(`Added to ${pickedCollection.title}`);
+    setSnackbarVisible(true);
+    setShowSaveToCollectionSheet(false);
+    setPickedCollection(undefined);
+    setSelectedUserVerse(null);
+  } catch (error) {
+    console.error('Failed to add user verse to collection:', error);
+    const message = error instanceof Error ? error.message : 'Failed to add to collection';
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  } finally {
+    setUserVerseActionLoading(false);
+  }
+}, [selectedUserVerse, pickedCollection, user.username, setCollections]);
+
+const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => {
+  if (!selectedUserVerse || !title.trim()) return;
+
+  if (collections.length >= 40) {
+    setSnackbarMessage('You can create up to 40 collections');
+    setSnackbarVisible(true);
+    return;
+  }
+
+  setCreatingNewCollection(true);
+  try {
+    const newCollection: Collection = {
+      title: title.trim(),
+      username: user.username,
+      authorUsername: user.username,
+      visibility: 'Private',
+      userVerses: [],
+      notes: [],
+      favorites: false,
+    };
+
+    await createCollectionDB(newCollection, user.username);
+    const newCollectionId = await getMostRecentCollectionId(user.username);
+
+    await insertUserVerse({
+      username: user.username,
+      readableReference: selectedUserVerse.readableReference,
+      collectionId: newCollectionId,
+      verses: selectedUserVerse.verses ?? [],
+    });
+
+    const updatedCollections = await getUserCollections(user.username);
+    setCollections(updatedCollections);
+
+    setSnackbarMessage(`Created "${title.trim()}" and added passage`);
+    setSnackbarVisible(true);
+    setShowSaveToCollectionSheet(false);
+    setPickedCollection(undefined);
+    setSelectedUserVerse(null);
+  } catch (error) {
+    console.error('Failed to create collection:', error);
+    setSnackbarMessage('Failed to create collection');
+    setSnackbarVisible(true);
+  } finally {
+    setCreatingNewCollection(false);
+  }
+}, [selectedUserVerse, user.username, collections.length, setCollections]);
+
+// Handle Android back button to close sheets
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showSaveToCollectionSheet) {
+        setShowSaveToCollectionSheet(false);
+        return true;
+      }
+      if (showShareVerseSheet) {
+        setShowShareVerseSheet(false);
+        return true;
+      }
+      if (isUserVerseSettingsSheetOpen) {
+        closeUserVerseSettingsSheet();
+        return true;
+      }
+      if (sheetVisible) {
+        closeSheet();
+        closeSettingsSheet();
+        closeVersesSettingsSheet();
+        return true; // Prevent default back action
+      }
+      if (isVersesSettingsSheetOpen) {
+        closeVersesSettingsSheet();
+        return true; // Prevent default back action
+      }
+      // If no sheets are open, allow default back action to navigate away
+      return false;
+    });
+
+    return () => backHandler.remove();
+  }, [sheetVisible, isVersesSettingsSheetOpen, isUserVerseSettingsSheetOpen, showSaveToCollectionSheet, showShareVerseSheet]);
 
     if (loadingVerses) {
         return (
@@ -529,20 +728,47 @@ useEffect(() => {
                 }}
               >
 
-          <TouchableOpacity 
-            style={{...styles.button_outlined, marginBottom: 30}}
-            onPress={openVersesSettingsSheet}
-          >
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
-              <Ionicons name="settings" size={20} color={theme.colors.onBackground} />
-              <Text style={{...styles.buttonText_outlined}}>Sort Passages</Text>
+          {/* Published Collection Metadata */}
+          {collection && collection.authorUsername && collection.authorUsername.toLowerCase().trim() !== user.username.toLowerCase().trim() && (
+            <View style={{ 
+              width: '100%', 
+              marginBottom: 24, 
+              padding: 16, 
+              backgroundColor: theme.colors.surface, 
+              borderRadius: 12 
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Ionicons name="person-outline" size={18} color={theme.colors.onSurfaceVariant} />
+                <Text style={{ 
+                  ...styles.tinyText, 
+                  marginLeft: 8, 
+                  color: theme.colors.onSurfaceVariant,
+                  fontSize: 14 
+                }}>
+                  Author: {collection.authorUsername}
+                </Text>
+              </View>
+              {collection.dateCreated && (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="time-outline" size={18} color={theme.colors.onSurfaceVariant} />
+                  <Text style={{ 
+                    ...styles.tinyText, 
+                    marginLeft: 8, 
+                    color: theme.colors.onSurfaceVariant,
+                    fontSize: 14 
+                  }}>
+                    Created: {formatISODate(collection.dateCreated)}
+                  </Text>
+                </View>
+              )}
             </View>
-          </TouchableOpacity>
+          )}
+
           <View>
             {(orderedUserVerses || []).map((userVerse: UserVerse, userVerseIndex) => (
 
                 <View key={userVerse.readableReference || `userVerse-${userVerseIndex}`} style={{minWidth: '100%', marginBottom: 20}}>
-                    <View style={{minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}}>
+                    <View style={{minWidth: '100%', borderRadius: 3,}}>
 
                         <View>
                           <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
@@ -556,41 +782,89 @@ useEffect(() => {
                         </View>
                         <View style={{alignItems: 'stretch', justifyContent: 'space-between'}}>
                           <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
-                            <View>
-                              <View style={{flexDirection: 'row'}}>
-                                <View style={{}}>
-                                  <Ionicons name={"sync-circle-outline"} size={45} color={theme.colors.onBackground} />
-                                </View>
-                                <View style={{flexDirection: 'column', marginLeft: 5}}>
-                                  <Text style={{...styles.text, margin: 0}}>{Math.floor(userVerse.progressPercent || 0)}%</Text>
-                                  <Text style={{...styles.tinyText, marginTop: -20}}>Memorized</Text>
-                                </View>
+                            <View style={{flex: 1}}>
+                              <View style={{flexDirection: 'column', marginBottom: 8}}>
+                                <Text style={{...styles.tinyText, marginBottom: 4}}>
+                                  {userVerse.timesMemorized || 0} time{(userVerse.timesMemorized || 0) === 1 ? '' : 's'} memorized
+                                </Text>
+                                {(() => {
+                                  const calculateNextPracticeDate = (uv: UserVerse): Date | null => {
+                                    if (!uv.lastPracticed) return null;
+                                    const lastPracticed = new Date(uv.lastPracticed);
+                                    const timesMemorized = uv.timesMemorized || 0;
+                                    if (timesMemorized === 0) return null;
+                                    let daysToAdd: number;
+                                    if (timesMemorized === 1) {
+                                      daysToAdd = 1;
+                                    } else {
+                                      daysToAdd = Math.pow(2, timesMemorized - 2) * 2;
+                                    }
+                                    const nextDate = new Date(lastPracticed);
+                                    nextDate.setDate(nextDate.getDate() + daysToAdd);
+                                    return nextDate;
+                                  };
+                                  
+                                  const formatDate = (date: Date | null): string => {
+                                    if (!date) return 'Not practiced';
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const practiceDate = new Date(date);
+                                    practiceDate.setHours(0, 0, 0, 0);
+                                    const diffTime = practiceDate.getTime() - today.getTime();
+                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    if (diffDays < 0) {
+                                      return `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`;
+                                    } else if (diffDays === 0) {
+                                      return 'Due today';
+                                    } else if (diffDays === 1) {
+                                      return 'Due tomorrow';
+                                    } else {
+                                      const month = practiceDate.toLocaleString('default', { month: 'short' });
+                                      const day = practiceDate.getDate();
+                                      return `Due ${month} ${day}`;
+                                    }
+                                  };
+                                  
+                                  const nextDate = calculateNextPracticeDate(userVerse);
+                                  return nextDate ? (
+                                    <Text style={{...styles.tinyText, color: theme.colors.onSurfaceVariant}}>
+                                      {formatDate(nextDate)}
+                                    </Text>
+                                  ) : null;
+                                })()}
                               </View>
-                              <TouchableOpacity 
-                                style={{...styles.button_outlined, height: 30, marginTop: 5}}
-                                onPress={() => {
-                                  useAppStore.getState().setEditingUserVerse(userVerse);
-                                  router.push('/practiceSession');
-                                }}
-                              >
-                                <Text style={{...styles.buttonText_outlined}}>Practice</Text>
-                              </TouchableOpacity>
-                            </View>
-                            <View style={{flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-end', paddingTop: 10}}>
-                              <TouchableOpacity onPress={() => {}}>
-                                <Ionicons name={"ellipsis-vertical"} size={32} color={theme.colors.onBackground} />
-                              </TouchableOpacity>
-                              <View style={{alignSelf: 'flex-end', marginTop: 15}}>
-                                <View style={{}}>
-                                  <Text style={{...styles.tinyText}}>{formatISODate(userVerse.dateAdded)}</Text>
-                                </View>
+                              <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 16}}>
+                                <TouchableOpacity 
+                                  activeOpacity={0.1}
+                                  onPress={() => {
+                                    useAppStore.getState().setEditingUserVerse(userVerse);
+                                    router.push('/practiceSession');
+                                  }}
+                                >
+                                  <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                    <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.onBackground} />
+                                    <Text style={{marginLeft: 6, color: theme.colors.onBackground}}>Practice</Text>
+                                  </View>
+                                </TouchableOpacity>
+                                {isOwnedCollection && (
+                                  <TouchableOpacity
+                                    activeOpacity={0.1}
+                                    onPress={() => openUserVerseSettingsSheet(userVerse)}
+                                  >
+                                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                      <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.onBackground} />
+                                    </View>
+                                  </TouchableOpacity>
+                                )}
                               </View>
                             </View>
                           </View>
                         </View>
 
                     </View>
+                    <Divider style={{marginHorizontal: -50, marginTop: 20}} />
                 </View>
+
 
             ))}
           </View>
@@ -598,153 +872,129 @@ useEffect(() => {
         </ScrollView>
 
         <Portal>
-            {sheetVisible && (
-              <Animated.View
-                style={[
-                  {
-                    position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 10,
-                  },
-                  backdropAnimatedStyle,
-                ]}
-                pointerEvents="auto"
+            {/* Collection Settings Bottom Sheet */}
+            <BottomSheet
+                ref={collectionSettingsSheetRef}
+                index={-1}
+                snapPoints={collectionSettingsSnapPoints}
+                enablePanDownToClose
+                onChange={handleCollectionSettingsSheetChange}
+                backgroundStyle={{ backgroundColor: theme.colors.surface }}
+                handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
               >
+              <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
+                <Divider />
+                {isOwnedCollection && (
                 <TouchableOpacity
-                  style={{ flex: 1 }}
-                  activeOpacity={1}
+                  style={sheetItemStyle.settingsItem}
                   onPress={() => {
                     closeSettingsSheet();
-                    closeSheet();
+                    const setEditingCollection = useAppStore.getState().setEditingCollection;
+                    if (collection) {
+                      setEditingCollection(collection);
+                      router.push('../collections/editCollection');
+                    }
+                  }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
+                </TouchableOpacity>
+                )}
+                <Divider />
+                {isOwnedCollection && collection && collection.userVerses && collection.userVerses.length > 0 && (
+                <>
+                <TouchableOpacity
+                  style={sheetItemStyle.settingsItem}
+                  onPress={() => {
+                    closeSettingsSheet();
+                    if (collection?.collectionId) {
+                      router.push(`../collections/reorderExistingVerses?id=${collection.collectionId}`);
+                    }
+                  }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Reorder Passages</Text>
+                </TouchableOpacity>
+                <Divider />
+                </>
+                )}
+                <TouchableOpacity
+                  style={sheetItemStyle.settingsItem}
+                  onPress={async () => {
+                    closeSettingsSheet();
+                    await handleCreateCopy();
                   }}
-                />
-              </Animated.View>
-            )}
-
-            <Animated.View
-              style={[
-                {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  height: settingsSheetHeight,
-                  backgroundColor: theme.colors.surface,
-                  borderTopLeftRadius: 16,
-                  borderTopRightRadius: 16,
-                  paddingTop: 20,
-                  paddingBottom: 80,
-                  zIndex: 20, // 👈 higher than backdrop
-                  elevation: 20,
-                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
-                },
-                settingsAnimatedStyle,
-              ]}
-            >
-              <GestureDetector gesture={settingsPanGesture}>
-                          <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
-                            <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
-                          </View>
-                        </GestureDetector>
-              
-                        <Divider />
-                        {isOwnedCollection && (
-                        <TouchableOpacity
-                          style={sheetItemStyle.settingsItem}
-                          onPress={() => {
-                            closeSettingsSheet();
-                            const setEditingCollection = useAppStore.getState().setEditingCollection;
-                            if (collection) {
-                              setEditingCollection(collection);
-                              router.push('../collections/editCollection');
-                            }
-                          }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
-                        </TouchableOpacity>
-                        )}
-                        <Divider />
-                        <TouchableOpacity
-                          style={sheetItemStyle.settingsItem}
-                          onPress={async () => {
-                            closeSettingsSheet();
-                            await handleCreateCopy();
-                          }}
-                          disabled={isCreatingCopy}>
-                          {isCreatingCopy ? (
-                            <ActivityIndicator size="small" color={theme.colors.onBackground} />
-                          ) : (
-                            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
-                          )}
-                        </TouchableOpacity>
-                        <Divider />
-                        {isOwnedCollection && (
-                        <TouchableOpacity
-                          style={sheetItemStyle.settingsItem}
-                          onPress={async () => {
-                            if (!collection) return;
-                            
-                            try {
-                              closeSettingsSheet();
-                              const newVisibility = collection.visibility === 'Public' ? 'Private' : 'Public';
-                              const updatedCollection = { ...collection, visibility: newVisibility };
-                              
-                              // Update in database
-                              await updateCollectionDB(updatedCollection);
-                              
-                              // Update in store
-                              updateCollection(updatedCollection);
-                            } catch (error) {
-                              console.error('Failed to toggle visibility:', error);
-                              alert('Failed to update collection visibility');
-                            }
-                          }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
-                            {collection?.visibility === 'Public' ? 'Make Private' : 'Make Public'}
-                          </Text>
-                        </TouchableOpacity>
-                        )}
-                        <Divider />
-                        <TouchableOpacity
-                          style={sheetItemStyle.settingsItem}
-                          onPress={() => {
-                            closeSettingsSheet();
-                            setIsShareSheetVisible(true);
-                          }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
-                          </View>
-                        </TouchableOpacity>
-                        {(collection?.title !== 'Favorites' && isOwnedCollection) && (
-                          <>
-                            <Divider />
-                            <TouchableOpacity
-                              style={sheetItemStyle.settingsItem}
-                              onPress={() => {
-                                if (!collection?.collectionId) return;
-                                closeSettingsSheet();
-                                const setEditingCollection = useAppStore.getState().setEditingCollection;
-                                setEditingCollection(collection);
-                                router.push('./publishCollection');
-                              }}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
-                              </View>
-                            </TouchableOpacity>
-                            <Divider />
-                            <TouchableOpacity
-                              style={sheetItemStyle.settingsItem}
-                              onPress={() => {
-                                closeSettingsSheet();
-                              }}>
-                              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
-                            </TouchableOpacity>
-                            <Divider />
-                          </>
-                        )}
-            </Animated.View>
+                  disabled={isCreatingCopy}>
+                  {isCreatingCopy ? (
+                    <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                  ) : (
+                    <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
+                  )}
+                </TouchableOpacity>
+                <Divider />
+                {isOwnedCollection && (
+                <TouchableOpacity
+                  style={sheetItemStyle.settingsItem}
+                  onPress={async () => {
+                    if (!collection) return;
+                    
+                    try {
+                      closeSettingsSheet();
+                      const newVisibility = collection.visibility === 'Public' ? 'Private' : 'Public';
+                      const updatedCollection = { ...collection, visibility: newVisibility };
+                      
+                      // Update in database
+                      await updateCollectionDB(updatedCollection);
+                      
+                      // Update in store
+                      updateCollection(updatedCollection);
+                    } catch (error) {
+                      console.error('Failed to toggle visibility:', error);
+                      alert('Failed to update collection visibility');
+                    }
+                  }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
+                    {collection?.visibility === 'Public' ? 'Make Not Visible to Friends' : 'Make Visible to Friends'}
+                  </Text>
+                </TouchableOpacity>
+                )}
+                <Divider />
+                <TouchableOpacity
+                  style={sheetItemStyle.settingsItem}
+                  onPress={() => {
+                    closeSettingsSheet();
+                    setIsShareSheetVisible(true);
+                  }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
+                  </View>
+                </TouchableOpacity>
+                {(collection?.title !== 'Favorites' && isOwnedCollection) && (
+                  <>
+                    <Divider />
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={() => {
+                        if (!collection?.collectionId) return;
+                        closeSettingsSheet();
+                        const setPublishingCollection = useAppStore.getState().setPublishingCollection;
+                        setPublishingCollection(collection);
+                        router.push('./publishCollection');
+                      }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
+                      </View>
+                    </TouchableOpacity>
+                    <Divider />
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={() => {
+                        closeSettingsSheet();
+                      }}>
+                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
+                    </TouchableOpacity>
+                    <Divider />
+                  </>
+                )}
+              </BottomSheetView>
+            </BottomSheet>
+            </Portal>
 
             <Animated.View
               style={[
@@ -784,81 +1034,191 @@ useEffect(() => {
               )}
             </Animated.View>
 
-            {/* Verses Settings Sheet */}
-            <Animated.View
-              style={[
-                {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  height: settingsSheetHeight,
-                  backgroundColor: theme.colors.surface,
-                  borderTopLeftRadius: 16,
-                  borderTopRightRadius: 16,
-                  paddingTop: 20,
-                  paddingBottom: 80,
-                  zIndex: 21,
-                  elevation: 21,
-                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
-                },
-                versesSettingsAnimatedStyle,
-              ]}
-            >
-              <GestureDetector gesture={versesSettingsPanGesture}>
-                <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
-                  <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
-                </View>
-              </GestureDetector>
-              
-              <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Passages By:</Text>
-              <Divider />
-              <TouchableOpacity
-                style={sheetItemStyle.settingsItem}
-                onPress={() => {
-                  setVersesSortBy(0);
-                  closeVersesSettingsSheet();
-                }}>
-                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 0 ? '700' : '500' }}>Date Added</Text>
-              </TouchableOpacity>
-              <Divider />
-              <TouchableOpacity
-                style={sheetItemStyle.settingsItem}
-                onPress={() => {
-                  setVersesSortBy(1);
-                  closeVersesSettingsSheet();
-                }}>
-                <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 1 ? '700' : '500' }}>Progress Percent</Text>
-              </TouchableOpacity>
-              <Divider />
-            </Animated.View>
-
-            {isVersesSettingsSheetOpen && (
-              <Animated.View
-                style={[
-                  {
-                    position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 11,
-                  },
-                  versesBackdropAnimatedStyle,
-                ]}
-                pointerEvents="auto"
+            {/* Verses Settings Bottom Sheet */}
+            <Portal>
+              <BottomSheet
+                ref={versesSettingsSheetRef}
+                index={-1}
+                snapPoints={versesSettingsSnapPoints}
+                enablePanDownToClose
+                onChange={handleVersesSettingsSheetChange}
+                backgroundStyle={{ backgroundColor: theme.colors.surface }}
+                handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
               >
+              <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
+                <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Passages By:</Text>
+                <Divider />
                 <TouchableOpacity
-                  style={{ flex: 1 }}
-                  activeOpacity={1}
+                  style={sheetItemStyle.settingsItem}
                   onPress={() => {
+                    setVersesSortBy(0);
                     closeVersesSettingsSheet();
-                  }}
-                />
-              </Animated.View>
-            )}
-          </Portal>
+                  }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 0 ? '700' : '500' }}>Date Added</Text>
+                </TouchableOpacity>
+                <Divider />
+                <TouchableOpacity
+                  style={sheetItemStyle.settingsItem}
+                  onPress={() => {
+                    setVersesSortBy(1);
+                    closeVersesSettingsSheet();
+                  }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: versesSortBy === 1 ? '700' : '500' }}>Progress Percent</Text>
+                </TouchableOpacity>
+                <Divider />
+              </BottomSheetView>
+            </BottomSheet>
+            </Portal>
 
+            {/* User Verse Settings Bottom Sheet */}
+            <Portal>
+              <BottomSheet
+                ref={userVerseSettingsSheetRef}
+                index={-1}
+                snapPoints={userVerseSettingsSnapPoints}
+                enablePanDownToClose
+                onChange={handleUserVerseSettingsSheetChange}
+                backgroundStyle={{ backgroundColor: theme.colors.surface }}
+                handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
+              >
+              <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
+                {selectedUserVerse && (
+                  <>
+                    <Text style={{...styles.text, fontSize: 18, fontWeight: '600', marginBottom: 10, marginTop: 10, textAlign: 'center'}}>
+                      {selectedUserVerse.readableReference}
+                    </Text>
+                    <Divider />
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={() => {
+                        const userVerseToSave = selectedUserVerse;
+                        closeUserVerseSettingsSheet();
+                        // Wait for sheet to close before opening modal
+                        setTimeout(() => {
+                          if (userVerseToSave) {
+                            setSelectedUserVerse(userVerseToSave);
+                            setPickedCollection(undefined);
+                            setShowSaveToCollectionSheet(true);
+                          }
+                        }, 300);
+                      }}
+                      disabled={userVerseActionLoading}
+                    >
+                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Add to another collection</Text>
+                    </TouchableOpacity>
+                    <Divider />
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={() => {
+                        const userVerseToShare = selectedUserVerse;
+                        closeUserVerseSettingsSheet();
+                        // Wait for sheet to close before opening modal
+                        setTimeout(() => {
+                          if (userVerseToShare) {
+                            setSelectedUserVerse(userVerseToShare);
+                            setShowShareVerseSheet(true);
+                          }
+                        }, 300);
+                      }}
+                      disabled={userVerseActionLoading}
+                    >
+                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
+                    </TouchableOpacity>
+                    <Divider />
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={async () => {
+                        if (!selectedUserVerse.id || !collection?.collectionId) {
+                          closeUserVerseSettingsSheet();
+                          return;
+                        }
+                        closeUserVerseSettingsSheet();
+                        setUserVerseActionLoading(true);
+                        try {
+                          await deleteUserVerse({
+                            id: selectedUserVerse.id,
+                            username: user.username,
+                            readableReference: selectedUserVerse.readableReference,
+                            collectionId: collection.collectionId,
+                            verses: selectedUserVerse.verses ?? [],
+                          });
+                          await reloadCollectionData();
+                          const updatedCollections = await getUserCollections(user.username);
+                          setCollections(updatedCollections);
+                          setShouldReloadPracticeList(true);
+                          setSnackbarMessage('Passage removed from collection');
+                          setSnackbarVisible(true);
+                        } catch (error) {
+                          console.error('Failed to delete user verse:', error);
+                          setSnackbarMessage('Failed to delete passage');
+                          setSnackbarVisible(true);
+                        } finally {
+                          setUserVerseActionLoading(false);
+                        }
+                      }}
+                      disabled={userVerseActionLoading || !selectedUserVerse?.id}
+                    >
+                      {userVerseActionLoading ? (
+                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                      ) : (
+                        <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>
+                          Delete
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                    <Divider />
+                  </>
+                )}
+              </BottomSheetView>
+            </BottomSheet>
+            </Portal>
+
+            {/* Save Verse to Collection Sheet */}
+            {selectedUserVerse && selectedUserVerse.verses && selectedUserVerse.verses.length > 0 && (
+              <SaveVerseToCollectionSheet
+                visible={showSaveToCollectionSheet}
+                verse={selectedUserVerse.verses[0] as Verse}
+                collections={availableCollections}
+                pickedCollection={pickedCollection}
+                setPickedCollection={setPickedCollection}
+                loading={userVerseActionLoading}
+                onCancel={() => {
+                  setShowSaveToCollectionSheet(false);
+                  setPickedCollection(undefined);
+                  // Only clear selectedUserVerse if sheet is also closed
+                  if (!isUserVerseSettingsSheetOpen) {
+                    setSelectedUserVerse(null);
+                  }
+                }}
+                onConfirm={handleSaveToCollection}
+                confirming={userVerseActionLoading}
+                onCreateNewCollection={handleCreateNewCollectionFromVerse}
+                creatingNewCollection={creatingNewCollection}
+              />
+            )}
+
+            {/* Share Verse Sheet */}
+            {selectedUserVerse && (
+              <ShareVerseSheet
+                visible={showShareVerseSheet}
+                userVerses={[selectedUserVerse]}
+                onClose={() => {
+                  setShowShareVerseSheet(false);
+                  // Only clear selectedUserVerse if sheet is also closed
+                  if (!isUserVerseSettingsSheetOpen) {
+                    setSelectedUserVerse(null);
+                  }
+                }}
+                onShareSuccess={(friendUsername) => {
+                  setSnackbarMessage(`Passage shared with ${friendUsername}!`);
+                  setSnackbarVisible(true);
+                }}
+                onShareError={() => {
+                  setSnackbarMessage('Failed to share passage');
+                  setSnackbarVisible(true);
+                }}
+              />
+            )}
 
           {/* Share Collection Sheet */}
           <ShareCollectionSheet

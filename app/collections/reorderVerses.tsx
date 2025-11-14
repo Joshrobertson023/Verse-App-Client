@@ -6,11 +6,13 @@ import DraggableFlatList, {
     RenderItemParams,
 } from 'react-native-draggable-flatlist';
 import colors from '../colors';
-import { useAppStore, UserVerse } from '../store';
+import { useAppStore, UserVerse, CollectionNote } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
+
+type ReorderableItem = {type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote};
 
 export default function ReorderVerses() {
   const styles = useStyles();
@@ -18,20 +20,43 @@ export default function ReorderVerses() {
   const newCollection = useAppStore((state) => state.newCollection);
   const setNewCollection = useAppStore((state) => state.setNewCollection);
   
-  // Initialize with new collection data
-  const [reorderedData, setReorderedData] = useState<UserVerse[]>(newCollection?.userVerses || []);
+  // Initialize with combined verses and notes
+  const [reorderedData, setReorderedData] = useState<ReorderableItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Update reorderedData if newCollection changes
+  // Build initial reordered data from collection
   useEffect(() => {
-    if (newCollection?.userVerses && newCollection.userVerses.length > 0) {
-      console.log('Updating reorderedData with newCollection:', newCollection.userVerses.length, 'verses');
-      setReorderedData(newCollection.userVerses);
-    }
-  }, [newCollection?.userVerses]);
+    if (!newCollection) return;
+    
+    const verses = newCollection.userVerses || [];
+    const notes = newCollection.notes || [];
+    
+    // Combine verses and notes, order by verseOrder
+    const orderArray = newCollection.verseOrder?.split(',').filter(o => o.trim()) || [];
+    const verseMap = new Map(verses.map((uv: UserVerse) => [uv.readableReference, uv]));
+    const noteMap = new Map(notes.map(n => [n.id, n]));
+    const ordered: ReorderableItem[] = [];
+    const unordered: ReorderableItem[] = [];
+    
+    orderArray.forEach(ref => {
+      const trimmedRef = ref.trim();
+      if (verseMap.has(trimmedRef)) {
+        ordered.push({type: 'verse', data: verseMap.get(trimmedRef)!});
+        verseMap.delete(trimmedRef);
+      } else if (noteMap.has(trimmedRef)) {
+        ordered.push({type: 'note', data: noteMap.get(trimmedRef)!});
+        noteMap.delete(trimmedRef);
+      }
+    });
+    
+    verseMap.forEach(verse => unordered.push({type: 'verse', data: verse}));
+    noteMap.forEach(note => unordered.push({type: 'note', data: note}));
+    
+    setReorderedData([...ordered, ...unordered]);
+  }, [newCollection?.userVerses, newCollection?.notes, newCollection?.verseOrder]);
 
   const renderItem = useCallback(
-    ({ item, drag, isActive }: RenderItemParams<UserVerse>) => {
+    ({ item, drag, isActive }: RenderItemParams<ReorderableItem>) => {
       return (
         <TouchableOpacity
           style={[
@@ -58,14 +83,26 @@ export default function ReorderVerses() {
         >
           <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%'}}>
             <View style={{flex: 1}}>
-              <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{item.readableReference}</Text>
-              {item.verses.map((verse) => (
-                <View key={verse.verse_reference} style={{}}>
-                  <View>
-                    <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number ? verse.verse_Number + ": " : ''}{verse.text}</Text>
+              {item.type === 'verse' ? (
+                <>
+                  <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{item.data.readableReference}</Text>
+                  {item.data.verses.map((verse) => (
+                    <View key={verse.verse_reference} style={{}}>
+                      <View>
+                        <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number ? verse.verse_Number + ": " : ''}{verse.text}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
+                    <Ionicons name="document-text-outline" size={18} color={theme.colors.onBackground} style={{marginRight: 8}} />
+                    <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>Note</Text>
                   </View>
-                </View>
-              ))}
+                  <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{item.data.text}</Text>
+                </>
+              )}
             </View>
             <View style={{alignItems: 'center', justifyContent: 'center'}}>
               <Ionicons name="reorder-three-outline" size={28} color={theme.colors.onBackground} />
@@ -75,27 +112,42 @@ export default function ReorderVerses() {
       ); 
     }, [styles, theme]);
 
-  const handleDragEnd = useCallback(({ data }: { data: UserVerse[] }) => {
-    console.log('handleDragEnd - updating reorderedData with', data.length, 'verses');
+  const handleDragEnd = useCallback(({ data }: { data: ReorderableItem[] }) => {
+    console.log('handleDragEnd - updating reorderedData with', data.length, 'items');
     setReorderedData(data);
   }, []);
 
   const handleSave = async () => {
     setIsSaving(true);
     
-    // Create verseOrder string from reordered data
-    let verseOrder = '';
-    reorderedData.forEach((userVerse: UserVerse) => {
-      verseOrder += userVerse.readableReference + ',';
+    // Separate verses and notes from reordered data
+    const reorderedVerses: UserVerse[] = [];
+    const reorderedNotes: CollectionNote[] = [];
+    
+    reorderedData.forEach((item) => {
+      if (item.type === 'verse') {
+        reorderedVerses.push(item.data);
+      } else {
+        reorderedNotes.push(item.data);
+      }
     });
     
+    // Create verseOrder string from reordered data (combines verse refs and note IDs)
+    const verseRefs = reorderedVerses
+      .map((uv) => uv.readableReference?.trim())
+      .filter((ref): ref is string => Boolean(ref && ref.length > 0));
+    const noteIds = reorderedNotes.map((n) => n.id);
+    const verseOrder = [...verseRefs, ...noteIds].join(',');
+    
     console.log('Saving new collection reorder - verseOrder:', verseOrder);
-    console.log('Saving new collection reorder - verses:', reorderedData.map(uv => uv.readableReference));
+    console.log('Saving new collection reorder - verses:', reorderedVerses.map(uv => uv.readableReference));
+    console.log('Saving new collection reorder - notes:', reorderedNotes.map(n => n.id));
     
     // Update local state (will be saved when collection is created)
     setNewCollection({
       ...newCollection, 
-      userVerses: reorderedData,
+      userVerses: reorderedVerses,
+      notes: reorderedNotes,
       verseOrder: verseOrder
     });
     
@@ -111,14 +163,16 @@ export default function ReorderVerses() {
     <View style={styles.container}>
       <View style={{backgroundColor: theme.colors.surface, padding: 15, borderRadius: 10, marginBottom: 15}}>
         <Text style={{...styles.tinyText, color: theme.colors.onSurface}}>
-          Long press and drag to reorder your passages
+          Long press and drag to reorder your passages and notes
         </Text>
       </View>
 
       <DraggableFlatList
         data={reorderedData}
         renderItem={renderItem}
-        keyExtractor={(item) => item.readableReference || item.verses[0]?.verse_reference || 'unknown'}
+        keyExtractor={(item) => item.type === 'verse' 
+          ? item.data.readableReference || item.data.verses[0]?.verse_reference || 'unknown'
+          : item.data.id}
         onDragEnd={handleDragEnd}
         contentContainerStyle={{paddingBottom: 100}}
       />

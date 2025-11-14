@@ -4,7 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { ActivityIndicator, Surface, Text } from 'react-native-paper';
+import { ActivityIndicator, Snackbar, Surface, Text } from 'react-native-paper';
 import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedCollection, getUserCollections, getUserVersesByCollectionWithVerses, incrementPublishedCollectionSaveCount, PublishedCollection, refreshUser, updateCollectionsOrder } from '../../db';
 import { Collection, useAppStore, UserVerse } from '../../store';
 import useStyles from '../../styles';
@@ -27,6 +27,8 @@ export default function PublishedCollectionView() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState<number>(0);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
 
   useLayoutEffect(() => {
     if (collection) {
@@ -102,6 +104,38 @@ export default function PublishedCollectionView() {
       setErrorMessage('Collections can contain up to 30 passages.');
       return;
     }
+
+    const targetAuthor = (collection.author ?? '').trim().toLowerCase();
+    const targetTitle = (collection.title ?? '').trim().toLowerCase();
+    const targetCopyTitle = (`${collection.title} (Copy)`).trim().toLowerCase();
+    const targetVerseOrder = (collection.verseOrder ?? '').trim();
+
+    const alreadyHasCollection =
+      targetAuthor.length > 0 &&
+      collections.some((existing) => {
+        const existingAuthor = (existing.authorUsername ?? existing.username ?? '').trim().toLowerCase();
+        if (!existingAuthor || existingAuthor !== targetAuthor) {
+          return false;
+        }
+
+        const existingTitle = (existing.title ?? '').trim().toLowerCase();
+        const titleMatches = existingTitle === targetTitle || existingTitle === targetCopyTitle;
+
+        const existingVerseOrder = (existing.verseOrder ?? '').trim();
+        const verseOrderMatches =
+          targetVerseOrder.length > 0 &&
+          existingVerseOrder.length > 0 &&
+          existingVerseOrder === targetVerseOrder;
+
+        return titleMatches || verseOrderMatches;
+      });
+
+    if (alreadyHasCollection) {
+      setSnackbarMessage('You already saved this collection');
+      setSnackbarVisible(true);
+      return;
+    }
+
     setErrorMessage(null);
     setIsSaving(true);
     try {
@@ -168,7 +202,8 @@ export default function PublishedCollectionView() {
   }
 
   return (
-    <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={{ padding: 16 }}>
+    <>
+      <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={{ padding: 16 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text style={{ ...styles.tinyText }}>{numVerses} {numVerses === 1 ? 'verse' : 'verses'}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -244,8 +279,16 @@ export default function PublishedCollectionView() {
         ))}
       </View>
 
-      <View style={{ height: 40 }} />
-    </ScrollView>
+        <View style={{ height: 40 }} />
+      </ScrollView>
+      <Snackbar
+        visible={snackbarVisible}
+        duration={2500}
+        onDismiss={() => setSnackbarVisible(false)}
+      >
+        {snackbarMessage}
+      </Snackbar>
+    </>
   );
 }
 

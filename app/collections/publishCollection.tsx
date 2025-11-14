@@ -20,10 +20,11 @@ export default function PublishCollection() {
   const [publishing, setPublishing] = useState(false);
   const [loadingVerses, setLoadingVerses] = useState(false);
   const [displayUserVerses, setDisplayUserVerses] = useState<UserVerse[]>([]);
-  const setEditingCollection = useAppStore((state) => state.setEditingCollection);
+  const setPublishingCollection = useAppStore((state) => state.setPublishingCollection);
+  const setCollectionReviewMessage = useAppStore((state) => state.setCollectionReviewMessage);
 
   // Get collection from store
-  const editingCollection = useAppStore((state) => state.editingCollection);
+  const publishingCollection = useAppStore((state) => state.publishingCollection);
 
   useEffect(() => {
     (async () => {
@@ -38,26 +39,26 @@ export default function PublishCollection() {
 
   // Load and populate userVerses
   useEffect(() => {
-    if (!editingCollection) return;
+    if (!publishingCollection) return;
 
     // Check if userVerses are already populated
-    if (editingCollection.userVerses && editingCollection.userVerses.every(uv => uv.verses?.length > 0)) {
+    if (publishingCollection.userVerses && publishingCollection.userVerses.every(uv => uv.verses?.length > 0)) {
       // Order by verseOrder if it exists
-      const sorted = orderByVerseOrder(editingCollection.userVerses, editingCollection.verseOrder);
+      const sorted = orderByVerseOrder(publishingCollection.userVerses, publishingCollection.verseOrder);
       setDisplayUserVerses(sorted);
     } else {
       // Fetch populated user verses
       const fetchPopulated = async () => {
         setLoadingVerses(true);
         try {
-          const colToSend = { ...editingCollection, UserVerses: editingCollection.userVerses ?? [] };
+          const colToSend = { ...publishingCollection, UserVerses: publishingCollection.userVerses ?? [] };
           const data = await getUserVersesPopulated(colToSend);
           // Order by verseOrder before setting
           const sorted = orderByVerseOrder(data.userVerses ?? [], data.verseOrder);
           setDisplayUserVerses(sorted);
         } catch (err) {
           console.error(err);
-          setDisplayUserVerses(editingCollection.userVerses || []);
+          setDisplayUserVerses(publishingCollection.userVerses || []);
         } finally {
           setLoadingVerses(false);
         }
@@ -65,7 +66,7 @@ export default function PublishCollection() {
       
       fetchPopulated();
     }
-  }, [editingCollection]);
+  }, [publishingCollection]);
 
   // Order verses by verseOrder
   function orderByVerseOrder(userVerses: UserVerse[], verseOrder?: string): UserVerse[] {
@@ -101,9 +102,9 @@ export default function PublishCollection() {
   // Clean up editing state on unmount
   useEffect(() => {
     return () => {
-      setEditingCollection(undefined);
+      setPublishingCollection(undefined);
     };
-  }, [setEditingCollection]);
+  }, [setPublishingCollection]);
 
   // Handle Android back button
   useEffect(() => {
@@ -129,7 +130,7 @@ export default function PublishCollection() {
   };
 
   const handlePublish = async () => {
-    if (!editingCollection?.collectionId) return;
+    if (!publishingCollection?.collectionId) return;
 
     setPublishing(true);
     setErrorMessage('');
@@ -137,17 +138,20 @@ export default function PublishCollection() {
     try {
       // Use the collection with populated userVerses from displayUserVerses
       const collectionToPublish = {
-        ...editingCollection,
-        userVerses: displayUserVerses.length > 0 ? displayUserVerses : editingCollection.userVerses || []
+        ...publishingCollection,
+        userVerses: displayUserVerses.length > 0 ? displayUserVerses : publishingCollection.userVerses || []
       };
       
-      await publishCollection(
+      const message = await publishCollection(
         collectionToPublish,
         description.trim() || '',
         Array.from(selectedCategoryIds)
       );
-      setEditingCollection(undefined);
-      router.back();
+      setPublishingCollection(undefined);
+      // Set review message in store to display on index.tsx
+      setCollectionReviewMessage(message);
+      // Navigate to home page
+      router.replace('/(tabs)');
     } catch (error: any) {
       console.error('Failed to publish collection:', error);
       setErrorMessage(error?.message || 'Failed to publish collection');
@@ -156,7 +160,7 @@ export default function PublishCollection() {
     }
   };
 
-  if (!editingCollection) {
+  if (!publishingCollection) {
     return (
       <View style={{ ...styles.container, alignItems: 'center', justifyContent: 'center' }}>
         <Text style={styles.text}>Loading...</Text>
@@ -181,7 +185,7 @@ export default function PublishCollection() {
       >
         <View style={{ ...styles.input, height: 80, justifyContent: 'center', padding: 12, backgroundColor: theme.colors.surface }} >
           <Text style={{ ...styles.tinyText, marginBottom: 4, opacity: 0.7 }}>Collection Title</Text>
-          <Text style={{ ...styles.text, color: theme.colors.onSurface }}>{editingCollection.title}</Text>
+          <Text style={{ ...styles.text, color: theme.colors.onSurface }}>{publishingCollection.title}</Text>
         </View>
 
         <TextInput

@@ -1,0 +1,23 @@
+diff --git a/node_modules/@lottiefiles/dotlottie-react-native/android/build.gradle b/node_modules/@lottiefiles/dotlottie-react-native/android/build.gradle
+index 4f48173..7eaa4df 100644
+--- a/node_modules/@lottiefiles/dotlottie-react-native/android/build.gradle
++++ b/node_modules/@lottiefiles/dotlottie-react-native/android/build.gradle
+@@ -25,6 +25,7 @@ def isNewArchitectureEnabled() {
+ 
+ apply plugin: "com.android.library"
+ apply plugin: "kotlin-android"
++apply plugin: "org.jetbrains.kotlin.plugin.compose"
+ 
+ if (isNewArchitectureEnabled()) {
+   apply plugin: "com.facebook.react"
+@@ -62,10 +63,6 @@ android {
+        compose = true
+   }
+ 
+-  composeOptions {
+-       kotlinCompilerExtensionVersion = "1.5.10"
+-  }
+-
+   compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
+ 
+   defaultConfig {

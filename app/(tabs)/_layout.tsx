@@ -6,18 +6,22 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Dimensions, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import { Drawer } from 'react-native-drawer-layout';
 import { Badge } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ProfileContent from '../components/ProfileContent';
-import { getUnreadNotificationCount } from '../db';
+import { getOverdueVerses, getUnreadNotificationCount } from '../db';
 import { defaultProfileDrawerControls, useAppStore } from '../store';
 import useAppTheme from '../theme';
 
 export default function TabLayout() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const user = useAppStore((state) => state.user);
+  const collections = useAppStore((state) => state.collections);
   const numNotifications = useAppStore((state) => state.numNotifications);
   const setNumNotifications = useAppStore((state) => state.setNumNotifications);
   const setProfileDrawerControls = useAppStore((state) => state.setProfileDrawerControls);
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
+  const [overdueCount, setOverdueCount] = useState(0);
   const screenWidth = Dimensions.get('window').width;
   const profileDrawerControls = useAppStore((state) => state.profileDrawerControls);
   const rootNavigationState = useRootNavigationState();
@@ -46,6 +50,39 @@ export default function TabLayout() {
 
     return () => clearInterval(interval);
   }, [user.username, setNumNotifications]);
+
+  // Check for overdue verses
+  useEffect(() => {
+    if (user.username === 'Default User') return;
+
+    const checkOverdue = async () => {
+      try {
+        const overdue = await getOverdueVerses(user.username);
+        const validCollectionIds = new Set(
+          collections
+            .map((collection) => collection.collectionId)
+            .filter((id): id is number => id !== undefined && id !== null)
+        );
+        const filtered = overdue.filter(
+          (item) =>
+            item.collectionId !== undefined &&
+            item.collectionId !== null &&
+            validCollectionIds.has(item.collectionId)
+        );
+        setOverdueCount(filtered.length);
+      } catch (error) {
+        console.error('Failed to check overdue verses:', error);
+      }
+    };
+
+    // Check immediately
+    checkOverdue();
+
+    // Then check every minute
+    const interval = setInterval(checkOverdue, 60000);
+
+    return () => clearInterval(interval);
+  }, [user.username, collections]);
 
   useEffect(() => {
     setProfileDrawerControls({
@@ -125,8 +162,8 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
         headerTintColor: theme.colors.onBackground,
         tabBarStyle: {
           backgroundColor: theme.colors.background,
-          height: 120,
-          paddingBottom: 50,
+          height: 70 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 10),
           paddingTop: 10,
           paddingLeft: 5,
           paddingRight: 5,
@@ -160,11 +197,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
               )}
               </TouchableOpacity>
               <Pressable onPress={() => profileDrawerControls.toggleDrawer()}>
-                <View style={{borderRadius: 50, borderWidth: 1, borderColor: theme.colors.onBackground, width: 38, height: 38, flex: 1, justifyContent: 'center', alignItems: 'center', padding: 5, marginRight: 5}}>
-                  <Text style={{color: theme.colors.onBackground, fontSize: 20}}>
-                    {(user.firstName.at(0) || 'D').toUpperCase() + (user.lastName.at(0) || 'U').toUpperCase()}
-                  </Text>
-                </View>
+                <Ionicons style={{marginTop: 4}} name="person-circle" size={32} color={theme.colors.onBackground} />
               </Pressable>
             </View>
           ),
@@ -195,11 +228,28 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           title: 'Practice',
           headerShown: false,
           tabBarIcon: ({ focused }) => (
-            <Ionicons 
-              name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} 
-              color={focused ? theme.colors.primary : inactiveColor} 
-              size={28} 
-            />
+            <View style={{ position: 'relative' }}>
+              <Ionicons 
+                name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} 
+                color={focused ? theme.colors.primary : inactiveColor} 
+                size={28} 
+              />
+              {overdueCount > 0 && (
+                <Badge
+                  size={18}
+                  style={{
+                    position: 'absolute',
+                    top: -3,
+                    right: -3,
+                    backgroundColor: 'red',
+                    color: 'white',
+                    fontSize: 12,
+                  }}
+                >
+                  {overdueCount}
+                </Badge>
+              )}
+            </View>
           ),
           tabBarLabel: ({ focused }) => (
             <Text

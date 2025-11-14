@@ -10,7 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Platform, Text, TouchableOpacity, type TouchableOpacityProps, View } from 'react-native';
+import { Image, TouchableOpacity, type TouchableOpacityProps, View } from 'react-native';
 import 'react-native-gesture-handler'; // must be at the top
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, Portal } from 'react-native-paper';
@@ -18,6 +18,9 @@ import { getAdminUsernames, getPopularSearches, getStreakLength, getUserCollecti
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
+import { registerBackgroundNotificationTask, unregisterBackgroundNotificationTask } from './backgroundNotifications';
+import './backgroundNotificationTask';
+import { ensurePushTokenRegistered, unregisterStoredPushToken } from './pushTokenManager';
 
 const TouchableOpacityWithDefaults = TouchableOpacity as typeof TouchableOpacity & {
   defaultProps?: Partial<TouchableOpacityProps>;
@@ -31,7 +34,9 @@ TouchableOpacityWithDefaults.defaultProps = {
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
 
 
-SplashScreen.hideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // ignore error if splash screen was already hidden
+});
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -80,7 +85,6 @@ export default function RootLayout() {
 
   const [appIsReady, setAppIsReady] = React.useState(false);
   const styles = useStyles();
-  const [splashIsVisible, setSplashIsVisible] = React.useState(true);
   const setUser = useAppStore((state) => state.setUser);
   const user = useAppStore((state) => state.user);
   const homePageStats = useAppStore((state) => state.homePageStats);
@@ -93,10 +97,8 @@ export default function RootLayout() {
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
 
-  // Set up notification listeners and register for push notifications
+  // Set up notification listeners
   useEffect(() => {
-    registerForPushNotificationsAsync();
-
     // Listen for notifications received while app is in foreground
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification received:', notification);
@@ -116,6 +118,23 @@ export default function RootLayout() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    void registerForPushNotificationsAsync();
+  }, [user.username, user.pushNotificationsEnabled]);
+
+  useEffect(() => {
+    const shouldRegister =
+      Boolean(user.username && user.username !== 'Default User') &&
+      (user.pushNotificationsEnabled ?? true);
+
+    if (!shouldRegister) {
+      void unregisterBackgroundNotificationTask();
+      return;
+    }
+
+    void registerBackgroundNotificationTask();
+  }, [user.username, user.pushNotificationsEnabled]);
 
   // Update last seen every minute
   useEffect(() => {
@@ -139,48 +158,18 @@ export default function RootLayout() {
 
   async function registerForPushNotificationsAsync() {
     try {
-      // Check if running in Expo Go (development mode)
-      const isExpoGo = __DEV__;
-      
-      if (isExpoGo) {
-        console.log('Push notifications not fully supported in Expo Go. Use a development build for full functionality.');
+      if (!user.username || user.username === 'Default User') {
         return;
       }
 
-      let token;
-
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'default',
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#E6F4FE',
-        });
-      }
-
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-      
-      if (finalStatus !== 'granted') {
-        console.log('Failed to get push token for push notification!');
+      if (!(user.pushNotificationsEnabled ?? true)) {
+        await unregisterStoredPushToken(user);
         return;
       }
 
-      token = (await Notifications.getExpoPushTokenAsync()).data;
-      console.log('Push notification token:', token);
-
-      // TODO: Send token to your server to store in database
-      // This should be called when the user logs in and has pushNotificationsEnabled = true
-      
-      return token;
+      await ensurePushTokenRegistered(user);
     } catch (error) {
-      console.error('Error getting push token:', error);
-      return;
+      console.error('Error ensuring push token registration:', error);
     }
   }
 
@@ -310,15 +299,19 @@ export default function RootLayout() {
     login();
   }, [loaded, error]);
 
+  React.useEffect(() => {
+    if (appIsReady) {
+      SplashScreen.hideAsync().catch(() => {
+        // ignore errors when hiding splash screen
+      });
+    }
+  }, [appIsReady]);
+
 
   if (!appIsReady) {
     return (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background, padding: 30 }}>
-      <Image source={require('../assets/images/Logo.png')} style={{width: 100, height: 100, borderRadius: 30, marginBottom: 20}} />
-      <View style={{padding: 0}}>
-        <Text style={{fontSize: 20, fontFamily: 'Noto Serif', color: theme.colors.onBackground, textAlign: 'center'}} >{startupVerses[startupVerse].text}</Text>
-        <Text style={{marginTop: 10, fontSize: 16, fontWeight: 500, fontFamily: 'Inter', color: theme.colors.onBackground, textAlign: 'center'}}>- {startupVerses[startupVerse].reference}</Text>
-      </View>
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#b93838ff', padding: 30 }}>
+      <Image source={require('../assets/images/LogoIcon.png')} style={{width: 70, height: 80, marginBottom: 20}} />
     </View>
     )
   }
@@ -509,6 +502,20 @@ export default function RootLayout() {
           name="collections/editCollection"
           options={{
             title: 'Edit Collection',
+                headerStyle: {
+                  backgroundColor: theme.colors.background,
+                },
+                headerTitleStyle: {
+                  color: theme.colors.onBackground,
+                },
+                headerTintColor: theme.colors.onBackground,
+                headerShadowVisible: false,
+              }} 
+            />
+            <Stack.Screen
+          name="collections/reorderExistingVerses"
+          options={{
+            title: 'Reorder Passages',
                 headerStyle: {
                   backgroundColor: theme.colors.background,
                 },

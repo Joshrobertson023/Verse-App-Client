@@ -2,12 +2,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Chip, Searchbar, Snackbar } from 'react-native-paper';
 import ExploreCollectionCard from '../components/exploreCollectionCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { SearchResultSkeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, checkRelationship, getPopularSearches, getUserCollections, getVerseSearchResult, PublishedCollection, searchPublishedCollections, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB } from '../db';
+import { addUserVersesToNewCollection, checkRelationship, createCollectionDB, getMostRecentCollectionId, getPopularSearches, getUserCollections, getVerseSearchResult, PublishedCollection, refreshUser, searchPublishedCollections, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { Collection, useAppStore, User, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -37,6 +37,9 @@ export default function SearchScreen() {
   const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
   const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
   const [isAddingToCollection, setIsAddingToCollection] = useState(false);
+  const [isCreatingNewCollection, setIsCreatingNewCollection] = useState(false);
+  const [newCollectionTitle, setNewCollectionTitle] = useState('');
+  const setUser = useAppStore((state) => state.setUser);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -215,7 +218,84 @@ export default function SearchScreen() {
   const handleSaveVerse = (verse: Verse) => {
     setSelectedVerse(verse);
     setPickedCollection(undefined);
+    setNewCollectionTitle('');
     setShowCollectionPicker(true);
+  };
+
+  const handleInputChange = (text: string) => {
+    setNewCollectionTitle(text);
+    // Clear selected collection when user starts typing
+    if (text.trim() && pickedCollection) {
+      setPickedCollection(undefined);
+    }
+  };
+
+  const handleCollectionSelect = (collection: Collection) => {
+    setPickedCollection(collection);
+    // Clear input when selecting an existing collection
+    setNewCollectionTitle('');
+  };
+
+  const handleCreateNewCollection = async () => {
+    if (!selectedVerse || !user?.username || isCreatingNewCollection || !newCollectionTitle.trim()) return;
+    if (collections.length >= 40) {
+      setSnackbarMessage('You can create up to 40 collections.');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setIsCreatingNewCollection(true);
+    const userVerse: UserVerse = {
+      username: user.username,
+      readableReference: selectedVerse.verse_reference,
+      verses: [selectedVerse]
+    };
+
+    try {
+      const finalTitle = newCollectionTitle.trim() === '' ? 'New Collection' : (newCollectionTitle.trim() === 'Favorites' ? 'Favorites-Other' : newCollectionTitle.trim());
+      const newCollection: Collection = {
+        title: finalTitle,
+        authorUsername: user.username,
+        username: user.username,
+        visibility: 'private',
+        verseOrder: `${selectedVerse.verse_reference},`,
+        userVerses: [userVerse],
+        notes: [],
+        favorites: false,
+      };
+
+      await createCollectionDB(newCollection, user.username);
+      const collectionId = await getMostRecentCollectionId(user.username);
+      await addUserVersesToNewCollection([userVerse], collectionId);
+      
+      const updatedCollections = await getUserCollections(user.username);
+      setCollections(updatedCollections);
+
+      const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
+      const newOrder = currentOrder ? `${currentOrder},${collectionId}` : collectionId.toString();
+      const updatedUser = { ...user, collectionsOrder: newOrder };
+      setUser(updatedUser);
+      await updateCollectionsOrder(newOrder, user.username);
+
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+
+      if (selectedVerse?.verse_reference) {
+        incrementVerseSaveAdjustment(selectedVerse.verse_reference);
+      }
+      setShowCollectionPicker(false);
+      setSelectedVerse(null);
+      setPickedCollection(undefined);
+      setNewCollectionTitle('');
+      setSnackbarMessage('Collection created and verse saved');
+      setSnackbarVisible(true);
+    } catch (error) {
+      console.error('Failed to create collection:', error);
+      setSnackbarMessage('Failed to create collection');
+      setSnackbarVisible(true);
+    } finally {
+      setIsCreatingNewCollection(false);
+    }
   };
 
   const handleAddToCollection = async () => {
@@ -770,10 +850,44 @@ export default function SearchScreen() {
               Choose a Collection
             </Text>
             
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
+                New Collection Title
+              </Text>
+              <TextInput
+                value={newCollectionTitle}
+                onChangeText={handleInputChange}
+                placeholder="Enter title to create new collection"
+                placeholderTextColor={theme.colors.onSurfaceVariant}
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.colors.onSurfaceVariant,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 16,
+                  fontFamily: 'Inter',
+                  color: theme.colors.onBackground,
+                  backgroundColor: theme.colors.background,
+                }}
+              />
+            </View>
+            <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
+              Or select existing collection
+            </Text>
             <ScrollView>
               {(() => {
-                const favorites = collections.filter(col => col.favorites || col.title === 'Favorites');
-                const nonFavorites = collections.filter(col => !col.favorites && col.title !== 'Favorites');
+                // Filter to only show collections owned by the user
+                const userOwnedCollections = collections.filter(col => {
+                  const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+                  const owner = col.username ? normalize(col.username) : undefined;
+                  const author = col.authorUsername ? normalize(col.authorUsername) : undefined;
+                  const currentUser = normalize(user?.username);
+                  
+                  // Collection is owned by user if username matches OR authorUsername matches (and username is not set or also matches)
+                  return (owner === currentUser) || (author === currentUser && (!owner || owner === currentUser));
+                });
+                const favorites = userOwnedCollections.filter(col => col.favorites || col.title === 'Favorites');
+                const nonFavorites = userOwnedCollections.filter(col => !col.favorites && col.title !== 'Favorites');
                 
                 return (
                   <>
@@ -793,7 +907,7 @@ export default function SearchScreen() {
                           justifyContent: 'space-between',
                           alignItems: 'center'
                         }}
-                        onPress={() => setPickedCollection(collection)}
+                        onPress={() => handleCollectionSelect(collection)}
                       >
                         <Text style={{
                           fontSize: 16,
@@ -826,7 +940,7 @@ export default function SearchScreen() {
                             : 'transparent',
                           borderRadius: 8
                         }}
-                        onPress={() => setPickedCollection(collection)}
+                        onPress={() => handleCollectionSelect(collection)}
                       >
                         <Text style={{
                           fontSize: 16,
@@ -858,6 +972,7 @@ export default function SearchScreen() {
                 activeOpacity={0.1}
                 onPress={() => {
                   setPickedCollection(undefined);
+                  setNewCollectionTitle('');
                   setShowCollectionPicker(false);
                 }}
               >
@@ -870,31 +985,59 @@ export default function SearchScreen() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={{
-                  backgroundColor: theme.colors.primary,
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  borderRadius: 8,
-                  opacity: (!pickedCollection || isAddingToCollection) ? 0.5 : 1
-                }}
-                activeOpacity={0.1}
-                onPress={handleAddToCollection}
-                disabled={!pickedCollection || isAddingToCollection}
-              >
-                {isAddingToCollection ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={{
-                    fontSize: 16,
-                    color: '#fff',
-                    fontFamily: 'Inter',
-                    fontWeight: '600'
-                  }}>
-                    Add
-                  </Text>
-                )}
-              </TouchableOpacity>
+              {newCollectionTitle.trim() ? (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    paddingVertical: 12,
+                    paddingHorizontal: 24,
+                    borderRadius: 8,
+                    opacity: (!newCollectionTitle.trim() || isCreatingNewCollection) ? 0.5 : 1
+                  }}
+                  activeOpacity={0.1}
+                  onPress={handleCreateNewCollection}
+                  disabled={!newCollectionTitle.trim() || isCreatingNewCollection}
+                >
+                  {isCreatingNewCollection ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{
+                      fontSize: 16,
+                      color: '#fff',
+                      fontFamily: 'Inter',
+                      fontWeight: '600'
+                    }}>
+                      Create
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    paddingVertical: 12,
+                    paddingHorizontal: 24,
+                    borderRadius: 8,
+                    opacity: (!pickedCollection || isAddingToCollection) ? 0.5 : 1
+                  }}
+                  activeOpacity={0.1}
+                  onPress={handleAddToCollection}
+                  disabled={!pickedCollection || isAddingToCollection}
+                >
+                  {isAddingToCollection ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{
+                      fontSize: 16,
+                      color: '#fff',
+                      fontFamily: 'Inter',
+                      fontWeight: '600'
+                    }}>
+                      Add
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>

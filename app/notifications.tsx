@@ -6,7 +6,7 @@ import { Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SaveVerseToCollectionSheet from './components/saveVerseToCollectionSheet';
 import { formatRelativeTime, isDateExpired, minutesSince } from './dateUtils';
-import { addUserVersesToNewCollection, checkRelationship, getCollectionById, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, populateVersesForUserVerses, respondToFriendRequest, updateCollectionDB } from './db';
+import { addUserVersesToNewCollection, checkRelationship, createCollectionDB, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, populateVersesForUserVerses, refreshUser, respondToFriendRequest, updateCollectionDB, updateCollectionsOrder } from './db';
 import { Collection, Notification, UserVerse, Verse, useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -31,6 +31,8 @@ export default function NotificationsScreen() {
   const setCollections = useAppStore((s) => s.setCollections);
   const incrementVerseSaveAdjustment = useAppStore((s) => s.incrementVerseSaveAdjustment);
   const [isSavingToCollection, setIsSavingToCollection] = useState(false);
+  const [isCreatingNewCollection, setIsCreatingNewCollection] = useState(false);
+  const setUser = useAppStore((s) => s.setUser);
     const numNotifications = useAppStore((state) => state.numNotifications);
 
   useFocusEffect(
@@ -472,6 +474,67 @@ export default function NotificationsScreen() {
     );
   };
 
+  const handleCreateNewCollection = async (title: string) => {
+    if (!verseFromNotification || !user?.username || isCreatingNewCollection) return;
+    if (collections.length >= 40) {
+      setSnackbarMessage('You can create up to 40 collections.');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setIsCreatingNewCollection(true);
+    const userVerse: UserVerse = {
+      username: user.username,
+      readableReference: verseFromNotification.verse_reference,
+      verses: [verseFromNotification]
+    } as any;
+
+    try {
+      const finalTitle = title.trim() === '' ? 'New Collection' : (title.trim() === 'Favorites' ? 'Favorites-Other' : title.trim());
+      const newCollection: Collection = {
+        title: finalTitle,
+        authorUsername: user.username,
+        username: user.username,
+        visibility: 'private',
+        verseOrder: `${verseFromNotification.verse_reference},`,
+        userVerses: [userVerse],
+        notes: [],
+        favorites: false,
+      };
+
+      await createCollectionDB(newCollection, user.username);
+      const collectionId = await getMostRecentCollectionId(user.username);
+      await addUserVersesToNewCollection([userVerse], collectionId);
+      
+      const updatedCollections = await getUserCollections(user.username);
+      setCollections(updatedCollections);
+
+      const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
+      const newOrder = currentOrder ? `${currentOrder},${collectionId}` : collectionId.toString();
+      const updatedUser = { ...user, collectionsOrder: newOrder };
+      setUser(updatedUser);
+      await updateCollectionsOrder(newOrder, user.username);
+
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+
+      if (verseFromNotification?.verse_reference) {
+        incrementVerseSaveAdjustment(verseFromNotification.verse_reference);
+      }
+      setShowSavePicker(false);
+      setVerseFromNotification(null);
+      setPickedCollection(undefined);
+      setSnackbarMessage('Collection created and verse saved');
+      setSnackbarVisible(true);
+    } catch (e) {
+      console.error('Failed to create collection:', e);
+      setSnackbarMessage('Failed to create collection');
+      setSnackbarVisible(true);
+    } finally {
+      setIsCreatingNewCollection(false);
+    }
+  };
+
   const handleConfirmSaveSharedVerse = async () => {
     if (!pickedCollection || !verseFromNotification || !user?.username || isSavingToCollection) return;
 
@@ -565,12 +628,23 @@ export default function NotificationsScreen() {
       <SaveVerseToCollectionSheet
         visible={showSavePicker}
         verse={verseFromNotification}
-        collections={collections}
+        collections={collections.filter(col => {
+          // Filter to only show collections owned by the user
+          const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+          const owner = col.username ? normalize(col.username) : undefined;
+          const author = col.authorUsername ? normalize(col.authorUsername) : undefined;
+          const currentUser = normalize(user?.username);
+          
+          // Collection is owned by user if username matches OR authorUsername matches (and username is not set or also matches)
+          return (owner === currentUser) || (author === currentUser && (!owner || owner === currentUser));
+        })}
         pickedCollection={pickedCollection}
         setPickedCollection={setPickedCollection}
         onCancel={() => setShowSavePicker(false)}
         onConfirm={handleConfirmSaveSharedVerse}
         confirming={isSavingToCollection}
+        onCreateNewCollection={handleCreateNewCollection}
+        creatingNewCollection={isCreatingNewCollection}
       />
       
       <Snackbar

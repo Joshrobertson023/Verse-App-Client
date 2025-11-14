@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { resetPasswordWithOtp, verifyPasswordResetOtp } from '../db';
@@ -80,9 +80,9 @@ export default function ResetPasswordScreen() {
         return;
       }
 
-      if (newPassword.length < 12) {
+      if (newPassword.length < 11) {
         setIsError(true);
-        setMessage('Password must be at least 12 characters long.');
+        setMessage('Password must be at least 11 characters long.');
         return;
       }
 
@@ -107,7 +107,16 @@ export default function ResetPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={{ ...styles.centered, marginBottom: 150 }}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView 
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={{ ...styles.centered, marginBottom: 150 }}>
         <Text style={{ ...styles.text, marginBottom: 20 }}>Reset Password</Text>
 
         <TextInput
@@ -200,7 +209,9 @@ export default function ResetPasswordScreen() {
         <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace('/(auth)/login')}>
           <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Back to Login</Text>
         </TouchableOpacity>
-      </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

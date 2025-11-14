@@ -1,13 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
-import { BackHandler, Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BackHandler, Dimensions, ScrollView, StyleSheet, Text, TextInput as RNTextInput, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Divider, Portal, Surface, TextInput } from 'react-native-paper';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import BottomSheet, { BottomSheetView, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
+
+// Simple ID generator for React Native (doesn't require crypto polyfill)
+const generateId = () => {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
 import { addUserVersesToNewCollection, deleteUserVersesFromCollection, getUserCollections, getUserVersesPopulated, updateCollectionDB } from '../db';
-import { useAppStore, UserVerse, Verse } from '../store';
+import { useAppStore, UserVerse, Verse, CollectionNote } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -55,15 +60,36 @@ export default function EditCollection() {
     const [progressPercent, setProgressPercent] = useState(0.0);
     const [loadingVerses, setLoadingVerses] = useState(false);
     const [visibility, setVisibility] = useState('Private');
-    const [sheetVisible, setSheetVisible] = useState(false);
     const [reorderedUserVerses, setReorderedUserVerses] = useState<UserVerse[]>([]);
+    const [notes, setNotes] = useState<CollectionNote[]>([]);
+    const [noteText, setNoteText] = useState('');
+    const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
     const updateCollectionStore = useAppStore((state) => state.updateCollection);
     const setEditingCollection = useAppStore((state) => state.setEditingCollection);
-    const buildVerseOrderString = (verses: UserVerse[]): string => {
-      return verses
+    
+    // Track sheet open states
+    const [isPassageSheetOpen, setIsPassageSheetOpen] = useState(false);
+    const [isNoteSheetOpen, setIsNoteSheetOpen] = useState(false);
+    const [isSettingsSheetOpen, setIsSettingsSheetOpen] = useState(false);
+    
+    // Animation for button fade-in
+    const buttonOpacity = useSharedValue(1);
+    
+    // Bottom sheet refs
+    const passageSheetRef = useRef<BottomSheet>(null);
+    const noteSheetRef = useRef<BottomSheet>(null);
+    const settingsSheetRef = useRef<BottomSheet>(null);
+    
+    // Snap points for bottom sheets
+    const passageSnapPoints = useMemo(() => ['100%'], []);
+    const noteSnapPoints = useMemo(() => ['100%'], []);
+    const settingsSnapPoints = useMemo(() => ['40%'], []);
+    const buildVerseOrderString = (verses: UserVerse[], notes: CollectionNote[]): string => {
+      const verseRefs = verses
         .map((uv) => uv.readableReference?.trim())
-        .filter((ref): ref is string => Boolean(ref && ref.length > 0))
-        .join(',');
+        .filter((ref): ref is string => Boolean(ref && ref.length > 0));
+      const noteIds = notes.map((n) => n.id);
+      return [...verseRefs, ...noteIds].join(',');
     };
 
 
@@ -90,11 +116,13 @@ export default function EditCollection() {
               // Order by verseOrder before setting
               const sorted = orderByVerseOrder(data.userVerses ?? [], data.verseOrder);
               setReorderedUserVerses(sorted);
+              setNotes(data.notes || []);
               // Update editingCollection with populated data (already sorted by server)
-              setEditingCollection({ ...editingCollection, userVerses: sorted, verseOrder: data.verseOrder });
+              setEditingCollection({ ...editingCollection, userVerses: sorted, notes: data.notes || [], verseOrder: data.verseOrder });
             } catch (err) {
               console.error(err);
               setReorderedUserVerses(editingCollection.userVerses || []);
+              setNotes(editingCollection.notes || []);
             } finally {
               setLoadingVerses(false);
             }
@@ -102,6 +130,7 @@ export default function EditCollection() {
           
           fetchPopulated();
         }
+        setNotes(editingCollection.notes || []);
       }
     }, [editingCollection]);
 
@@ -111,9 +140,10 @@ export default function EditCollection() {
         // Sort by verseOrder if it exists
         const sorted = orderByVerseOrder(editingCollection.userVerses, editingCollection.verseOrder);
         setReorderedUserVerses(sorted);
+        setNotes(editingCollection.notes || []);
         console.log('EditCollection: Updated reorderedUserVerses with verseOrder:', editingCollection.verseOrder);
       }
-    }, [editingCollection?.userVerses, editingCollection?.verseOrder]);
+    }, [editingCollection?.userVerses, editingCollection?.verseOrder, editingCollection?.notes]);
 
     // Clean up editing state on unmount
     useEffect(() => {
@@ -122,139 +152,63 @@ export default function EditCollection() {
       };
     }, [setEditingCollection]);
 
-    const offset = .1;
-   const sheetHeight = height * (.89 + offset);
-   const closedPosition = height;
-    const openPosition = height - sheetHeight + (height * offset);
-    const peekPosition = height;
-
-  const settingsSheetHeight = height * (.40 + offset);
-  const settingsClosedPosition = height;
-  const settingsOpenPosition = height - settingsSheetHeight + (height * offset);
-
-    const translateY = useSharedValue(closedPosition);
-    const startY = useSharedValue(0);
-
-    const settingsTranslateY = useSharedValue(settingsClosedPosition);
-    const settingsStartY = useSharedValue(0);
-
-      const sheetItemStyle = StyleSheet.create({
-        settingsItem: {
-          height: 50,
-          justifyContent: 'center',
-          alignItems: 'center'
-        }
-      })
-
     const openSheet = () => {
-      translateY.value = withSpring(openPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-      setSheetVisible(true);
+      setIsPassageSheetOpen(true);
+      passageSheetRef.current?.expand();
     };
 
     const openSettingsSheet = () => {
-      settingsTranslateY.value = withSpring(settingsOpenPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-      setSheetVisible(true);
+      setIsSettingsSheetOpen(true);
+      settingsSheetRef.current?.snapToIndex(0);
     }
 
     const closeSheet = () => {
-      translateY.value = withSpring(closedPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-      setSheetVisible(false);
+      passageSheetRef.current?.close();
     };
 
     const closeSettingsSheet = () => {
-      settingsTranslateY.value = withSpring(settingsClosedPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-      setSheetVisible(true);
+      settingsSheetRef.current?.close();
     }
+    
+    const handlePassageSheetChange = useCallback((index: number) => {
+      setIsPassageSheetOpen(index !== -1);
+      if (index === -1) {
+        closeSheet();
+      }
+    }, []);
+    
+    const handleNoteSheetChange = useCallback((index: number) => {
+      setIsNoteSheetOpen(index !== -1);
+      if (index === -1) {
+        setNoteText('');
+        setEditingNoteId(null);
+      }
+    }, []);
+    
+    const handleSettingsSheetChange = useCallback((index: number) => {
+      setIsSettingsSheetOpen(index !== -1);
+      if (index === -1) {
+        closeSettingsSheet();
+      }
+    }, []);
 
-    const animatedStyle = useAnimatedStyle(() => ({
-      transform: [{ translateY: translateY.value }],
-    }));
+    // Animate button opacity when sheets close
+    useEffect(() => {
+      const shouldShow = !(isPassageSheetOpen || isNoteSheetOpen || isSettingsSheetOpen);
+      if (shouldShow) {
+        // Fade in when showing
+        buttonOpacity.value = withTiming(1, { duration: 300 });
+      } else {
+        // Hide immediately when hiding
+        buttonOpacity.value = 0;
+      }
+    }, [isPassageSheetOpen, isNoteSheetOpen, isSettingsSheetOpen]);
 
-    const settingsAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [{ translateY: settingsTranslateY.value }],
-    }));
-
-    const backdropAnimatedStyle = useAnimatedStyle(() => {
-      const sheetProgress =
-        (settingsClosedPosition - settingsTranslateY.value) / settingsSheetHeight;
-  
-      const opacity = Math.min(1, Math.max(0, sheetProgress)) * 0.5;
-  
+    const buttonAnimatedStyle = useAnimatedStyle(() => {
       return {
-        opacity,
-        pointerEvents: opacity > 0.001 ? 'auto' : 'none',
+        opacity: buttonOpacity.value,
       };
     });
-
-    const settingsPanGesture = Gesture.Pan()
-      .onBegin(() => {
-        settingsStartY.value = settingsTranslateY.value;
-      })
-      .onUpdate(e => {
-        settingsTranslateY.value = Math.max(settingsOpenPosition, settingsStartY.value + e.translationY);
-      })
-      .onEnd(() => {
-        if (settingsTranslateY.value > settingsOpenPosition + 50) {
-          settingsTranslateY.value = withSpring(settingsClosedPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-        } else {
-          settingsTranslateY.value = withSpring(settingsOpenPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-        }
-      });
-
-    const panGesture = Gesture.Pan()
-      .onBegin(() => {
-        startY.value = translateY.value;
-      })
-      .onUpdate(e => {
-        translateY.value = Math.max(openPosition, Math.min(peekPosition, startY.value + e.translationY));
-      })
-      .onEnd(() => {
-        if (translateY.value > openPosition + 50) {
-          translateY.value = withSpring(peekPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-        } else {
-          translateY.value = withSpring(openPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-        }
-      });
 
     const addPassage = () => {
       closeSheet();
@@ -272,9 +226,10 @@ export default function EditCollection() {
               visibility: visibility,
             };
             
-            // Create verseOrder from reordered user verses using readable references
-            updatedCollection.verseOrder = buildVerseOrderString(reorderedUserVerses);
+            // Create verseOrder from reordered user verses and notes using readable references and note IDs
+            updatedCollection.verseOrder = buildVerseOrderString(reorderedUserVerses, notes);
             updatedCollection.userVerses = reorderedUserVerses;
+            updatedCollection.notes = notes;
             
             if (title.trim() === 'Favorites') {
               updatedCollection.title = 'Favorites-Other'
@@ -324,13 +279,14 @@ export default function EditCollection() {
         const updatedUserVerses = reorderedUserVerses.filter(
           (uv) => uv.readableReference !== userVerse.readableReference
         );
-        const updatedVerseOrder = buildVerseOrderString(updatedUserVerses);
+        const updatedVerseOrder = buildVerseOrderString(updatedUserVerses, notes);
         setReorderedUserVerses(updatedUserVerses);
         const current = useAppStore.getState().editingCollection;
         if (current) {
           setEditingCollection({
             ...current,
             userVerses: updatedUserVerses,
+            notes: notes,
             verseOrder: updatedVerseOrder,
           });
         }
@@ -338,32 +294,70 @@ export default function EditCollection() {
 
       const addUserVerseToCollection = (userVerse: UserVerse) => {
         const updatedUserVerses = [...reorderedUserVerses, userVerse];
-        const updatedVerseOrder = buildVerseOrderString(updatedUserVerses);
+        const updatedVerseOrder = buildVerseOrderString(updatedUserVerses, notes);
         setReorderedUserVerses(updatedUserVerses);
         const current = useAppStore.getState().editingCollection;
         if (current) {
           setEditingCollection({
             ...current,
             userVerses: updatedUserVerses,
+            notes: notes,
             verseOrder: updatedVerseOrder,
           });
         }
       }
 
-      // Handle Android back button to close sheets
-      useEffect(() => {
-        const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-          if (sheetVisible) {
-            closeSheet();
-            closeSettingsSheet();
-            return true; // Prevent default back action
-          }
-          // If sheet is not visible, allow default back action to navigate away
-          return false;
-        });
+      const handleAddNote = () => {
+        if (!noteText.trim()) return;
+        
+        const newNote: CollectionNote = {
+          id: editingNoteId || generateId(),
+          collectionId: editingCollection?.collectionId || 0,
+          text: noteText.trim(),
+        };
+        
+        let updatedNotes: CollectionNote[];
+        if (editingNoteId) {
+          updatedNotes = notes.map(n => n.id === editingNoteId ? newNote : n);
+        } else {
+          updatedNotes = [...notes, newNote];
+        }
+        
+        setNotes(updatedNotes);
+        const updatedVerseOrder = buildVerseOrderString(reorderedUserVerses, updatedNotes);
+        const current = useAppStore.getState().editingCollection;
+        if (current) {
+          setEditingCollection({
+            ...current,
+            notes: updatedNotes,
+            verseOrder: updatedVerseOrder,
+          });
+        }
+        setNoteText('');
+        setEditingNoteId(null);
+        noteSheetRef.current?.close();
+      }
 
-        return () => backHandler.remove();
-      }, [sheetVisible]);
+      const handleDeleteNote = (noteId: string) => {
+        const updatedNotes = notes.filter(n => n.id !== noteId);
+        setNotes(updatedNotes);
+        const updatedVerseOrder = buildVerseOrderString(reorderedUserVerses, updatedNotes);
+        const current = useAppStore.getState().editingCollection;
+        if (current) {
+          setEditingCollection({
+            ...current,
+            notes: updatedNotes,
+            verseOrder: updatedVerseOrder,
+          });
+        }
+      }
+
+      const handleEditNote = (note: CollectionNote) => {
+        setNoteText(note.text);
+        setEditingNoteId(note.id);
+        setIsNoteSheetOpen(true);
+        noteSheetRef.current?.expand();
+      }
 
     if (!editingCollection) {
       return (
@@ -404,23 +398,84 @@ export default function EditCollection() {
         )}
 
         <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 15}}>
-          <Text style={{...styles.tinyText, marginRight: 10}}>Visibility: {visibility}</Text>
+          <Text style={{...styles.tinyText, marginRight: 10}}>Visibility: {visibility === 'Public' ? 'Visible to Friends' : 'Not Visible to Friends'}</Text>
           <TouchableOpacity style={{...styles.button_outlined, width: 100, height: 30}} onPress={openSettingsSheet}>
             <Text style={{...styles.buttonText_outlined, fontSize: 14}}>Change</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={{...styles.button_outlined}} onPress={openSheet}>
-          <Text style={{...styles.buttonText_outlined}}>Add Passage</Text>
-        </TouchableOpacity>
+        <View style={{flexDirection: 'row', gap: 16, width: '100%', marginBottom: 20, flexWrap: 'wrap'}}>
+          <TouchableOpacity activeOpacity={0.1} onPress={openSheet} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="add-circle-outline" size={18} color={theme.colors.onBackground} />
+            <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Add Passage</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            activeOpacity={0.1} 
+            onPress={() => router.push('/collections/verseCatalog')}
+            style={{ flexDirection: 'row', alignItems: 'center' }}
+          >
+            <Ionicons name="library-outline" size={18} color={theme.colors.onBackground} />
+            <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Verse Catalog</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            activeOpacity={0.1} 
+            onPress={() => {
+              setNoteText('');
+              setEditingNoteId(null);
+              setIsNoteSheetOpen(true);
+              noteSheetRef.current?.expand();
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center' }}
+          >
+            <Ionicons name="document-text-outline" size={18} color={theme.colors.onBackground} />
+            <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Add Note</Text>
+          </TouchableOpacity>
+          {(reorderedUserVerses.length > 0 || notes.length > 0) && (
+            <TouchableOpacity 
+              activeOpacity={0.1} 
+              onPress={() => router.push('/collections/reorderExistingVerses')}
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+            >
+              <Ionicons name="reorder-three-outline" size={18} color={theme.colors.onBackground} />
+              <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Reorder</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         { errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null }
 
-        {/* User Verse Cards */}
-        {reorderedUserVerses.length > 0 && (
+        {/* User Verse Cards and Notes */}
+        {(reorderedUserVerses.length > 0 || notes.length > 0) && (
           <>
             <View style={{marginTop: 20, width: '100%'}}>
-              {reorderedUserVerses.map((userVerse, i) => (
+              {(() => {
+                // Combine verses and notes, order by verseOrder
+                const orderArray = editingCollection?.verseOrder?.split(',').filter(ref => ref.trim() !== '') || [];
+                const verseMap = new Map(reorderedUserVerses.map(uv => [uv.readableReference, uv]));
+                const noteMap = new Map(notes.map(n => [n.id, n]));
+                const ordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+                const unordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+                
+                orderArray.forEach(ref => {
+                  const trimmedRef = ref.trim();
+                  if (verseMap.has(trimmedRef)) {
+                    ordered.push({type: 'verse', data: verseMap.get(trimmedRef)!});
+                    verseMap.delete(trimmedRef);
+                  } else if (noteMap.has(trimmedRef)) {
+                    ordered.push({type: 'note', data: noteMap.get(trimmedRef)!});
+                    noteMap.delete(trimmedRef);
+                  }
+                });
+                
+                verseMap.forEach(verse => unordered.push({type: 'verse', data: verse}));
+                noteMap.forEach(note => unordered.push({type: 'note', data: note}));
+                
+                const allItems = [...ordered, ...unordered];
+                
+                return allItems.map((item, i) => {
+                  if (item.type === 'verse') {
+                    const userVerse = item.data;
+                    return (
                 <View key={userVerse.readableReference} style={{width: '100%', marginBottom: 20}}>
                   <View style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}}>
                     <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
@@ -436,137 +491,183 @@ export default function EditCollection() {
                     ))}
                   </View>
                 </View>
-              ))}
+                    );
+                  } else {
+                    const note = item.data;
+                    return (
+                      <View key={note.id} style={{width: '100%', marginBottom: 20}}>
+                        <View style={{width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface}}>
+                          <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
+                            <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 16, fontStyle: 'italic'}}>{note.text}</Text>
+                            <View style={{flexDirection: 'row', gap: 10}}>
+                              <TouchableOpacity onPress={() => handleEditNote(note)}>
+                                <Ionicons name={"pencil"} size={20} color={theme.colors.onBackground} />
+                              </TouchableOpacity>
+                              <TouchableOpacity onPress={() => handleDeleteNote(note.id)}>
+                                <Ionicons name={"trash-bin"} size={20} color={theme.colors.onBackground} />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  }
+                });
+              })()}
             </View>
           </>
         )}
         <View style={{height: 120}}></View>
       </ScrollView>
 
-          <View style={{...styles.button_filled, position: 'absolute', bottom: 60, width: '90%', zIndex: 10, alignSelf: 'center', backgroundColor: theme.colors.onPrimary,
-          boxShadow: '0px 0px 23px 10px rgba(0,0,0,.2)'
-          }}></View>
+          <Animated.View style={[buttonAnimatedStyle, { position: 'absolute', bottom: 60, width: '100%', zIndex: 10, alignItems: 'center' }]}>
+            <View style={{...styles.button_filled, width: '90%', alignSelf: 'center', backgroundColor: theme.colors.onPrimary,
+            boxShadow: '0px 0px 23px 10px rgba(0,0,0,.2)'
+            }}></View>
 
-          <TouchableOpacity style={{...styles.button_filled, position: 'absolute', bottom: 60, zIndex: 10, marginHorizontal: 20, width: '90%', alignSelf: 'center'
-          }} activeOpacity={0.1} onPress={handleCreateCollection}>
-            {creatingCollection ? (
-                        <Text style={styles.buttonText_filled}>
-                            <ActivityIndicator animating={true} color={theme.colors.background} />
-                        </Text> 
-                    ) : (
-                        <Text style={styles.buttonText_filled}>Update Collection</Text>
-                    )}
-          </TouchableOpacity>
+            <TouchableOpacity style={{...styles.button_filled, position: 'absolute', zIndex: 10, marginHorizontal: 20, width: '90%', alignSelf: 'center'
+            }} activeOpacity={0.1} onPress={handleCreateCollection}>
+          {creatingCollection ? (
+                      <Text style={styles.buttonText_filled}>
+                          <ActivityIndicator animating={true} color={theme.colors.background} />
+                      </Text> 
+                  ) : (
+                      <Text style={styles.buttonText_filled}>Update Collection</Text>
+                  )}
+            </TouchableOpacity>
+          </Animated.View>
 
+          {/* Add Passage Bottom Sheet */}
           <Portal>
-            {sheetVisible && (
-              <Animated.View
-                style={[
-                  {
-                    position: 'absolute',
-                    top: 0,
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                    zIndex: 10,
-                  },
-                  backdropAnimatedStyle,
-                ]}
-                pointerEvents="auto"
-              >
-                <TouchableOpacity
-                  style={{ flex: 1 }}
-                  activeOpacity={0.5}
-                  onPress={() => {
-                    closeSettingsSheet();
-                    closeSheet();
-                  }}
-                />
-              </Animated.View>
-            )}
-
-            <Animated.View
-              style={[
-                {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  height: settingsSheetHeight,
-                  backgroundColor: theme.colors.surface,
-                  borderTopLeftRadius: 16,
-                  borderTopRightRadius: 16,
-                  paddingTop: 20,
-                  paddingBottom: 80,
-                  zIndex: 20,
-                  elevation: 20,
-                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
-                },
-                settingsAnimatedStyle,
-              ]}
+            <BottomSheet
+              ref={passageSheetRef}
+              index={-1}
+              snapPoints={passageSnapPoints}
+              enablePanDownToClose
+              onChange={handlePassageSheetChange}
+              backgroundStyle={{ backgroundColor: theme.colors.surface }}
+              handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
+              style={{ zIndex: 1000 }}
             >
-              <GestureDetector gesture={settingsPanGesture}>
-                          <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
-                            <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
-                          </View>
-                        </GestureDetector>
-              
-                        <Divider />
-                        <TouchableOpacity
-                          style={sheetItemStyle.settingsItem}
-                          onPress={() => {
-                            setVisibility('Private');
-                            closeSettingsSheet();
-                          }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Private</Text>
-                        </TouchableOpacity>
-                        <Divider />
-                        <TouchableOpacity
-                          style={sheetItemStyle.settingsItem}
-                          onPress={() => {
-                            setVisibility('Public');
-                            closeSettingsSheet();
-                          }}>
-                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Public</Text>
-                        </TouchableOpacity>
-                        <Divider />
-            </Animated.View>
-
-            <Animated.View
-              style={[
-                {
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  height: sheetHeight,
-                  backgroundColor: theme.colors.surface,
-                  borderTopLeftRadius: 16,
-                  borderTopRightRadius: 16,
-                  paddingTop: 20,
-                  paddingBottom: 80,
-                  zIndex: 15,
-                  elevation: 15,
-                  boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
-                },
-                animatedStyle,
-              ]}
+            <BottomSheetScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
             >
-              <GestureDetector gesture={panGesture}>
-                <View style={{ padding: 20, marginTop: -20 }}>
-                  <View
-                    style={{
-                      width: 70,
-                      height: 2,
-                      borderRadius: 20,
-                      borderWidth: 2,
-                      alignSelf: 'center',
-                      borderColor: theme.colors.onBackground,
-                    }}
-                  ></View>
-                </View>
-              </GestureDetector>
               <AddPassage onAddPassage={addPassage} onClickPlus={clickPlus} />
-            </Animated.View>
+            </BottomSheetScrollView>
+          </BottomSheet>
+          </Portal>
+
+          {/* Add Note Bottom Sheet */}
+          <Portal>
+            <BottomSheet
+              ref={noteSheetRef}
+              index={-1}
+              snapPoints={noteSnapPoints}
+              enablePanDownToClose
+              onChange={handleNoteSheetChange}
+              backgroundStyle={{ backgroundColor: theme.colors.surface }}
+              handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
+              style={{ zIndex: 1000 }}
+            >
+            <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
+              <Text style={{
+                fontFamily: 'Noto Serif bold',
+                fontSize: 20,
+                color: theme.colors.onBackground,
+                marginBottom: 20,
+                marginTop: 10,
+              }}>
+                {editingNoteId ? 'Edit Note' : 'Add Note'}
+              </Text>
+              <RNTextInput
+                style={{
+                  backgroundColor: theme.colors.background,
+                  borderRadius: 8,
+                  padding: 12,
+                  color: theme.colors.onBackground,
+                  fontSize: 16,
+                  minHeight: 120,
+                  textAlignVertical: 'top',
+                  marginBottom: 20,
+                  borderWidth: 1,
+                  borderColor: theme.colors.onSurfaceVariant,
+                }}
+                placeholder="Enter your note..."
+                placeholderTextColor={theme.colors.onSurfaceVariant}
+                multiline
+                numberOfLines={6}
+                value={noteText}
+                onChangeText={setNoteText}
+              />
+              <TouchableOpacity
+                style={{
+                  backgroundColor: theme.colors.primary,
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                }}
+                onPress={handleAddNote}
+                disabled={!noteText.trim()}
+              >
+                <Text style={{
+                  color: theme.colors.onPrimary,
+                  fontSize: 16,
+                  fontWeight: '600',
+                }}>
+                  {editingNoteId ? 'Update Note' : 'Add Note'}
+                </Text>
+              </TouchableOpacity>
+            </BottomSheetView>
+          </BottomSheet>
+          </Portal>
+
+          {/* Settings Bottom Sheet */}
+          <Portal>
+            <BottomSheet
+              ref={settingsSheetRef}
+              index={-1}
+              snapPoints={settingsSnapPoints}
+              enablePanDownToClose
+              onChange={handleSettingsSheetChange}
+              backgroundStyle={{ backgroundColor: theme.colors.surface }}
+              handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
+              style={{ zIndex: 1000 }}
+            >
+            <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
+              <Text style={{
+                fontFamily: 'Noto Serif bold',
+                fontSize: 20,
+                color: theme.colors.onBackground,
+                marginBottom: 20,
+                marginTop: 10,
+              }}>
+                Visibility Settings
+              </Text>
+              <Divider />
+              <TouchableOpacity
+                style={{ paddingVertical: 16 }}
+                onPress={() => {
+                  setVisibility('Private');
+                  closeSettingsSheet();
+                }}
+              >
+                <Text style={{ ...styles.tinyText, fontSize: 16 }}>Not Visible to Friends</Text>
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                style={{ paddingVertical: 16 }}
+                onPress={() => {
+                  setVisibility('Public');
+                  closeSettingsSheet();
+                }}
+              >
+                <Text style={{ ...styles.tinyText, fontSize: 16 }}>Visible to Friends</Text>
+              </TouchableOpacity>
+              <Divider />
+            </BottomSheetView>
+          </BottomSheet>
           </Portal>
 
           </View>

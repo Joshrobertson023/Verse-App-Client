@@ -1,15 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ExploreCollectionCard from '../components/exploreCollectionCard';
 import SearchResultVerseCard from '../components/searchResultVerseCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { Skeleton } from '../components/skeleton';
-import { Category, getAllCategories, getCollectionsByCategory, getPopularPublishedCollections, getRecentPublishedCollections, getTopMemorizedVerses, getTopSavedVerses, PublishedCollection } from '../db';
-import { Collection, useAppStore, Verse } from '../store';
+import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getCollectionsByCategory, getMostRecentCollectionId, getPopularPublishedCollections, getRecentPublishedCollections, getTopMemorizedVerses, getTopSavedVerses, getUserCollections, PublishedCollection, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { Collection, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -32,9 +32,13 @@ export default function ExploreScreen() {
   const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
   const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
   const [isAddingToCollection, setIsAddingToCollection] = useState(false);
+  const [isCreatingNewCollection, setIsCreatingNewCollection] = useState(false);
+  const [newCollectionTitle, setNewCollectionTitle] = useState('');
+  const setUser = useAppStore((state) => state.setUser);
+  const incrementVerseSaveAdjustment = useAppStore((state) => state.incrementVerseSaveAdjustment);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
+  const [versesToShare, setVersesToShare] = useState<UserVerse[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const selectedCategoryRef = useRef<number | null>(null);
 
@@ -196,64 +200,151 @@ export default function ExploreScreen() {
   const handleSaveVerse = (verse: Verse) => {
     setSelectedVerse(verse);
     setPickedCollection(undefined);
+    setNewCollectionTitle('');
     setShowCollectionPicker(true);
   };
 
-  // const handleAddToCollection = async () => {
-  //   if (!pickedCollection || !selectedVerse || !user.username || isAddingToCollection) return;
+  const handleInputChange = (text: string) => {
+    setNewCollectionTitle(text);
+    // Clear selected collection when user starts typing
+    if (text.trim() && pickedCollection) {
+      setPickedCollection(undefined);
+    }
+  };
 
-  //   const parsed = parseVerseReference(selectedVerse.verse_reference);
-  //   if (!parsed) return;
+  const handleCollectionSelect = (collection: Collection) => {
+    setPickedCollection(collection);
+    // Clear input when selecting an existing collection
+    setNewCollectionTitle('');
+  };
 
-  //   const alreadyExists = pickedCollection.userVerses.some(
-  //     uv => uv.readableReference === selectedVerse.verse_reference
-  //   );
-  //   if (alreadyExists) {
-  //     setSnackbarMessage('This passage is already in the collection');
-  //     setSnackbarVisible(true);
-  //     setShowCollectionPicker(false);
-  //     setSelectedVerse(null);
-  //     setPickedCollection(undefined);
-  //     return;
-  //   }
+  const handleCreateNewCollection = async () => {
+    if (!selectedVerse || !user?.username || isCreatingNewCollection || !newCollectionTitle.trim()) return;
+    if (collections.length >= 40) {
+      setSnackbarMessage('You can create up to 40 collections.');
+      setSnackbarVisible(true);
+      return;
+    }
 
-  //   setIsAddingToCollection(true);
+    setIsCreatingNewCollection(true);
+    const userVerse: UserVerse = {
+      username: user.username,
+      readableReference: selectedVerse.verse_reference,
+      verses: [selectedVerse]
+    };
 
-  //   const userVerse: UserVerse = {
-  //     username: user.username,
-  //     readableReference: selectedVerse.verse_reference,
-  //     verses: [selectedVerse]
-  //   };
+    try {
+      const finalTitle = newCollectionTitle.trim() === '' ? 'New Collection' : (newCollectionTitle.trim() === 'Favorites' ? 'Favorites-Other' : newCollectionTitle.trim());
+      const newCollection: Collection = {
+        title: finalTitle,
+        authorUsername: user.username,
+        username: user.username,
+        visibility: 'private',
+        verseOrder: `${selectedVerse.verse_reference},`,
+        userVerses: [userVerse],
+        notes: [],
+        favorites: false,
+      };
 
-  //   try {
-  //     await addUserVersesToNewCollection([userVerse], pickedCollection.collectionId!);
+      await createCollectionDB(newCollection, user.username);
+      const collectionId = await getMostRecentCollectionId(user.username);
+      await addUserVersesToNewCollection([userVerse], collectionId);
+      
+      const updatedCollections = await getUserCollections(user.username);
+      setCollections(updatedCollections);
 
-  //     const currentOrder = pickedCollection.verseOrder || '';
-  //     const newOrder = currentOrder ? `${currentOrder}${selectedVerse.verse_reference},` : `${selectedVerse.verse_reference},`;
+      const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
+      const newOrder = currentOrder ? `${currentOrder},${collectionId}` : collectionId.toString();
+      const updatedUser = { ...user, collectionsOrder: newOrder };
+      setUser(updatedUser);
+      await updateCollectionsOrder(newOrder, user.username);
 
-  //     const updatedCollection = {
-  //       ...pickedCollection,
-  //       userVerses: [...pickedCollection.userVerses, userVerse],
-  //       verseOrder: newOrder,
-  //     } as Collection;
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
 
-  //     await updateCollectionDB(updatedCollection);
-  //     setCollections(collections.map(c => 
-  //       c.collectionId === pickedCollection.collectionId ? updatedCollection : c
-  //     ));
+      if (selectedVerse?.verse_reference) {
+        incrementVerseSaveAdjustment(selectedVerse.verse_reference);
+      }
+      setShowCollectionPicker(false);
+      setSelectedVerse(null);
+      setPickedCollection(undefined);
+      setNewCollectionTitle('');
+      setSnackbarMessage('Collection created and verse saved');
+      setSnackbarVisible(true);
+    } catch (error) {
+      console.error('Failed to create collection:', error);
+      setSnackbarMessage('Failed to create collection');
+      setSnackbarVisible(true);
+    } finally {
+      setIsCreatingNewCollection(false);
+    }
+  };
 
-  //     setShowCollectionPicker(false);
-  //     setSelectedVerse(null);
-  //     setPickedCollection(undefined);
-  //     setIsAddingToCollection(false);
-  //     setSnackbarMessage('Verse added to collection!');
-  //     setSnackbarVisible(true);
-  //   } catch (error) {
-  //     setSnackbarMessage('Failed to add verse to collection');
-  //     setSnackbarVisible(true);
-  //     setIsAddingToCollection(false);
-  //   }
-  // };
+  const handleAddToCollection = async () => {
+    if (!pickedCollection || !selectedVerse || !user.username || isAddingToCollection) return;
+
+    const parsed = parseVerseReference(selectedVerse.verse_reference);
+    if (!parsed) return;
+
+    const alreadyExists = pickedCollection.userVerses.some(
+      uv => uv.readableReference === selectedVerse.verse_reference
+    );
+    if (alreadyExists) {
+      setSnackbarMessage('This passage is already in the collection');
+      setSnackbarVisible(true);
+      setShowCollectionPicker(false);
+      setSelectedVerse(null);
+      setPickedCollection(undefined);
+      return;
+    }
+
+    setIsAddingToCollection(true);
+
+    const userVerse: UserVerse = {
+      username: user.username,
+      readableReference: selectedVerse.verse_reference,
+      verses: [selectedVerse]
+    };
+
+    try {
+      await addUserVersesToNewCollection([userVerse], pickedCollection.collectionId!);
+
+      const currentOrder = pickedCollection.verseOrder || '';
+      const newOrder = currentOrder ? `${currentOrder}${selectedVerse.verse_reference},` : `${selectedVerse.verse_reference},`;
+
+      const updatedCollection = {
+        ...pickedCollection,
+        userVerses: [...pickedCollection.userVerses, userVerse],
+        verseOrder: newOrder,
+      } as Collection;
+
+      await updateCollectionDB(updatedCollection);
+      try {
+        const refreshedCollections = await getUserCollections(user.username);
+        setCollections(refreshedCollections);
+      } catch (error) {
+        console.error('Failed to refresh collections after adding verse:', error);
+        setCollections(collections.map(c => 
+          c.collectionId === pickedCollection.collectionId ? updatedCollection : c
+        ));
+      }
+
+      if (selectedVerse?.verse_reference) {
+        incrementVerseSaveAdjustment(selectedVerse.verse_reference);
+      }
+
+      setShowCollectionPicker(false);
+      setSelectedVerse(null);
+      setPickedCollection(undefined);
+      setIsAddingToCollection(false);
+      setSnackbarMessage('Verse added to collection!');
+      setSnackbarVisible(true);
+    } catch (error) {
+      setSnackbarMessage('Failed to add verse to collection');
+      setSnackbarVisible(true);
+      setIsAddingToCollection(false);
+    }
+  };
 
   const handleReadVerse = (verse: Verse) => {
     const parsed = parseVerseReference(verse.verse_reference);
@@ -266,13 +357,23 @@ export default function ExploreScreen() {
     router.push(`../book/${encodedBookName}?chapter=${parsed.chapter}` as any);
   };
 
-  const handleShareVerse = (verse: Verse) => {
-    setVerseToShare(verse);
+  const handleShareVerse = async (verse: Verse) => {
+    // Check if verse is saved as a UserVerse
+    const savedUserVerse = collections
+      .flatMap(col => col.userVerses || [])
+      .find(uv => uv.readableReference?.toLowerCase().trim() === verse.verse_reference.toLowerCase().trim());
+
+    if (savedUserVerse && savedUserVerse.id) {
+      setVersesToShare([savedUserVerse]);
+    } else {
+      setSnackbarMessage('Please save this verse to a collection first before sharing');
+      setSnackbarVisible(true);
+    }
   };
 
-  const handleShareSuccess = () => {
-    setVerseToShare(null);
-    setSnackbarMessage('Verse shared');
+  const handleShareSuccess = (friendUsername: string) => {
+    setVersesToShare([]);
+    setSnackbarMessage(`Verse shared with ${friendUsername}!`);
     setSnackbarVisible(true);
   };
 
@@ -408,7 +509,37 @@ export default function ExploreScreen() {
           ))}
         </ScrollView>
       )}
-      <View style={{height: 60}} />
+      <View style={{height: 20}} />
+      
+      {/* Verse Catalog Button */}
+      <TouchableOpacity
+        style={{
+          marginHorizontal: 16,
+          marginBottom: 20,
+          paddingVertical: 16,
+          paddingHorizontal: 24,
+          backgroundColor: theme.colors.primary,
+          borderRadius: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8
+        }}
+        onPress={() => router.push('../collections/verseCatalog')}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="book-outline" size={20} color={theme.colors.onPrimary} />
+        <Text style={{
+          fontSize: 16,
+          fontWeight: '600',
+          color: theme.colors.onPrimary,
+          fontFamily: 'Inter'
+        }}>
+          Verse Catalog
+        </Text>
+      </TouchableOpacity>
+      
+      <View style={{height: 40}} />
 
       <Modal
         visible={showCollectionPicker}
@@ -439,10 +570,44 @@ export default function ExploreScreen() {
               Choose a Collection
             </Text>
 
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
+                New Collection Title
+              </Text>
+              <TextInput
+                value={newCollectionTitle}
+                onChangeText={handleInputChange}
+                placeholder="Enter title to create new collection"
+                placeholderTextColor={theme.colors.onSurfaceVariant}
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.colors.onSurfaceVariant,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 16,
+                  fontFamily: 'Inter',
+                  color: theme.colors.onBackground,
+                  backgroundColor: theme.colors.background,
+                }}
+              />
+            </View>
+            <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
+              Or select existing collection
+            </Text>
             <ScrollView>
               {(() => {
-                const favorites = collections.filter(col => col.favorites || col.title === 'Favorites');
-                const nonFavorites = collections.filter(col => !col.favorites && col.title !== 'Favorites');
+                // Filter to only show collections owned by the user
+                const userOwnedCollections = collections.filter(col => {
+                  const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+                  const owner = col.username ? normalize(col.username) : undefined;
+                  const author = col.authorUsername ? normalize(col.authorUsername) : undefined;
+                  const currentUser = normalize(user?.username);
+                  
+                  // Collection is owned by user if username matches OR authorUsername matches (and username is not set or also matches)
+                  return (owner === currentUser) || (author === currentUser && (!owner || owner === currentUser));
+                });
+                const favorites = userOwnedCollections.filter(col => col.favorites || col.title === 'Favorites');
+                const nonFavorites = userOwnedCollections.filter(col => !col.favorites && col.title !== 'Favorites');
                 return (
                   <>
                     {favorites.map((collection) => (
@@ -460,7 +625,7 @@ export default function ExploreScreen() {
                           justifyContent: 'space-between',
                           alignItems: 'center'
                         }}
-                        onPress={() => setPickedCollection(collection)}
+                        onPress={() => handleCollectionSelect(collection)}
                       >
                         <Text style={{
                           fontSize: 16,
@@ -492,7 +657,7 @@ export default function ExploreScreen() {
                             : 'transparent',
                           borderRadius: 8
                         }}
-                        onPress={() => setPickedCollection(collection)}
+                        onPress={() => handleCollectionSelect(collection)}
                       >
                         <Text style={{
                           fontSize: 16,
@@ -523,6 +688,7 @@ export default function ExploreScreen() {
                 }}
                 onPress={() => {
                   setPickedCollection(undefined);
+                  setNewCollectionTitle('');
                   setShowCollectionPicker(false);
                 }}
               >
@@ -535,30 +701,57 @@ export default function ExploreScreen() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={{
-                  backgroundColor: theme.colors.primary,
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  borderRadius: 8,
-                  opacity: (!pickedCollection || isAddingToCollection) ? 0.5 : 1
-                }}
-                //onPress={handleAddToCollection}
-                disabled={!pickedCollection || isAddingToCollection}
-              >
-                {isAddingToCollection ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={{
-                    fontSize: 16,
-                    color: '#fff',
-                    fontFamily: 'Inter',
-                    fontWeight: '600'
-                  }}>
-                    Add
-                  </Text>
-                )}
-              </TouchableOpacity>
+              {newCollectionTitle.trim() ? (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    paddingVertical: 12,
+                    paddingHorizontal: 24,
+                    borderRadius: 8,
+                    opacity: (!newCollectionTitle.trim() || isCreatingNewCollection) ? 0.5 : 1
+                  }}
+                  onPress={handleCreateNewCollection}
+                  disabled={!newCollectionTitle.trim() || isCreatingNewCollection}
+                >
+                  {isCreatingNewCollection ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{
+                      fontSize: 16,
+                      color: '#fff',
+                      fontFamily: 'Inter',
+                      fontWeight: '600'
+                    }}>
+                      Create
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    paddingVertical: 12,
+                    paddingHorizontal: 24,
+                    borderRadius: 8,
+                    opacity: (!pickedCollection || isAddingToCollection) ? 0.5 : 1
+                  }}
+                  onPress={handleAddToCollection}
+                  disabled={!pickedCollection || isAddingToCollection}
+                >
+                  {isAddingToCollection ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{
+                      fontSize: 16,
+                      color: '#fff',
+                      fontFamily: 'Inter',
+                      fontWeight: '600'
+                    }}>
+                      Add
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -576,9 +769,9 @@ export default function ExploreScreen() {
       </Snackbar>
 
       <ShareVerseSheet
-        visible={!!verseToShare}
-        verseReference={verseToShare?.verse_reference || null}
-        onClose={() => setVerseToShare(null)}
+        visible={versesToShare.length > 0}
+        userVerses={versesToShare}
+        onClose={() => setVersesToShare([])}
         onShareSuccess={handleShareSuccess}
         onShareError={() => { setSnackbarMessage('Failed to share verse'); setSnackbarVisible(true); }}
       />

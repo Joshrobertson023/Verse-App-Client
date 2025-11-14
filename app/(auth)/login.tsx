@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
-import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, TextInput } from 'react-native-paper';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Button from '../components/Button';
 import checkUsernameAvailable, { getStreakLength, getUserCollections, getUserPasswordHash, loginUser } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
@@ -54,6 +55,7 @@ const nextClick = async () => {
             versesMemorized: 0,
             versesOverdue: 0,
             numberPublishedCollections: 0,
+            points: 0,
         }
 
         const usernameAvailable = await checkUsernameAvailable(username); 
@@ -99,7 +101,16 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={{...styles.centered, marginBottom: 150}}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <ScrollView 
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={{...styles.centered, marginBottom: 150}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Login to Your Account:</Text>
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
@@ -113,27 +124,27 @@ const nextClick = async () => {
                             textContentType="password"
                             secureTextEntry={!showPassword}
                             label="Password" mode="outlined" style={styles.input} value={password} 
-                            right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword((prev) => !prev)} />}
+                            right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} style={{marginTop: 25}} onPress={() => setShowPassword((prev) => !prev)} />}
                             onChangeText={(text) => handleTextChange('password', text)} />
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
-                <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
-                    {loading ? (
-                        <Text style={styles.buttonText_filled}>
-                            <ActivityIndicator animating={true} color={theme.colors.background} />
-                        </Text> 
-                    ) : (
-                        <Text style={styles.buttonText_filled}>Login</Text>
-                    )}
-                </TouchableOpacity>
-                <View style={{ marginTop: 16, width: '100%', flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Button 
+                  title="Login" 
+                  onPress={() => {nextClick()}} 
+                  variant="filled"
+                  loading={loading}
+                  style={{ marginTop: 12 }}
+                />
+                <View style={{ marginTop: 16, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
                     <TouchableOpacity onPress={() => router.push('/(auth)/forgotUsername')}>
-                        <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Forgot Username?</Text>
+                        <Text style={{ ...styles.tinyText, color: theme.colors.primary, marginBottom: 10 }}>Forgot Username</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => router.push('/(auth)/forgotPassword')}>
-                        <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Forgot Password?</Text>
+                        <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Forgot Password</Text>
                     </TouchableOpacity>
                 </View>
-            </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }

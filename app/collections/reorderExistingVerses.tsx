@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, {
@@ -7,11 +7,50 @@ import DraggableFlatList, {
 } from 'react-native-draggable-flatlist';
 import colors from '../colors';
 import { updateCollectionDB, deleteUserVersesFromCollection, addUserVersesToNewCollection, getUserCollections } from '../db';
-import { useAppStore, UserVerse } from '../store';
+import { useAppStore, UserVerse, Collection, CollectionNote } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
+
+type ReorderableItem = {type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote};
+
+// Order verses by verseOrder
+function orderByVerseOrder(userVerses: UserVerse[], verseOrder?: string): UserVerse[] {
+  if (!verseOrder || !verseOrder.trim()) return userVerses;
+  
+  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '').map(ref => ref.trim());
+  const ordered: UserVerse[] = [];
+  const unordered: UserVerse[] = [];
+  
+  // Create a map for quick lookup (case-insensitive)
+  const verseMap = new Map<string, UserVerse>();
+  userVerses.forEach(uv => {
+    if (uv.readableReference) {
+      const key = uv.readableReference.trim().toLowerCase();
+      if (!verseMap.has(key)) {
+        verseMap.set(key, uv);
+      }
+    }
+  });
+  
+  // First, add verses in the order specified
+  orderArray.forEach(ref => {
+    const key = ref.toLowerCase();
+    const verse = verseMap.get(key);
+    if (verse) {
+      ordered.push(verse);
+      verseMap.delete(key);
+    }
+  });
+  
+  // Then add any verses not in the order
+  verseMap.forEach(verse => {
+    unordered.push(verse);
+  });
+  
+  return [...ordered, ...unordered];
+}
 
 export default function ReorderExistingVerses() {
   const styles = useStyles();
@@ -21,20 +60,59 @@ export default function ReorderExistingVerses() {
   const updateCollection = useAppStore((state) => state.updateCollection);
   const editingCollection = useAppStore((state) => state.editingCollection);
   const setEditingCollection = useAppStore((state) => state.setEditingCollection);
+  const collections = useAppStore((state) => state.collections);
+  const params = useLocalSearchParams();
   
-  const [reorderedData, setReorderedData] = useState<UserVerse[]>(editingCollection?.userVerses || []);
+  const collectionId = params.id ? (Array.isArray(params.id) ? params.id[0] : params.id) : undefined;
+  
+  // Get collection from store or editingCollection
+  const collection = collectionId 
+    ? collections.find(c => c.collectionId?.toString() === collectionId)
+    : editingCollection;
+  
+  const [reorderedData, setReorderedData] = useState<ReorderableItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Initialize reorderedData when editingCollection changes
+  // Initialize reorderedData when collection changes
   useEffect(() => {
-    if (editingCollection?.userVerses) {
-      console.log('Initializing reorderedData with:', editingCollection.userVerses.length, 'verses for existing collection');
-      setReorderedData(editingCollection.userVerses);
+    if (!collection) {
+      setIsLoading(false);
+      return;
     }
-  }, [editingCollection?.userVerses]);
+    
+    const verses = collection.userVerses || [];
+    const notes = collection.notes || [];
+    
+    // Combine verses and notes, order by verseOrder
+    const orderArray = collection.verseOrder?.split(',').filter(o => o.trim()) || [];
+    const verseMap = new Map(verses.map((uv: UserVerse) => [uv.readableReference?.trim().toLowerCase(), uv]));
+    const noteMap = new Map(notes.map(n => [n.id, n]));
+    const ordered: ReorderableItem[] = [];
+    const unordered: ReorderableItem[] = [];
+    
+    orderArray.forEach(ref => {
+      const trimmedRef = ref.trim();
+      const verseKey = trimmedRef.toLowerCase();
+      if (verseMap.has(verseKey)) {
+        ordered.push({type: 'verse', data: verseMap.get(verseKey)!});
+        verseMap.delete(verseKey);
+      } else if (noteMap.has(trimmedRef)) {
+        ordered.push({type: 'note', data: noteMap.get(trimmedRef)!});
+        noteMap.delete(trimmedRef);
+      }
+    });
+    
+    verseMap.forEach(verse => unordered.push({type: 'verse', data: verse}));
+    noteMap.forEach(note => unordered.push({type: 'note', data: note}));
+    
+    console.log('Initializing reorderedData with:', ordered.length + unordered.length, 'items (', verses.length, 'verses,', notes.length, 'notes) for collection:', collection.title);
+    setReorderedData([...ordered, ...unordered]);
+    setIsLoading(false);
+  }, [collection?.userVerses, collection?.notes, collection?.verseOrder, collection?.collectionId]);
 
   const renderItem = useCallback(
-    ({ item, drag, isActive }: RenderItemParams<UserVerse>) => {
+    ({ item, drag, isActive }: RenderItemParams<ReorderableItem>) => {
       return (
         <TouchableOpacity
           style={[
@@ -61,14 +139,26 @@ export default function ReorderExistingVerses() {
         >
           <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', width: '100%'}}>
             <View style={{flex: 1}}>
-              <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{item.readableReference}</Text>
-              {item.verses.map((verse) => (
-                <View key={verse.verse_reference} style={{}}>
-                  <View>
-                    <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number ? verse.verse_Number + ": " : ''}{verse.text}</Text>
+              {item.type === 'verse' ? (
+                <>
+                  <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{item.data.readableReference}</Text>
+                  {item.data.verses.map((verse) => (
+                    <View key={verse.verse_reference} style={{}}>
+                      <View>
+                        <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number ? verse.verse_Number + ": " : ''}{verse.text}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 8}}>
+                    <Ionicons name="document-text-outline" size={18} color={theme.colors.onBackground} style={{marginRight: 8}} />
+                    <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>Note</Text>
                   </View>
-                </View>
-              ))}
+                  <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{item.data.text}</Text>
+                </>
+              )}
             </View>
             <View style={{alignItems: 'center', justifyContent: 'center'}}>
               <Ionicons name="reorder-three-outline" size={28} color={theme.colors.onBackground} />
@@ -78,14 +168,20 @@ export default function ReorderExistingVerses() {
       ); 
     }, [styles, theme]);
 
-  const handleDragEnd = useCallback(({ data }: { data: UserVerse[] }) => {
-    console.log('handleDragEnd - updating reorderedData with', data.length, 'verses for existing collection');
+  const handleDragEnd = useCallback(({ data }: { data: ReorderableItem[] }) => {
+    console.log('handleDragEnd - updating reorderedData with', data.length, 'items for existing collection');
     setReorderedData(data);
   }, []);
 
   const handleSave = async () => {
-    if (!editingCollection?.collectionId) {
+    if (!collection?.collectionId) {
       console.error('No collection ID to update');
+      setIsSaving(false);
+      return;
+    }
+
+    if (reorderedData.length === 0) {
+      console.error('No items to save');
       setIsSaving(false);
       return;
     }
@@ -94,19 +190,35 @@ export default function ReorderExistingVerses() {
     
     console.log('Saving existing collection - reorderedData length:', reorderedData.length);
     
-    // Create verseOrder string from reordered data
-    let verseOrder = '';
-    reorderedData.forEach((userVerse: UserVerse) => {
-      verseOrder += userVerse.readableReference + ',';
+    // Separate verses and notes from reordered data
+    const reorderedVerses: UserVerse[] = [];
+    const reorderedNotes: CollectionNote[] = [];
+    
+    reorderedData.forEach((item) => {
+      if (item.type === 'verse') {
+        reorderedVerses.push(item.data);
+      } else {
+        reorderedNotes.push(item.data);
+      }
     });
+    
+    // Create verseOrder string from reordered data (combines verse refs and note IDs)
+    const verseRefs = reorderedVerses
+      .map((uv) => uv.readableReference?.trim())
+      .filter((ref): ref is string => Boolean(ref && ref.length > 0));
+    const noteIds = reorderedNotes.map((n) => n.id);
+    const verseOrder = [...verseRefs, ...noteIds].join(',');
+    
     console.log('Saving existing collection - verseOrder:', verseOrder);
-    console.log('Saving existing collection - reorderedData verses:', reorderedData.map(uv => uv.readableReference));
+    console.log('Saving existing collection - verses:', reorderedVerses.map(uv => uv.readableReference));
+    console.log('Saving existing collection - notes:', reorderedNotes.map(n => n.id));
     
     try {
       // Update collection in database (includes verseOrder update)
-      const updatedCollection = {
-        ...editingCollection,
-        userVerses: reorderedData,
+      const updatedCollection: Collection = {
+        ...collection,
+        userVerses: reorderedVerses,
+        notes: reorderedNotes,
         verseOrder: verseOrder
       };
       
@@ -114,27 +226,26 @@ export default function ReorderExistingVerses() {
       await updateCollectionDB(updatedCollection);
       
       // Delete old user verses
-      await deleteUserVersesFromCollection(editingCollection.collectionId);
+      await deleteUserVersesFromCollection(collection.collectionId);
       
-      // Add updated user verses
-      await addUserVersesToNewCollection(reorderedData, editingCollection.collectionId);
+      // Add updated user verses (this will prevent duplicates)
+      await addUserVersesToNewCollection(reorderedVerses, collection.collectionId);
       
       // Fetch updated collections from server
-      const collections = await getUserCollections(user.username);
-      setCollections(collections);
+      const updatedCollections = await getUserCollections(user.username);
+      setCollections(updatedCollections);
       
       // Find the updated collection with server-ordered verses
-      const updatedCol = collections.find(c => c.collectionId === editingCollection.collectionId);
+      const updatedCol = updatedCollections.find(c => c.collectionId === collection.collectionId);
       console.log('Fetched collection verseOrder:', updatedCol?.verseOrder);
       console.log('Fetched collection userVerses:', updatedCol?.userVerses.map(uv => uv.readableReference));
       
       if (updatedCol) {
         // Update store with server-ordered collection
         updateCollection(updatedCol);
-        setEditingCollection(updatedCol);
-        
-        // Force trigger a re-render by updating isSaving state
-        await new Promise(resolve => setTimeout(resolve, 100));
+        if (editingCollection?.collectionId === updatedCol.collectionId) {
+          setEditingCollection(updatedCol);
+        }
       }
       
       setIsSaving(false);
@@ -149,20 +260,52 @@ export default function ReorderExistingVerses() {
     router.back();
   };
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.text}>Loading...</Text>
+      </View>
+    );
+  }
+
+  if (!collection) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.text}>Collection not found</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20, padding: 15, backgroundColor: theme.colors.primary, borderRadius: 10 }}>
+          <Text style={{ color: theme.colors.onPrimary }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (reorderedData.length === 0) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+        <Text style={styles.text}>No passages or notes to reorder</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 20, padding: 15, backgroundColor: theme.colors.primary, borderRadius: 10 }}>
+          <Text style={{ color: theme.colors.onPrimary }}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <View style={{backgroundColor: theme.colors.surface, padding: 15, borderRadius: 10, marginBottom: 15}}>
+      <View style={{backgroundColor: theme.colors.surface, padding: 15, borderRadius: 10, marginBottom: 15, marginTop: 10}}>
         <Text style={{...styles.tinyText, color: theme.colors.onSurface}}>
-          Long press and drag to reorder your passages
+          Long press and drag to reorder your passages and notes
         </Text>
       </View>
 
       <DraggableFlatList
         data={reorderedData}
         renderItem={renderItem}
-        keyExtractor={(item) => item.readableReference || item.verses[0]?.verse_reference || 'unknown'}
+        keyExtractor={(item) => item.type === 'verse' 
+          ? item.data.readableReference || item.data.verses[0]?.verse_reference || `verse-${Math.random()}`
+          : item.data.id}
         onDragEnd={handleDragEnd}
-        contentContainerStyle={{paddingBottom: 100}}
+        contentContainerStyle={{paddingBottom: 100, paddingHorizontal: 20}}
       />
 
       {/* Shadow for Cancel button - positioned behind */}

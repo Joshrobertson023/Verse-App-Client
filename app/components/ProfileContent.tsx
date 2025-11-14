@@ -2,10 +2,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Tooltip } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAllUserVerses, getUserActivity, updateUserProfile } from '../db';
+import { getAllUserVerses, getUserActivity, updateActivityNotifications, updateUserProfile, uploadProfilePicture, deleteProfilePicture, refreshUser, suggestVerseOfDay } from '../db';
 import { Activity, loggedOutUser, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -26,10 +29,14 @@ export default function ProfileContent() {
 
   const [showDescriptionEdit, setShowDescriptionEdit] = useState(false);
   const [tempDescription, setTempDescription] = useState(user.description || '');
+  const [uploadingPicture, setUploadingPicture] = useState(false);
+  const [showActivityHelp, setShowActivityHelp] = useState(false);
+  const [showSuggestionDialog, setShowSuggestionDialog] = useState(false);
+  const [suggestionReference, setSuggestionReference] = useState('');
+  const [submittingSuggestion, setSubmittingSuggestion] = useState(false);
 
   const isLoadingProfile = profileCache.isLoading && !profileCache.isLoaded;
   const myActivityLoaded = profileCache.isLoaded && !profileCache.isLoading;
-  const memorizedCount = profileCache.memorizedCount || 0;
   const myActivity = useMemo<ActivityWithTimeAgo[]>(() => {
     return (profileCache.activity || []).map((activity) => {
       const date = new Date(activity.dateCreated);
@@ -88,10 +95,7 @@ export default function ProfileContent() {
 
         if (isCancelled) return;
 
-        const memorized = (verses || []).filter((verse: any) => verse.progressPercent === 100).length;
-
         setProfileCache({
-          memorizedCount: memorized,
           activity: activity || [],
           isLoaded: true,
           isLoading: false,
@@ -148,12 +152,148 @@ export default function ProfileContent() {
     setShowDescriptionEdit(false);
   };
 
+  const handleSubmitSuggestion = async () => {
+    if (!suggestionReference.trim()) {
+      Alert.alert('Error', 'Please enter a verse reference');
+      return;
+    }
+
+    setSubmittingSuggestion(true);
+    try {
+      await suggestVerseOfDay(user.username, suggestionReference.trim());
+      Alert.alert('Success', 'Your suggestion has been submitted! Thank you.');
+      setSuggestionReference('');
+      setShowSuggestionDialog(false);
+    } catch (error) {
+      console.error('Error submitting suggestion:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to submit suggestion. Please try again.');
+    } finally {
+      setSubmittingSuggestion(false);
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'We need access to your photos to set a profile picture.');
+        return;
+      }
+
+      // Show action sheet
+      Alert.alert(
+        'Profile Picture',
+        'Choose an option',
+        [
+          { text: 'Camera', onPress: () => pickImageFromCamera() },
+          { text: 'Photo Library', onPress: () => pickImageFromLibrary() },
+          { text: user.profilePictureUrl ? 'Remove Picture' : undefined, onPress: () => handleRemovePicture(), style: 'destructive' },
+          { text: 'Cancel', style: 'cancel' },
+        ],
+        { cancelable: true }
+      );
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to open image picker');
+    }
+  };
+
+  const pickImageFromLibrary = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await handleUploadPicture(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image from library:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const pickImageFromCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'We need access to your camera to take a profile picture.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await handleUploadPicture(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const handleUploadPicture = async (imageUri: string) => {
+    setUploadingPicture(true);
+    try {
+      const profilePictureUrl = await uploadProfilePicture(user.username, imageUri);
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+      Alert.alert('Success', 'Profile picture updated successfully');
+    } catch (error) {
+      console.error('Error uploading profile picture:', error);
+      Alert.alert('Error', 'Failed to upload profile picture. Please try again.');
+    } finally {
+      setUploadingPicture(false);
+    }
+  };
+
+  const handleRemovePicture = async () => {
+    Alert.alert(
+      'Remove Profile Picture',
+      'Are you sure you want to remove your profile picture?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setUploadingPicture(true);
+            try {
+              await deleteProfilePicture(user.username);
+              const refreshedUser = await refreshUser(user.username);
+              setUser(refreshedUser);
+              Alert.alert('Success', 'Profile picture removed successfully');
+            } catch (error) {
+              console.error('Error removing profile picture:', error);
+              Alert.alert('Error', 'Failed to remove profile picture. Please try again.');
+            } finally {
+              setUploadingPicture(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
       <View style={{ padding: 20, paddingTop: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30, marginTop: 20 }}>
-          <View style={{ position: 'relative' }}>
+          <TouchableOpacity 
+            style={{ position: 'relative' }}
+            onPress={handlePickImage}
+            disabled={uploadingPicture}
+            activeOpacity={0.7}
+          >
             <View
               style={{
                 width: 70,
@@ -164,24 +304,53 @@ export default function ProfileContent() {
                 alignItems: 'center',
                 borderWidth: 2,
                 borderColor: theme.colors.onBackground,
+                overflow: 'hidden',
               }}
             >
-              <Ionicons name="person" size={40} color={theme.colors.onBackground} />
+              {user.profilePictureUrl ? (
+                <Image
+                  source={{ uri: user.profilePictureUrl }}
+                  style={{ width: 70, height: 70 }}
+                  contentFit="cover"
+                />
+              ) : (
+                <Ionicons name="person" size={40} color={theme.colors.onBackground} />
+              )}
+              {uploadingPicture && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                </View>
+              )}
             </View>
             <View
               style={{
                 position: 'absolute',
                 bottom: 0,
                 right: 0,
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: '#4CAF50',
+                width: 24,
+                height: 24,
+                borderRadius: 12,
+                backgroundColor: theme.colors.primary,
                 borderWidth: 3,
                 borderColor: theme.colors.background,
+                justifyContent: 'center',
+                alignItems: 'center',
               }}
-            />
-          </View>
+            >
+              <Ionicons name="camera" size={12} color={theme.colors.onPrimary} />
+            </View>
+          </TouchableOpacity>
 
           <View style={{ marginLeft: 15, flex: 1 }}>
             <Text
@@ -287,15 +456,6 @@ export default function ProfileContent() {
           >
             <View
               style={{
-                justifyContent: 'center',
-                marginTop: -18,
-                marginRight: 5,
-              }}
-            >
-              <Ionicons name="checkmark-done" size={58} color={theme.colors.onBackground} />
-            </View>
-            <View
-              style={{
                 flexDirection: 'column',
                 justifyContent: 'center',
               }}
@@ -310,7 +470,7 @@ export default function ProfileContent() {
                   color: theme.colors.onBackground,
                 }}
               >
-                {memorizedCount}
+                {user.points || 0}
               </Text>
               <Text
                 style={{
@@ -320,7 +480,7 @@ export default function ProfileContent() {
                   color: theme.colors.onSurfaceVariant,
                 }}
               >
-                Memorized
+                Points
               </Text>
             </View>
           </View>
@@ -330,6 +490,11 @@ export default function ProfileContent() {
           icon="calendar"
           label="Streak Calendar"
           onPress={() => router.push('/user/streak')}
+        />
+        <ProfileDrawerLink
+          icon="trophy-outline"
+          label="Global Leaderboard"
+          onPress={() => router.push('/user/leaderboard')}
         />
         <View style={{height: 10}} />
         <ProfileDrawerLink
@@ -381,8 +546,92 @@ export default function ProfileContent() {
                   marginBottom: 12,
                 }}
               >
-                <Text style={{ ...styles.tinyText, fontFamily: 'Inter bold' }}>My Activity</Text>
-                <TouchableOpacity activeOpacity={0.1}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{ ...styles.tinyText, fontFamily: 'Inter bold' }}>My Activity</Text>
+                  <Pressable 
+                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+                    onPress={() => setShowActivityHelp(true)}
+                  >
+                    <Ionicons 
+                      name="help-circle-outline" 
+                      size={20} 
+                      color={theme.colors.onSurfaceVariant}
+                      style={{ marginLeft: 4 }}
+                    />
+                  </Pressable>
+                  <Modal
+                    visible={showActivityHelp}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={() => setShowActivityHelp(false)}
+                  >
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
+                      activeOpacity={1}
+                      onPress={() => setShowActivityHelp(false)}
+                    >
+                      <TouchableOpacity
+                        activeOpacity={1}
+                        onPress={(e) => e.stopPropagation()}
+                        style={{
+                          backgroundColor: theme.colors.surface,
+                          padding: 20,
+                          borderRadius: 12,
+                          marginHorizontal: 40,
+                          maxWidth: '80%',
+                        }}
+                      >
+                        <Text style={{
+                          ...styles.text,
+                          color: theme.colors.onSurface,
+                          textAlign: 'center',
+                        }}>
+                          This is what was sent to your friends
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => setShowActivityHelp(false)}
+                          style={{
+                            marginTop: 16,
+                            paddingVertical: 8,
+                            paddingHorizontal: 16,
+                            backgroundColor: theme.colors.primary,
+                            borderRadius: 8,
+                            alignSelf: 'center',
+                          }}
+                        >
+                          <Text style={{
+                            color: theme.colors.onPrimary,
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                          }}>
+                            OK
+                          </Text>
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  </Modal>
+                </View>
+                <TouchableOpacity 
+                  activeOpacity={0.1}
+                  onPress={async () => {
+                    try {
+                      const newValue = !(user.activityNotificationsEnabled ?? true);
+                      await updateActivityNotifications(user.username, newValue);
+                      setUser({
+                        ...user,
+                        activityNotificationsEnabled: newValue
+                      });
+                    } catch (error) {
+                      console.error('Failed to update activity sharing:', error);
+                      alert('Failed to update activity sharing');
+                    }
+                  }}
+                >
                   <Text
                     style={{
                       fontFamily: 'Inter',
@@ -392,7 +641,7 @@ export default function ProfileContent() {
                       marginTop: -5
                     }}
                   >
-                    Stop Sharing Activity
+                    {(user.activityNotificationsEnabled ?? true) ? 'Stop Sharing Activity' : 'Start Sharing Activity'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -472,6 +721,19 @@ export default function ProfileContent() {
             icon="information-circle-outline"
             label="About"
             onPress={() => router.push('/about')}
+          />
+
+          <ProfileDrawerLink
+            icon="star"
+            label="Upgrade to Pro"
+            onPress={() => router.push('/pro')}
+            iconColor={theme.colors.primary}
+          />
+
+          <ProfileDrawerLink
+            icon="bulb-outline"
+            label="Suggest Verse of Day"
+            onPress={() => setShowSuggestionDialog(true)}
           />
 
           {user.isAdmin && (
@@ -603,6 +865,121 @@ export default function ProfileContent() {
                 >
                   Save
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showSuggestionDialog} transparent animationType="fade" onRequestClose={() => setShowSuggestionDialog(false)}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: theme.colors.surface,
+              borderRadius: 16,
+              padding: 24,
+              width: '90%',
+              maxWidth: 400,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: '600',
+                color: theme.colors.onBackground,
+                marginBottom: 16,
+                fontFamily: 'Inter',
+              }}
+            >
+              Suggest Verse of Day
+            </Text>
+
+            <Text
+              style={{
+                fontSize: 14,
+                color: theme.colors.onSurfaceVariant,
+                marginBottom: 16,
+                fontFamily: 'Inter',
+                lineHeight: 20,
+              }}
+            >
+              Enter a verse reference (e.g., "John 3:16" or "Psalm 23:1-6")
+            </Text>
+
+            <TextInput
+              style={{
+                backgroundColor: theme.colors.background,
+                borderRadius: 12,
+                padding: 12,
+                color: theme.colors.onBackground,
+                fontSize: 16,
+                fontFamily: 'Inter',
+                borderWidth: 1,
+                borderColor: theme.colors.outline,
+                marginBottom: 20,
+              }}
+              placeholder="Verse reference"
+              placeholderTextColor={theme.colors.onSurfaceVariant}
+              value={suggestionReference}
+              onChangeText={setSuggestionReference}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSuggestionReference('');
+                  setShowSuggestionDialog(false);
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                }}
+                disabled={submittingSuggestion}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                    fontWeight: '600',
+                  }}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSubmitSuggestion}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: theme.colors.primary,
+                  opacity: submittingSuggestion ? 0.5 : 1,
+                }}
+                disabled={submittingSuggestion || !suggestionReference.trim()}
+              >
+                {submittingSuggestion ? (
+                  <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                ) : (
+                  <Text
+                    style={{
+                      color: theme.colors.onPrimary,
+                      fontFamily: 'Inter',
+                      fontWeight: '600',
+                    }}
+                  >
+                    Submit
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>

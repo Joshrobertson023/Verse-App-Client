@@ -1,7 +1,7 @@
 import { Link, router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
-import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createCollectionDB, createUser, getUserCollections, loginUser, updateCollectionsOrder } from '../db';
@@ -41,8 +41,8 @@ const nextClick = async () => {
             return;
         }
 
-        if (password.length < 12) {
-            setErrorMessage('Password must be at least 12 characters long');
+        if (password.length < 11) {
+            setErrorMessage('Password must be at least 11 characters long');
             setLoading(false);
             return;
         }
@@ -59,6 +59,8 @@ const nextClick = async () => {
             versesMemorized: 0,
             versesOverdue: 0,
             collectionsSortBy: 1,
+            points: 0,
+            bibleVersion: loginInfo?.bibleVersion || 'KJV',
         }
 
         await createUser(newUser);
@@ -96,7 +98,16 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={{...styles.centered, marginBottom: 150}}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <ScrollView 
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={{...styles.centered, marginBottom: 150}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Create a Password:</Text>
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
@@ -138,7 +149,9 @@ const nextClick = async () => {
                   </Link>
                   .
                 </Text>
-            </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }

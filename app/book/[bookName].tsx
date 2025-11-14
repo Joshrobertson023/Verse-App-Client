@@ -2,13 +2,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, Stack, useGlobalSearchParams, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { Dialog, Portal, RadioButton } from 'react-native-paper';
 import { bibleBooks } from '../bibleData';
 import VerseSheet from '../components/verseSheet';
 import { DEFAULT_READER_SETTINGS, READER_BACKGROUND_THEMES, READER_FONT_OPTIONS, READER_PRESETS, READER_SETTINGS_STORAGE_KEY, type ReaderBackgroundKey, type ReaderPresetKey, type ReaderSettings } from '../constants/reader';
-import { getChapterVerses } from '../db';
-import { Verse } from '../store';
+import { getChapterVerses, refreshUser, updateUserProfile, getHighlightsByChapter, Highlight } from '../db';
+import { useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -122,6 +122,8 @@ const WINDOW_OFFSETS = [-1, 0, 1] as const;
 export default function ChapterReadingPage() {
   const styles = useStyles();
   const theme = useAppTheme();
+  const user = useAppStore((state) => state.user);
+  const setUser = useAppStore((state) => state.setUser);
   const { bookName } = useLocalSearchParams<{ bookName: string }>();
   const { chapter } = useGlobalSearchParams<{ chapter?: string }>();
 
@@ -186,12 +188,12 @@ export default function ChapterReadingPage() {
   const loadingChaptersRef = useRef<Set<string>>(new Set());
   const isMountedRef = useRef(true);
   const [prefetchTick, setPrefetchTick] = useState(0);
-  const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
-  const [selectedVerseIndex, setSelectedVerseIndex] = useState<number>(0);
-  const [sheetVisible, setSheetVisible] = useState(false);
+  const [selectedVerseIndices, setSelectedVerseIndices] = useState<Set<number>>(new Set());
+  const [selectedUserVerse, setSelectedUserVerse] = useState<UserVerse | null>(null);
   const [readerSettings, setReaderSettings] = useState<ReaderSettings>(() => ({ ...DEFAULT_READER_SETTINGS }));
   const [styleDialogVisible, setStyleDialogVisible] = useState(false);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
+  const [highlights, setHighlights] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -287,10 +289,75 @@ export default function ChapterReadingPage() {
   }, [chapterIndexMap, currentIndex, requestedChapterMeta]);
 
   useEffect(() => {
-    setSheetVisible(false);
-    setSelectedVerse(null);
-    setSelectedVerseIndex(0);
+    setSelectedVerseIndices(new Set());
+    setSelectedUserVerse(null);
   }, [currentIndex]);
+
+  // Helper function to create readableReference from verse indices
+  const createReadableReference = useCallback((bookName: string, chapter: number, verseIndices: number[]): string => {
+    if (verseIndices.length === 0) return '';
+    if (verseIndices.length === 1) {
+      return `${bookName} ${chapter}:${verseIndices[0] + 1}`;
+    }
+    
+    // Sort indices
+    const sorted = [...verseIndices].sort((a, b) => a - b);
+    const verseNumbers = sorted.map(idx => idx + 1);
+    
+    // Group consecutive verses
+    let result = `${bookName} ${chapter}:`;
+    let start = verseNumbers[0];
+    let end = verseNumbers[0];
+    
+    for (let i = 1; i < verseNumbers.length; i++) {
+      if (verseNumbers[i] === end + 1) {
+        end = verseNumbers[i];
+      } else {
+        if (start === end) {
+          result += `${start}, `;
+        } else {
+          result += `${start}-${end}, `;
+        }
+        start = verseNumbers[i];
+        end = verseNumbers[i];
+      }
+    }
+    
+    // Add the last group
+    if (start === end) {
+      result += `${start}`;
+    } else {
+      result += `${start}-${end}`;
+    }
+    
+    return result;
+  }, []);
+
+  const loadHighlightsForChapter = useCallback(
+    async (book: string, chapterNumber: number) => {
+      if (!user?.username || user.username === 'Default User') return;
+      
+      try {
+        const chapterHighlights = await getHighlightsByChapter(user.username, book, chapterNumber);
+        const highlightSet = new Set(chapterHighlights.map(h => h.verseReference));
+        setHighlights(prev => {
+          const newSet = new Set(prev);
+          // Remove old highlights for this chapter
+          Array.from(newSet).forEach(ref => {
+            if (ref.startsWith(`${book} ${chapterNumber}:`)) {
+              newSet.delete(ref);
+            }
+          });
+          // Add new highlights
+          highlightSet.forEach(ref => newSet.add(ref));
+          return newSet;
+        });
+      } catch (error) {
+        console.error('Failed to load highlights:', error);
+      }
+    },
+    [user?.username]
+  );
 
   const ensureChapterData = useCallback(
     async (book: string, chapterNumber: number) => {
@@ -309,6 +376,9 @@ export default function ChapterReadingPage() {
       try {
         const data = await getChapterVerses(book, chapterNumber);
         prefetchedChaptersRef.current.set(cacheKey, data);
+        
+        // Load highlights for this chapter if user is logged in
+        await loadHighlightsForChapter(book, chapterNumber);
       } catch (error) {
         console.error('Failed to load chapter:', error);
       } finally {
@@ -318,7 +388,7 @@ export default function ChapterReadingPage() {
         }
       }
     },
-    []
+    [loadHighlightsForChapter]
   );
 
   const getChapterMetaForIndex = useCallback(
@@ -351,9 +421,8 @@ export default function ChapterReadingPage() {
         ensureChapterData(targetMeta.bookName, targetMeta.chapter);
       }
 
-      setSheetVisible(false);
-      setSelectedVerse(null);
-      setSelectedVerseIndex(0);
+      setSelectedVerseIndices(new Set());
+      setSelectedUserVerse(null);
 
       const currentMeta = getChapterMetaForIndex(currentIndex);
       setCurrentIndex(targetIndex);
@@ -388,6 +457,18 @@ export default function ChapterReadingPage() {
   const handleBackToBooks = () => {
     router.back();
   };
+
+  const handleVersePress = useCallback((_verse: Verse, index: number) => {
+    setSelectedVerseIndices((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }, []);
 
   const handleScroll = (event: any) => {
     const currentScrollPosition = event.nativeEvent.contentOffset.y;
@@ -460,6 +541,13 @@ export default function ChapterReadingPage() {
     }));
   };
 
+  const handleToggleShowMetadata = (value: boolean) => {
+    setReaderSettings((prev) => ({
+      ...prev,
+      showMetadata: value,
+    }));
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -505,6 +593,7 @@ export default function ChapterReadingPage() {
 
     persistSettings();
   }, [readerSettings, settingsHydrated]);
+
   
   useEffect(() => {
     const meta = getChapterMetaForIndex(currentIndex);
@@ -573,6 +662,49 @@ export default function ChapterReadingPage() {
 
     return data;
   }, [currentIndex, getChapterMetaForOffset, prefetchTick]);
+
+  useEffect(() => {
+    if (selectedVerseIndices.size === 0) {
+      setSelectedUserVerse(null);
+      return;
+    }
+
+    const activeColumnData = columnDataByOffset[0];
+    const columnVerses = activeColumnData?.verses ?? [];
+    const sortedIndices = Array.from(selectedVerseIndices).sort((a, b) => a - b);
+
+    const selectedVerses: Verse[] = [];
+    sortedIndices.forEach((verseIndex) => {
+      const sourceVerse = columnVerses[verseIndex];
+      if (!sourceVerse) {
+        return;
+      }
+
+      const normalizedNumber =
+        typeof sourceVerse.verse_Number === 'number'
+          ? sourceVerse.verse_Number.toString()
+          : sourceVerse.verse_Number ?? String(verseIndex + 1);
+
+      selectedVerses.push({
+        ...sourceVerse,
+        verse_Number: normalizedNumber,
+        verse_reference:
+          sourceVerse.verse_reference ?? `${activeBookName} ${currentChapter}:${verseIndex + 1}`,
+      });
+    });
+
+    if (selectedVerses.length === 0) {
+      setSelectedUserVerse(null);
+      return;
+    }
+
+    const readableRef = createReadableReference(activeBookName, currentChapter, sortedIndices);
+    setSelectedUserVerse({
+      username: '',
+      readableReference: readableRef,
+      verses: selectedVerses,
+    });
+  }, [selectedVerseIndices, columnDataByOffset, activeBookName, currentChapter, createReadableReference]);
 
   const renderChapterColumn = (
     offset: number,
@@ -654,43 +786,67 @@ export default function ChapterReadingPage() {
             <Text style={{ ...styles.text, color: activeBackground.textColor }}>No verses found</Text>
           ) : (
             <View>
-              {columnVerses.map((verse, index) => (
-                <Pressable
-                  key={verse.id || index}
-                  style={{ marginBottom: 0 }}
-                  onPress={
-                    isActive
-                      ? () => {
-                          setSelectedVerse(verse);
-                          setSelectedVerseIndex(index);
-                          setSheetVisible(true);
-                        }
-                      : undefined
-                  }
-                  disabled={!isActive}
-                >
-                  <Text
-                    style={{
-                      ...styles.text,
+              {columnVerses.map((verse, index) => {
+                const isSelected = selectedVerseIndices.has(index);
+                const isVerseHighlighted = verse.verse_reference ? highlights.has(verse.verse_reference) : false;
+                const highlightBackground =
+                  activeBackground.backgroundColor === '#000000'
+                    ? 'rgba(255, 255, 0, 0.2)'
+                    : 'rgba(255, 255, 0, 0.3)';
+                const selectionBackground =
+                  activeBackground.backgroundColor === '#000000'
+                    ? 'rgba(255, 255, 255, 0.12)'
+                    : appendAlphaToHex(theme.colors.primary, '22');
+                const verseBackground = isSelected
+                  ? selectionBackground
+                  : isVerseHighlighted
+                    ? highlightBackground
+                    : 'transparent';
+                // Keep consistent padding/margin regardless of selection state
+                const versePadding = isVerseHighlighted ? 8 : 0;
+                const verseRadius = isVerseHighlighted ? 4 : 0;
+                // Increase line height slightly (add 4 to the existing line height)
+                const adjustedLineHeight = readerSettings.lineHeight + 4;
+                return (
+                  <Pressable
+                    key={verse.id || index}
+                    style={{ 
                       marginBottom: 0,
-                      fontFamily: readerSettings.fontFamily === 'System' ? undefined : readerSettings.fontFamily,
-                      fontSize: readerSettings.fontSize,
-                      lineHeight: readerSettings.lineHeight,
-                      letterSpacing: readerSettings.letterSpacing,
-                      color: activeBackground.textColor,
+                      backgroundColor: verseBackground,
+                      padding: versePadding,
+                      borderRadius: verseRadius,
                     }}
+                    onPress={
+                      isActive
+                        ? () => handleVersePress(verse, index)
+                        : undefined
+                    }
+                    disabled={!isActive}
                   >
                     <Text
                       style={{
-                        fontWeight: '600',
+                        ...styles.text,
+                        marginBottom: 0,
+                        marginLeft: 16, // Small indentation for each new verse/paragraph
+                        fontFamily: readerSettings.fontFamily === 'System' ? undefined : readerSettings.fontFamily,
+                        fontSize: readerSettings.fontSize,
+                        lineHeight: adjustedLineHeight,
+                        letterSpacing: readerSettings.letterSpacing,
                         color: activeBackground.textColor,
-                        fontSize: 16,
+                        textDecorationLine: isSelected ? 'underline' : 'none',
                       }}
                     >
-                      {index + 1}{' '}
+                      <Text
+                        style={{
+                          fontWeight: '600',
+                          color: activeBackground.textColor,
+                          fontSize: 16,
+                        }}
+                      >
+                        {index + 1}{' '}
+                      </Text>
+                      <Text style={{ color: activeBackground.textColor }}>{verse.text}</Text>
                     </Text>
-                    <Text style={{ color: activeBackground.textColor }}>{verse.text}</Text>
-                  </Text>
                   {readerSettings.showMetadata &&
                     ((verse.users_Saved_Verse ?? 0) > 0 || (verse.users_Memorized ?? 0) > 0) && (
                       <View
@@ -733,8 +889,9 @@ export default function ChapterReadingPage() {
                         )}
                       </View>
                     )}
-                </Pressable>
-              ))}
+                  </Pressable>
+                );
+              })}
             </View>
           )}
 
@@ -922,16 +1079,73 @@ export default function ChapterReadingPage() {
         {/* Verse Sheet */}
         {activeBookName && (
           <VerseSheet
-            verse={selectedVerse}
-            verseIndex={selectedVerseIndex}
-            visible={sheetVisible}
+            userVerse={selectedUserVerse}
+            visible={!!selectedUserVerse}
             onClose={() => {
-              setSheetVisible(false);
-              setSelectedVerse(null);
+              setSelectedVerseIndices(new Set());
+              setSelectedUserVerse(null);
             }}
             bookName={activeBookName}
             chapter={currentChapter}
             key={`${activeBookName}-${currentChapter}`}
+            onHighlightChange={() => {
+              // Reload highlights for the current chapter when a highlight is toggled
+              loadHighlightsForChapter(activeBookName, currentChapter);
+            }}
+            onUnselectVerse={(verseReference: string) => {
+              // Find and unselect ONLY the verse that matches the reference
+              const activeColumnData = columnDataByOffset[0];
+              const columnVerses = activeColumnData?.verses ?? [];
+              
+              // Extract verse number from the reference (e.g., "John 3:16" -> 16, or just "16" from "16")
+              let targetVerseNumber: number | null = null;
+              const verseNumberMatch = verseReference.match(/:(\d+)(?:\s|$|,|;)/);
+              if (verseNumberMatch) {
+                targetVerseNumber = parseInt(verseNumberMatch[1], 10);
+              } else {
+                // Try to match just a number if the format is different
+                const numberOnlyMatch = verseReference.match(/(?:^|\s)(\d+)(?:\s|$)/);
+                if (numberOnlyMatch) {
+                  targetVerseNumber = parseInt(numberOnlyMatch[1], 10);
+                }
+              }
+              
+              // Find the index of the verse that matches by verse number (most reliable)
+              let verseIndex = -1;
+              
+              if (targetVerseNumber !== null) {
+                verseIndex = columnVerses.findIndex((verse, index) => {
+                  if (verse.verse_Number) {
+                    const verseNum = typeof verse.verse_Number === 'number' 
+                      ? verse.verse_Number 
+                      : parseInt(verse.verse_Number.toString(), 10);
+                    if (!isNaN(verseNum) && verseNum === targetVerseNumber) {
+                      return true;
+                    }
+                  }
+                  return false;
+                });
+              }
+              
+              // Fallback to reference matching if verse number didn't work
+              if (verseIndex === -1) {
+                verseIndex = columnVerses.findIndex((verse, index) => {
+                  const verseRef = verse.verse_reference ?? `${activeBookName} ${currentChapter}:${index + 1}`;
+                  return verseRef === verseReference || 
+                         verse.verse_reference === verseReference ||
+                         (verse.verse_reference && verse.verse_reference.toLowerCase() === verseReference.toLowerCase());
+                });
+              }
+              
+              // Only remove the specific verse index if found
+              if (verseIndex !== -1) {
+                setSelectedVerseIndices((prev) => {
+                  const next = new Set(prev);
+                  next.delete(verseIndex);
+                  return next;
+                });
+              }
+            }}
           />
         )}
 
@@ -961,6 +1175,31 @@ export default function ChapterReadingPage() {
               >
                 <Dialog.Content style={{ backgroundColor: dialogBackgroundColor, padding: 0 }}>
                   <View style={{ marginBottom: 20, marginTop: 12 }}>
+                    <Text style={{ ...styles.text, fontSize: 14, marginBottom: 12, color: dialogSecondaryTextColor }}>
+                      Display Options
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          color: dialogPrimaryTextColor,
+                          fontFamily: 'Source Sans Pro',
+                          flex: 1,
+                        }}
+                      >
+                        Show verse stats
+                      </Text>
+                      <Switch
+                        value={readerSettings.showMetadata}
+                        onValueChange={handleToggleShowMetadata}
+                        trackColor={{ false: dialogBorderColor, true: dialogChipActiveBackground }}
+                        thumbColor={readerSettings.showMetadata ? dialogPrimaryTextColor : dialogSecondaryTextColor}
+                        ios_backgroundColor={dialogBorderColor}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={{ marginBottom: 20 }}>
                     <Text style={{ ...styles.text, fontSize: 14, marginBottom: 8, color: dialogSecondaryTextColor }}>
                       Presets
                     </Text>

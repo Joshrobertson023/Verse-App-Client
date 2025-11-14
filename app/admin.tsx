@@ -1,20 +1,20 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { DatePickerModal, en, registerTranslation } from 'react-native-paper-dates';
 import { DataTable } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
-import { AdminSummary, Category, createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory, getSiteBanner, updateSiteBanner, deleteSiteBanner, getAdmins } from './db';
+import { AdminSummary, Category, createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory, getSiteBanner, updateSiteBanner, deleteSiteBanner, getAdmins, resetVerseOfDayQueue, getUnapprovedNotes, approveNote, denyNote, VerseNote, getVerseOfDaySuggestions, approveVerseOfDaySuggestion, deleteVerseOfDaySuggestion, VerseOfDaySuggestion, getPendingCollections, approveCollection, rejectCollection, PublishedCollection } from './db';
 import { formatDate as formatDateUtil } from './dateUtils';
 
 type VerseOfDayQueueItem = {
   id: number;
   readableReference: string;
-  versedDate: string;
+  isSent: boolean;
+  sentDate: string | null;
+  createdDate: string;
 };
 
 export default function AdminScreen() {
@@ -29,8 +29,6 @@ export default function AdminScreen() {
   const [loading, setLoading] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
   const [verseOfDayReference, setVerseOfDayReference] = useState('');
-  const [verseOfDayDate, setVerseOfDayDate] = useState<Date>(new Date());
-  const [showVerseOfDayDatePicker, setShowVerseOfDayDatePicker] = useState(false);
   const [verseOfDays, setVerseOfDays] = useState<VerseOfDayQueueItem[]>([]);
   const [loadingVerseOfDays, setLoadingVerseOfDays] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -42,6 +40,18 @@ export default function AdminScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [unapprovedNotes, setUnapprovedNotes] = useState<VerseNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [showDenyModal, setShowDenyModal] = useState(false);
+  const [denyNoteId, setDenyNoteId] = useState<number | null>(null);
+  const [denyReason, setDenyReason] = useState('');
+  const [suggestions, setSuggestions] = useState<VerseOfDaySuggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [pendingCollections, setPendingCollections] = useState<PublishedCollection[]>([]);
+  const [loadingPendingCollections, setLoadingPendingCollections] = useState(false);
+  const [showRejectCollectionModal, setShowRejectCollectionModal] = useState(false);
+  const [rejectCollectionId, setRejectCollectionId] = useState<number | null>(null);
+  const [rejectCollectionReason, setRejectCollectionReason] = useState('');
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -53,10 +63,35 @@ export default function AdminScreen() {
   const siteBanner = useAppStore((state) => state.siteBanner);
   const setSiteBanner = useAppStore((state) => state.setSiteBanner);
 
-  const formattedSelectedVerseDate = useMemo(
-    () => formatDateUtil(verseOfDayDate.toISOString()),
-    [verseOfDayDate]
-  );
+  const latestSentDateMs = verseOfDays.reduce<number | null>((max, item) => {
+    if (!item.sentDate) {
+      return max;
+    }
+
+    const timestamp = new Date(item.sentDate).getTime();
+    if (Number.isNaN(timestamp)) {
+      return max;
+    }
+
+    if (max === null || timestamp > max) {
+      return timestamp;
+    }
+
+    return max;
+  }, null);
+
+  const getQueueStatusLabel = (item: VerseOfDayQueueItem) => {
+    if (item.sentDate) {
+      const timestamp = new Date(item.sentDate).getTime();
+      if (!Number.isNaN(timestamp) && latestSentDateMs !== null && timestamp === latestSentDateMs) {
+        return 'Current';
+      }
+
+      return 'Used';
+    }
+
+    return 'Upcoming';
+  };
 
   const syncCurrentUserAdminFlag = useCallback((adminList: AdminSummary[]) => {
     if (!user?.username) {
@@ -98,11 +133,24 @@ export default function AdminScreen() {
     setLoadingVerseOfDays(true);
     try {
       const data = await getUpcomingVerseOfDay();
-      const normalized: VerseOfDayQueueItem[] = Array.isArray(data) ? data : [];
+      const normalized: VerseOfDayQueueItem[] = Array.isArray(data)
+        ? data.map((item: any) => ({
+          id: item.id,
+          readableReference: item.readableReference,
+          isSent: !!item.isSent,
+          sentDate: item.sentDate ?? null,
+          createdDate: item.createdDate
+        }))
+        : [];
+
       normalized.sort((a, b) => {
-        const aTime = new Date(a.versedDate).getTime();
-        const bTime = new Date(b.versedDate).getTime();
-        return aTime - bTime;
+        if (a.isSent === b.isSent) {
+          const aCreated = new Date(a.createdDate).getTime();
+          const bCreated = new Date(b.createdDate).getTime();
+          return aCreated - bCreated;
+        }
+
+        return a.isSent ? 1 : -1;
       });
       setVerseOfDays(normalized);
     } catch (error) {
@@ -236,26 +284,38 @@ export default function AdminScreen() {
   };
 
   const handleCreateVerseOfDay = async () => {
-    if (!verseOfDayReference.trim()) {
+    const trimmedReference = verseOfDayReference.trim();
+    if (!trimmedReference) {
       alert('Please enter a verse reference');
       return;
     }
 
     setLoading(true);
     try {
-      await createVerseOfDay(verseOfDayReference, user.username, verseOfDayDate);
+      await createVerseOfDay(trimmedReference, user.username);
       setVerseOfDayReference('');
-      setVerseOfDayDate((prev) => {
-        const next = new Date(prev);
-        next.setDate(next.getDate() + 1);
-        return next;
-      });
       await loadVerseOfDays();
       alert('Verse of the day added to queue!');
     } catch (error: any) {
       console.error('Failed to create verse of day:', error);
       const errorMessage = error?.message || 'Failed to create verse of day. Please check the verse reference format (e.g., "John 3:16").';
       alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetVerseQueue = async () => {
+    setLoading(true);
+    try {
+      const result = await resetVerseOfDayQueue(user.username);
+      await loadVerseOfDays();
+      const message = result?.message || 'Verse of the day queue reset to the beginning.';
+      alert(message);
+    } catch (error: any) {
+      console.error('Failed to reset verse of day queue:', error);
+      const message = error?.message || 'Failed to reset verse of day queue.';
+      alert(message);
     } finally {
       setLoading(false);
     }
@@ -320,6 +380,45 @@ export default function AdminScreen() {
     }
   }, [setSiteBanner]);
 
+  const loadUnapprovedNotes = useCallback(async () => {
+    if (!user?.username) return;
+    setLoadingNotes(true);
+    try {
+      const data = await getUnapprovedNotes(user.username);
+      setUnapprovedNotes(data);
+    } catch (error) {
+      console.error('Failed to load unapproved notes:', error);
+    } finally {
+      setLoadingNotes(false);
+    }
+  }, [user?.username]);
+
+  const loadSuggestions = useCallback(async () => {
+    if (!user?.username) return;
+    setLoadingSuggestions(true);
+    try {
+      const data = await getVerseOfDaySuggestions(user.username);
+      setSuggestions(data);
+    } catch (error) {
+      console.error('Failed to load suggestions:', error);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }, [user?.username]);
+
+  const loadPendingCollections = useCallback(async () => {
+    if (!user?.username) return;
+    setLoadingPendingCollections(true);
+    try {
+      const data = await getPendingCollections(user.username);
+      setPendingCollections(data);
+    } catch (error) {
+      console.error('Failed to load pending collections:', error);
+    } finally {
+      setLoadingPendingCollections(false);
+    }
+  }, [user?.username]);
+
   useFocusEffect(
     useCallback(() => {
       loadUsers();
@@ -328,7 +427,10 @@ export default function AdminScreen() {
       loadReports();
       loadCategories();
       loadBanner();
-    }, [loadAdmins, loadBanner, loadCategories, loadReports, loadUsers, loadVerseOfDays])
+      loadUnapprovedNotes();
+      loadSuggestions();
+      loadPendingCollections();
+    }, [loadAdmins, loadBanner, loadCategories, loadReports, loadUsers, loadVerseOfDays, loadUnapprovedNotes, loadSuggestions, loadPendingCollections])
   );
 
   const handleAddCategory = async () => {
@@ -356,8 +458,7 @@ export default function AdminScreen() {
     }
   };
 
-registerTranslation('en', en);
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString?: string | null) => {
     if (!dateString) return '—';
     return formatDateUtil(dateString);
   };
@@ -678,26 +779,6 @@ registerTranslation('en', en);
             />
 
             <TouchableOpacity
-              onPress={() => setShowVerseOfDayDatePicker(true)}
-              style={{
-                backgroundColor: theme.colors.surface,
-                borderRadius: 12,
-                padding: 12,
-                marginBottom: 10,
-                borderWidth: 1,
-                borderColor: theme.colors.outline,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}
-            >
-              <Text style={{ color: theme.colors.onBackground, fontSize: 16, fontFamily: 'Inter' }}>
-                {formattedSelectedVerseDate}
-              </Text>
-              <Ionicons name="calendar-outline" size={18} color={theme.colors.onBackground} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
               style={{...styles.button_filled}}
               onPress={handleCreateVerseOfDay}
               disabled={loading}
@@ -709,12 +790,26 @@ registerTranslation('en', en);
               )}
             </TouchableOpacity>
 
+            <TouchableOpacity
+              style={{ ...styles.button_outlined, marginTop: 10 }}
+              onPress={handleResetVerseQueue}
+              disabled={loading || loadingVerseOfDays}
+            >
+              {loading ? (
+                <ActivityIndicator color={theme.colors.primary} />
+              ) : (
+                <Text style={{ ...styles.buttonText_outlined }}>Reset Queue to Beginning</Text>
+              )}
+            </TouchableOpacity>
+
             <ScrollView horizontal style={{ marginTop: 10 }}>
               <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
                 <DataTable.Header>
                   <DataTable.Title style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>ID</Text></DataTable.Title>
                   <DataTable.Title style={{ minWidth: 180 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Reference</Text></DataTable.Title>
-                  <DataTable.Title style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Verse Date</Text></DataTable.Title>
+                  <DataTable.Title style={{ minWidth: 120 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Status</Text></DataTable.Title>
+                  <DataTable.Title style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Last Sent</Text></DataTable.Title>
+                  <DataTable.Title style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Added</Text></DataTable.Title>
                   <DataTable.Title style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Action</Text></DataTable.Title>
                 </DataTable.Header>
 
@@ -722,7 +817,13 @@ registerTranslation('en', en);
                   <DataTable.Row key={vod.id}>
                     <DataTable.Cell style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{vod.id}</Text></DataTable.Cell>
                     <DataTable.Cell style={{ minWidth: 180 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{vod.readableReference}</Text></DataTable.Cell>
-                    <DataTable.Cell style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(vod.versedDate)}</Text></DataTable.Cell>
+                    <DataTable.Cell style={{ minWidth: 120 }}>
+                      <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>
+                        {getQueueStatusLabel(vod)}
+                      </Text>
+                    </DataTable.Cell>
+                    <DataTable.Cell style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(vod.sentDate)}</Text></DataTable.Cell>
+                    <DataTable.Cell style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(vod.createdDate)}</Text></DataTable.Cell>
                     <DataTable.Cell style={{ minWidth: 80 }}>
                       <TouchableOpacity
                         onPress={() => handleDeleteVerseOfDay(vod.id)}
@@ -869,26 +970,296 @@ registerTranslation('en', en);
               </ScrollView>
             )}
           </View>
+
+          {/* Verse of Day Suggestions Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              Verse of Day Suggestions
+            </Text>
+
+            {loadingSuggestions ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
+            ) : (
+              <ScrollView horizontal style={{ marginTop: 10 }}>
+                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                  <DataTable.Header>
+                    <DataTable.Title style={{ minWidth: 250 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Reference</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Suggested By</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Status</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
+                  </DataTable.Header>
+
+                  {suggestions.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 860 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No suggestions</Text>
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ) : (
+                    suggestions.map((suggestion) => (
+                      <DataTable.Row key={suggestion.id}>
+                        <DataTable.Cell style={{ minWidth: 250 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{suggestion.readableReference}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{suggestion.suggesterUsername}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 140 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(suggestion.createdDate)}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 100 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{suggestion.status}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 220 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {suggestion.status === 'PENDING' && (
+                              <TouchableOpacity
+                                onPress={async () => {
+                                  if (!user?.username) return;
+                                  try {
+                                    await approveVerseOfDaySuggestion(suggestion.id, user.username);
+                                    await loadSuggestions();
+                                    await loadVerseOfDays();
+                                    alert('Suggestion approved and added to queue');
+                                  } catch (error) {
+                                    console.error('Failed to approve suggestion:', error);
+                                    alert(error instanceof Error ? error.message : 'Failed to approve suggestion');
+                                  }
+                                }}
+                                style={{
+                                  padding: 6,
+                                  paddingHorizontal: 12,
+                                  borderRadius: 8,
+                                  backgroundColor: 'green'
+                                }}
+                              >
+                                <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                  Add
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!user?.username) return;
+                                try {
+                                  await deleteVerseOfDaySuggestion(suggestion.id, user.username);
+                                  await loadSuggestions();
+                                  alert('Suggestion deleted');
+                                } catch (error) {
+                                  console.error('Failed to delete suggestion:', error);
+                                  alert('Failed to delete suggestion');
+                                }
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'red'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Delete
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
+                </DataTable>
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Pending Collections Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              Collections Needing Review
+            </Text>
+
+            {loadingPendingCollections ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
+            ) : (
+              <ScrollView horizontal style={{ marginTop: 10 }}>
+                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                  <DataTable.Header>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Title</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Author</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 250 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Description</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
+                  </DataTable.Header>
+
+                  {pendingCollections.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 960 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No collections pending review</Text>
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ) : (
+                    pendingCollections.map((collection) => (
+                      <DataTable.Row key={collection.publishedId}>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{collection.title}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{collection.author}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 250 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }} numberOfLines={2}>
+                            {collection.description || 'No description'}
+                          </Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 140 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(collection.publishedDate)}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 220 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!user?.username) return;
+                                try {
+                                  await approveCollection(collection.publishedId, user.username);
+                                  await loadPendingCollections();
+                                  alert('Collection approved and published');
+                                } catch (error) {
+                                  console.error('Failed to approve collection:', error);
+                                  alert('Failed to approve collection');
+                                }
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'green'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Approve
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setRejectCollectionId(collection.publishedId);
+                                setRejectCollectionReason('');
+                                setShowRejectCollectionModal(true);
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'red'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Reject
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
+                </DataTable>
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Unapproved Notes Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              Unapproved Notes
+            </Text>
+
+            {loadingNotes ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
+            ) : (
+              <ScrollView horizontal style={{ marginTop: 10 }}>
+                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                  <DataTable.Header>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Verse</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 300 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Text</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>User</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
+                  </DataTable.Header>
+
+                  {unapprovedNotes.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 1010 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No unapproved notes</Text>
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ) : (
+                    unapprovedNotes.map((note) => (
+                      <DataTable.Row key={note.id}>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{note.verseReference}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 300 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }} numberOfLines={2}>
+                            {note.text}
+                          </Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{note.username}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 140 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(note.createdDate)}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 220 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!user?.username) return;
+                                try {
+                                  await approveNote(note.id, user.username);
+                                  await loadUnapprovedNotes();
+                                  alert('Note approved');
+                                } catch (error) {
+                                  console.error('Failed to approve note:', error);
+                                  alert('Failed to approve note');
+                                }
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'green'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Approve
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setDenyNoteId(note.id);
+                                setDenyReason('');
+                                setShowDenyModal(true);
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'red'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Deny
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
+                </DataTable>
+              </ScrollView>
+            )}
+          </View>
         </View>
-
-        <DatePickerModal
-          locale="en"
-          mode="single"
-          visible={showVerseOfDayDatePicker}
-          date={verseOfDayDate}
-          onDismiss={() => setShowVerseOfDayDatePicker(false)}
-          validRange={{ startDate: new Date() }}
-          label="Select Verse Date"
-          saveLabel="Save"
-          onConfirm={({ date }: { date?: Date }) => {
-            if (date) {
-              const normalized = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-              setVerseOfDayDate(normalized);
-            }
-            setShowVerseOfDayDatePicker(false);
-          }}
-        />
-
           {/* Categories Section */}
           <View style={{ marginBottom: 30 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
@@ -1052,6 +1423,247 @@ registerTranslation('en', en);
           </View>
         </View>
       </Modal>
+
+      {/* Deny Note Modal */}
+      <Modal
+        visible={showDenyModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowDenyModal(false);
+          setDenyNoteId(null);
+          setDenyReason('');
+        }}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+          <View style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 400
+          }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Deny Note
+            </Text>
+            
+            <Text style={{
+              fontSize: 16,
+              color: theme.colors.onSurfaceVariant,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Please provide a reason for denying this note:
+            </Text>
+            
+            <TextInput
+              style={{
+                backgroundColor: theme.colors.background,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 20,
+                color: theme.colors.onBackground,
+                fontSize: 16,
+                fontFamily: 'Inter',
+                minHeight: 100,
+                textAlignVertical: 'top'
+              }}
+              placeholder="Enter reason..."
+              placeholderTextColor={theme.colors.onSurfaceVariant}
+              value={denyReason}
+              onChangeText={setDenyReason}
+              multiline
+              numberOfLines={4}
+              autoFocus
+            />
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowDenyModal(false);
+                  setDenyNoteId(null);
+                  setDenyReason('');
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!denyNoteId || !user?.username) return;
+                  try {
+                    await denyNote(denyNoteId, user.username, denyReason);
+                    await loadUnapprovedNotes();
+                    setShowDenyModal(false);
+                    setDenyNoteId(null);
+                    setDenyReason('');
+                    alert('Note denied and user notified');
+                  } catch (error) {
+                    console.error('Failed to deny note:', error);
+                    alert('Failed to deny note');
+                  }
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: 'red'
+                }}
+              >
+                <Text style={{
+                  color: 'white',
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Deny
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reject Collection Modal */}
+      <Modal
+        visible={showRejectCollectionModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowRejectCollectionModal(false);
+          setRejectCollectionId(null);
+          setRejectCollectionReason('');
+        }}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+          <View style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 400
+          }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Reject Collection
+            </Text>
+            
+            <Text style={{
+              fontSize: 16,
+              color: theme.colors.onSurfaceVariant,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Please provide a reason for rejecting this collection (optional):
+            </Text>
+            
+            <TextInput
+              style={{
+                backgroundColor: theme.colors.background,
+                borderRadius: 12,
+                padding: 12,
+                marginBottom: 20,
+                color: theme.colors.onBackground,
+                fontSize: 16,
+                fontFamily: 'Inter',
+                minHeight: 100,
+                textAlignVertical: 'top'
+              }}
+              placeholder="Enter reason (optional)..."
+              placeholderTextColor={theme.colors.onSurfaceVariant}
+              value={rejectCollectionReason}
+              onChangeText={setRejectCollectionReason}
+              multiline
+              numberOfLines={4}
+              autoFocus
+            />
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowRejectCollectionModal(false);
+                  setRejectCollectionId(null);
+                  setRejectCollectionReason('');
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!rejectCollectionId || !user?.username) return;
+                  try {
+                    await rejectCollection(rejectCollectionId, user.username, rejectCollectionReason || undefined);
+                    await loadPendingCollections();
+                    setShowRejectCollectionModal(false);
+                    setRejectCollectionId(null);
+                    setRejectCollectionReason('');
+                    alert('Collection rejected and user notified');
+                  } catch (error) {
+                    console.error('Failed to reject collection:', error);
+                    alert('Failed to reject collection');
+                  }
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: 'red'
+                }}
+              >
+                <Text style={{
+                  color: 'white',
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Reject
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal
         visible={showPinDialog}
         transparent={true}

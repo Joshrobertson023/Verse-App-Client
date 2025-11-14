@@ -1,6 +1,11 @@
 {
   "expo": {
-    "name": "VerseMemorization",
+    "splash": {
+      "image": "./assets/images/LogoIcon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#b93838ff"
+    },
+    "name": "Verse Memorization",
     "slug": "VerseMemorization",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -34,12 +39,12 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/Logo.png",
+          "image": "./assets/images/LogoIcon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#b93838ff",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#b93838ff"
           }
         }
       ],
@@ -49,19 +54,26 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/Logo.png",
+          "icon": "./assets/images/NotificationIcon.png",
           "color": "#E6F4FE",
           "sounds": []
         }
       ]
     ],
     "notification": {
-      "icon": "./assets/images/Logo.png",
+      "icon": "./assets/images/NotificationIcon.png",
       "color": "#E6F4FE"
     },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2c8fc25b-9e16-4d3f-bf4e-b597dd2e4027"
+      }
+    },
+    "owner": "blindedis"
   }
 }

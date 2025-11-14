@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Portal } from 'react-native-paper';
 import { getFriends, shareCollection } from '../db';
 import { Collection, useAppStore, User } from '../store';
 import useStyles from '../styles';
@@ -65,149 +66,140 @@ export default function ShareCollectionSheet({ visible, collection, onClose, onS
   if (!collection) return null;
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={{
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}>
-        <View style={{
-          backgroundColor: theme.colors.surface,
-          borderRadius: 16,
-          width: '85%',
-          maxHeight: '70%',
-          padding: 20,
-        }}>
-          <Text style={{
-            fontFamily: 'Noto Serif bold',
-            fontSize: 20,
-            color: theme.colors.onBackground,
-            marginBottom: 20,
-          }}>
-            Share Collection
-          </Text>
+    <Portal>
+      <Modal
+        visible={visible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={onClose}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: theme.colors.surface, borderRadius: 16, width: '85%', maxHeight: '70%', padding: 20 }}>
+            <Text style={{
+              fontFamily: 'Noto Serif bold',
+              fontSize: 20,
+              color: theme.colors.onBackground,
+              marginBottom: 20,
+            }}>
+              Share Collection
+            </Text>
 
-          <Text style={{
-            fontSize: 14,
-            color: theme.colors.onSurfaceVariant,
-            marginBottom: 10,
-            fontFamily: 'Inter'
-          }}>
-            Share "{collection.title}" with a friend
-          </Text>
+            <Text style={{
+              fontSize: 14,
+              color: theme.colors.onSurfaceVariant,
+              marginBottom: 10,
+              fontFamily: 'Inter'
+            }}>
+              Share "{collection.title}" with a friend
+            </Text>
 
-          <ScrollView>
-            {loading ? (
-              <View style={{ justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-                <ActivityIndicator size="large" color={theme.colors.primary} />
-              </View>
-            ) : friends.length === 0 ? (
-              <View style={{ justifyContent: 'center', alignItems: 'center', padding: 40 }}>
-                <Ionicons name="people-outline" size={64} color={theme.colors.onSurfaceVariant} />
-                <Text style={{
-                  fontSize: 16,
-                  color: theme.colors.onSurfaceVariant,
-                  marginTop: 16,
-                  fontFamily: 'Inter',
-                  textAlign: 'center'
-                }}>
-                  No friends yet
-                </Text>
-              </View>
-            ) : (
-              friends.map((friend) => (
-                <TouchableOpacity
-                  key={friend.username}
-                  style={{
-                    paddingVertical: 12,
-                    paddingHorizontal: 16,
-                    marginBottom: 8,
-                    backgroundColor: selectedFriend?.username === friend.username 
-                      ? theme.colors.primary 
-                      : 'transparent',
-                    borderRadius: 8,
-                  }}
-                  onPress={() => setSelectedFriend(friend)}
-                >
+            <ScrollView>
+              {loading ? (
+                <View style={{ justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+                  <ActivityIndicator size="large" color={theme.colors.primary} />
+                </View>
+              ) : friends.length === 0 ? (
+                <View style={{ justifyContent: 'center', alignItems: 'center', padding: 40 }}>
+                  <Ionicons name="people-outline" size={64} color={theme.colors.onSurfaceVariant} />
                   <Text style={{
-                    ...styles.tinyText,
                     fontSize: 16,
-                    color: selectedFriend?.username === friend.username 
-                      ? '#fff' 
-                      : theme.colors.onBackground,
+                    color: theme.colors.onSurfaceVariant,
+                    marginTop: 16,
+                    fontFamily: 'Inter',
+                    textAlign: 'center'
                   }}>
-                    {friend.firstName} {friend.lastName}
+                    No friends yet
                   </Text>
-                  <Text style={{
-                    ...styles.tinyText,
-                    fontSize: 14,
-                    color: selectedFriend?.username === friend.username 
-                      ? 'rgba(255, 255, 255, 0.8)' 
-                      : theme.colors.onSurfaceVariant,
-                  }}>
-                    @{friend.username}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            )}
-          </ScrollView>
-
-          <View style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            marginTop: 20,
-          }}>
-            <TouchableOpacity
-              style={{
-                paddingVertical: 12,
-                paddingHorizontal: 24,
-                borderRadius: 8,
-              }}
-              onPress={() => {
-                setSelectedFriend(null);
-                onClose();
-              }}
-            >
-              <Text style={{
-                ...styles.tinyText,
-                color: theme.colors.onBackground,
-              }}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{
-                backgroundColor: theme.colors.primary,
-                paddingVertical: 12,
-                paddingHorizontal: 24,
-                borderRadius: 8,
-                opacity: selectedFriend && sharing === null ? 1 : 0.5,
-              }}
-              onPress={handleShare}
-              disabled={!selectedFriend || sharing !== null}
-            >
-              {sharing !== null ? (
-                <ActivityIndicator size="small" color="#fff" />
+                </View>
               ) : (
+                friends.map((friend) => (
+                  <TouchableOpacity
+                    key={friend.username}
+                    style={{
+                      paddingVertical: 12,
+                      paddingHorizontal: 16,
+                      marginBottom: 8,
+                      backgroundColor: selectedFriend?.username === friend.username 
+                        ? theme.colors.primary 
+                        : 'transparent',
+                      borderRadius: 8,
+                    }}
+                    onPress={() => setSelectedFriend(friend)}
+                  >
+                    <Text style={{
+                      ...styles.tinyText,
+                      fontSize: 16,
+                      color: selectedFriend?.username === friend.username 
+                        ? '#fff' 
+                        : theme.colors.onBackground,
+                    }}>
+                      {friend.firstName} {friend.lastName}
+                    </Text>
+                    <Text style={{
+                      ...styles.tinyText,
+                      fontSize: 14,
+                      color: selectedFriend?.username === friend.username 
+                        ? 'rgba(255, 255, 255, 0.8)' 
+                        : theme.colors.onSurfaceVariant,
+                    }}>
+                      @{friend.username}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+
+            <View style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              marginTop: 20,
+            }}>
+              <TouchableOpacity
+                style={{
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  borderRadius: 8,
+                }}
+                onPress={() => {
+                  setSelectedFriend(null);
+                  onClose();
+                }}
+              >
                 <Text style={{
                   ...styles.tinyText,
-                  color: '#fff',
+                  color: theme.colors.onBackground,
                 }}>
-                  Share
+                  Cancel
                 </Text>
-              )}
-            </TouchableOpacity>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: theme.colors.primary,
+                  paddingVertical: 12,
+                  paddingHorizontal: 24,
+                  borderRadius: 8,
+                  opacity: selectedFriend && sharing === null ? 1 : 0.5,
+                }}
+                onPress={handleShare}
+                disabled={!selectedFriend || sharing !== null}
+              >
+                {sharing !== null ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{
+                    ...styles.tinyText,
+                    color: '#fff',
+                  }}>
+                    Share
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+    </Portal>
   );
 }
 

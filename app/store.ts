@@ -8,6 +8,12 @@ export interface ErrorMessage {
     message: string;
 }
 
+export interface CollectionNote {
+    id: string;
+    collectionId: number;
+    text: string;
+}
+
 export interface Collection {
     collectionId?: number;
     title: string;
@@ -17,6 +23,7 @@ export interface Collection {
     dateCreated?: Date;
     verseOrder?: string;
     userVerses: UserVerse[];
+    notes?: CollectionNote[];
     favorites: boolean;
 }
 
@@ -38,15 +45,23 @@ export interface User {
     subscribedVerseOfDay?: boolean;
     pushNotificationsEnabled?: boolean;
     activityNotificationsEnabled?: boolean;
+    notifyMemorizedVerse?: boolean;
+    notifyPublishedCollection?: boolean;
+    notifyCollectionSaved?: boolean;
     isAdmin?: boolean;
     streak?: Streak[];
     streakLength: number;
     versesMemorized: number;
     versesOverdue: number;
     numberPublishedCollections: number;
+    points: number;
+    bibleVersion?: string;
+    hasShownBibleHelp?: boolean;
+    profilePictureUrl?: string;
 }
 
 export interface UserVerse {
+    nextPracticeDate?: string | null;
     clientId?: string;
     id?: number;
     username: string;
@@ -88,6 +103,7 @@ export interface loginInfo {
     password: string;
     confirmPassword: string;
     email: string;
+    bibleVersion?: string;
 }
 
 export interface homePageStats {
@@ -120,13 +136,33 @@ export interface SiteBannerState {
 export interface VerseOfDay {
     id: number;
     readableReference: string;
-    versedDate: string;
+    isSent: boolean;
+    sentDate: string | null;
+    createdDate: string;
 }
 
 export interface CollectionSheetControls {
     openSettingsSheet: () => void;
     collection: Collection | undefined;
 }
+
+const cloneVerse = (verse: Verse): Verse => ({
+    ...verse,
+});
+
+const cloneUserVerse = (userVerse: UserVerse): UserVerse => ({
+    ...userVerse,
+    lastPracticed: userVerse.lastPracticed ? new Date(userVerse.lastPracticed) : undefined,
+    dateMemorized: userVerse.dateMemorized ? new Date(userVerse.dateMemorized) : undefined,
+    dateAdded: userVerse.dateAdded ? new Date(userVerse.dateAdded) : undefined,
+    verses: (userVerse.verses ?? []).map(cloneVerse),
+});
+
+const cloneCollection = (collection: Collection): Collection => ({
+    ...collection,
+    dateCreated: collection.dateCreated ? new Date(collection.dateCreated) : undefined,
+    userVerses: (collection.userVerses ?? []).map(cloneUserVerse),
+});
 
 const defaultCollectionsSheetControls = {
     openSettingsSheet: () => console.log('Collection settings sheet not yet registered or component unmounted.'),
@@ -163,6 +199,7 @@ const emptyLoginInfo: loginInfo = {
     email: '',
     password: '',
     confirmPassword: '',
+    bibleVersion: 'KJV',
 };
 
 const emptyNewCollection: Collection = {
@@ -216,6 +253,7 @@ export const loggedOutUser: User = {
     streakLength: 0,
     subscribedVerseOfDay: true,
     pushNotificationsEnabled: true,
+    points: 0,
 }
 
 interface AppState {
@@ -229,6 +267,7 @@ interface AppState {
   shouldReloadPracticeList: boolean;
   newCollection: Collection;
   editingCollection: Collection | undefined;
+  publishingCollection: Collection | undefined;
   editingUserVerse: UserVerse | undefined;
   numNotifications: number;
   collectionsSheetControls: CollectionSheetControls;
@@ -238,6 +277,7 @@ interface AppState {
   themePreference: ThemePreference;
   verseSaveAdjustments: Record<string, number>;
   siteBanner: SiteBannerState;
+  collectionReviewMessage: string | null;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -255,6 +295,7 @@ interface AppState {
   setCollections: (collections: Collection[]) => void;
   setCollectionsSheetControls: (controls: CollectionSheetControls) => void;
   setEditingCollection: (collection: Collection | undefined) => void;
+  setPublishingCollection: (collection: Collection | undefined) => void;
   setEditingUserVerse: (userVerse: UserVerse | undefined) => void;
   setNumNotifications?: (count: number) => void;
   setPopularSearches: (searches: string[]) => void;
@@ -265,6 +306,7 @@ interface AppState {
   incrementVerseSaveAdjustment: (reference: string, amount?: number) => void;
   resetVerseSaveAdjustment: (reference?: string) => void;
   setSiteBanner: (banner: SiteBannerState) => void;
+  setCollectionReviewMessage: (message: string | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -276,8 +318,9 @@ export const useAppStore = create<AppState>((set) => ({
     sendStreakNotifications: true,
     sendVerseOfDayNotifications: true,
     shouldReloadPracticeList: false,
-    newCollection: emptyNewCollection,
+    newCollection: cloneCollection(emptyNewCollection),
     editingCollection: undefined,
+    publishingCollection: undefined,
     editingUserVerse: undefined,
     numNotifications: 0,
     collectionsSheetControls: defaultCollectionsSheetControls,
@@ -287,6 +330,7 @@ export const useAppStore = create<AppState>((set) => ({
     themePreference: 'system',
     verseSaveAdjustments: {},
     siteBanner: defaultSiteBanner,
+    collectionReviewMessage: null,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -306,7 +350,7 @@ export const useAppStore = create<AppState>((set) => ({
     setSendStreakNotifications: (send: boolean) => set({ sendStreakNotifications: send }),
     setShowStreakOnHomepage: (show: boolean) => set({ showStreakOnHomepage: show }),
     setSendVerseOfDayNotifications: (send: boolean) => set({ sendVerseOfDayNotifications: send }),
-    setNewCollection: (collection: Collection) => set({newCollection: collection}),
+    setNewCollection: (collection: Collection) => set({newCollection: cloneCollection(collection)}),
     addUserVerseToCollection: (userVerse: UserVerse) =>
     set((state) => {
         const existingUserVerses = state.newCollection?.userVerses || [];
@@ -326,7 +370,7 @@ export const useAppStore = create<AppState>((set) => ({
     }),
     resetNewCollection: () =>
         set(() => ({
-            newCollection: emptyNewCollection
+            newCollection: cloneCollection(emptyNewCollection)
         })),
     setCollections: (collections) => {
         set((state) => ({
@@ -334,7 +378,8 @@ export const useAppStore = create<AppState>((set) => ({
         }))
     },
     setCollectionsSheetControls: (controls: CollectionSheetControls) => set({collectionsSheetControls: controls}),
-    setEditingCollection: (collection: Collection | undefined) => set({editingCollection: collection}),
+    setEditingCollection: (collection: Collection | undefined) => set({editingCollection: collection ? cloneCollection(collection) : undefined}),
+    setPublishingCollection: (collection: Collection | undefined) => set({publishingCollection: collection ? cloneCollection(collection) : undefined}),
     setEditingUserVerse: (userVerse: UserVerse | undefined) => set({editingUserVerse: userVerse}),
     setNumNotifications: (count: number) => set({numNotifications: count}),
     setShouldReloadPracticeList: (should: boolean) => set({shouldReloadPracticeList: should}),
@@ -378,4 +423,5 @@ export const useAppStore = create<AppState>((set) => ({
         });
     },
     setSiteBanner: (banner: SiteBannerState) => set({ siteBanner: banner }),
+    setCollectionReviewMessage: (message: string | null) => set({ collectionReviewMessage: message }),
 }))

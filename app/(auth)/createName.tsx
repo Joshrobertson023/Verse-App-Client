@@ -1,6 +1,6 @@
 import { Link, router } from 'expo-router';
 import React, { useState } from 'react';
-import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
@@ -33,8 +33,17 @@ export default function CreateNameScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-                <Logo />
-            <View style={{...styles.centered, marginBottom: 0}}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <ScrollView 
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <Logo />
+                    <View style={{...styles.centered, marginBottom: 0}}>
                 <Text style={{...styles.startupText, marginBottom: 30}}>Create an Account</Text>
                 <TextInput label="First Name" mode="outlined" style={styles.input} value={firstName} 
                     onChangeText={(text) => { 
@@ -54,7 +63,9 @@ export default function CreateNameScreen() {
                 <Link href="/(auth)/login" style={{marginTop: 0, paddingVertical: 10}}>
                     <Text style={{...styles.tinyText, color: theme.colors.primary, textDecorationLine: 'underline'}}>Log In</Text>
                 </Link>
-            </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }

@@ -1,15 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import BottomSheet, { BottomSheetView, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { router, Stack, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { ActivityIndicator, Banner, Button, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BackHandler, Dimensions, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Banner, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
 import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Button from '../components/Button';
 import CollectionItem from '../components/collectionItem';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getOverdueVerses, getRecentPractice, getSiteBanner, getUpcomingVerseOfDay, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getCurrentVerseOfDay, getMostRecentCollectionId, getSiteBanner, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
 import { Collection, SearchData, useAppStore, UserVerse, Verse, VerseOfDay as VodType } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -91,13 +92,22 @@ export default function Index() {
   const setUser = useAppStore((state) => state.setUser);
   const siteBanner = useAppStore((state) => state.siteBanner);
   const setSiteBanner = useAppStore((state) => state.setSiteBanner);
+  const collectionReviewMessage = useAppStore((state) => state.collectionReviewMessage);
+  const setCollectionReviewMessage = useAppStore((state) => state.setCollectionReviewMessage);
+  const activeCollectionsSortBy = user.collectionsSortBy ?? 1;
   const [settingsCollection, setSettingsCollection] = useState<Collection | undefined>(undefined);
   const [isSettingsSheetOpen, setIsSettingsSheetOpen] = useState(false);
   const [isCreatingCopy, setIsCreatingCopy] = useState(false);
   const [isCollectionsSettingsSheetOpen, setIsCollectionsSettingsSheetOpen] = useState(false);
+  
+  // Bottom sheet refs
+  const settingsSheetRef = useRef<BottomSheet>(null);
+  const collectionsSettingsSheetRef = useRef<BottomSheet>(null);
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [deleteDialogCollection, setDeleteDialogCollection] = useState<Collection | undefined>(undefined);
+  const [isDeletingCollection, setIsDeletingCollection] = useState(false);
   const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
+  const [versesToShare, setVersesToShare] = useState<UserVerse[]>([]);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const deleteCollectionStore = useAppStore((state) => state.removeCollection);
@@ -107,6 +117,7 @@ export default function Index() {
   const [shouldReloadPracticeList, setShouldReloadPracticeList] = useState(false);
   const [isBannerLoading, setIsBannerLoading] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [reviewMessageDismissed, setReviewMessageDismissed] = useState(false);
 
   const computeOwnership = (collection?: Collection) => {
     if (!collection) return false;
@@ -148,22 +159,20 @@ export default function Index() {
   const [selectedVodVerse, setSelectedVodVerse] = useState<Verse | null>(null);
   const [pickedVodCollection, setPickedVodCollection] = useState<Collection | undefined>(undefined);
   const [isAddingVodToCollection, setIsAddingVodToCollection] = useState(false);
-  const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
+  const [isCreatingNewVodCollection, setIsCreatingNewVodCollection] = useState(false);
+  const [newVodCollectionTitle, setNewVodCollectionTitle] = useState('');
   const verseSaveAdjustments = useAppStore((state) => state.verseSaveAdjustments);
   const incrementVerseSaveAdjustment = useAppStore((state) => state.incrementVerseSaveAdjustment);
 
-  // Recent Practice, Overdue, and Activity state
-  const [recentPractice, setRecentPractice] = useState<UserVerse[]>([]);
-  const [overdueVerses, setOverdueVerses] = useState<UserVerse[]>([]);
-  const [recentPracticeLoaded, setRecentPracticeLoaded] = useState(false);
-  const [overdueVersesLoaded, setOverdueVersesLoaded] = useState(false);
 
   const isSameUTCDate = (a: Date, b: Date) => {
     return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
   };
 
   const currentVodVerses = currentVod ? vodTexts[currentVod.readableReference] : undefined;
-  const currentVodDate = currentVod ? new Date(currentVod.versedDate) : null;
+  const currentVodDate = currentVod
+    ? new Date(currentVod.sentDate ?? currentVod.createdDate)
+    : null;
   const currentVodIsToday = currentVodDate ? isSameUTCDate(currentVodDate, new Date()) : false;
   const currentVodText = currentVodVerses && currentVodVerses.length > 0
     ? currentVodVerses.map(v => v.text).join(' ')
@@ -207,66 +216,34 @@ export default function Index() {
   }, [siteBanner.message]);
 
   useEffect(() => {
+    let isMounted = true;
+
     (async () => {
       try {
-        const data: VodType[] = await getUpcomingVerseOfDay();
-        const normalized = Array.isArray(data) ? [...data] : [];
-        normalized.sort((a, b) => {
-          const aTime = new Date(a.versedDate).getTime();
-          const bTime = new Date(b.versedDate).getTime();
-          return bTime - aTime;
-        });
-        const today = new Date();
-        const targetForToday = normalized.find(v => {
-          const d = new Date(v.versedDate);
-          return isSameUTCDate(d, today);
-        });
-        const fallback = normalized.length > 0 ? normalized[0] : null;
-        const targetVod = targetForToday || fallback || null;
+        const data: VodType | null = await getCurrentVerseOfDay();
+        if (!isMounted) {
+          return;
+        }
 
+        const targetVod = data ?? null;
         setCurrentVod(targetVod);
 
         if (targetVod?.readableReference) {
           loadTextForReference(targetVod.readableReference);
         }
       } catch (e) {
-        console.error('Failed to load verse of day list', e);
-        setCurrentVod(null);
+        console.error('Failed to load current verse of the day', e);
+        if (isMounted) {
+          setCurrentVod(null);
+        }
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Fetch Recent Practice, Overdue, and Activity separately
-  useFocusEffect(
-    useCallback(() => {
-      if (user.username === 'Default User') return;
-      
-      // Load Recent Practice
-      (async () => {
-        try {
-          const recent = await getRecentPractice(user.username);
-          setRecentPractice(recent || []);
-          setRecentPracticeLoaded(true);
-        } catch (e) {
-          console.error('Failed to load recent practice', e);
-          setRecentPracticeLoaded(false);
-        }
-      })();
-
-      // Load Overdue Verses
-      (async () => {
-        try {
-          const overdue = await getOverdueVerses(user.username);
-          setOverdueVerses(overdue || []);
-          setOverdueVersesLoaded(true);
-        } catch (e) {
-          console.error('Failed to load overdue verses', e);
-          setOverdueVersesLoaded(false);
-        }
-      })();
-
-    }, [user.username])
-  );
 
   const loadTextForReference = async (readableReference: string | undefined | null) => {
     if (!readableReference) return;
@@ -307,7 +284,83 @@ export default function Index() {
     };
     setSelectedVodVerse(formattedVerse);
     setPickedVodCollection(undefined);
+    setNewVodCollectionTitle('');
     setShowVodCollectionPicker(true);
+  };
+
+  const handleVodInputChange = (text: string) => {
+    setNewVodCollectionTitle(text);
+    // Clear selected collection when user starts typing
+    if (text.trim() && pickedVodCollection) {
+      setPickedVodCollection(undefined);
+    }
+  };
+
+  const handleVodCollectionSelect = (collection: Collection) => {
+    setPickedVodCollection(collection);
+    // Clear input when selecting an existing collection
+    setNewVodCollectionTitle('');
+  };
+
+  const handleCreateNewVodCollection = async () => {
+    if (!selectedVodVerse || !user?.username || isCreatingNewVodCollection || !newVodCollectionTitle.trim()) return;
+    if (collections.length >= 40) {
+      setSnackbarMessage('You can create up to 40 collections.');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setIsCreatingNewVodCollection(true);
+    const readableReference = selectedVodVerse.verse_reference || '';
+    const userVerse: UserVerse = {
+      username: user.username,
+      readableReference: readableReference,
+      verses: [selectedVodVerse]
+    };
+
+    try {
+      const finalTitle = newVodCollectionTitle.trim() === '' ? 'New Collection' : (newVodCollectionTitle.trim() === 'Favorites' ? 'Favorites-Other' : newVodCollectionTitle.trim());
+      const newCollection: Collection = {
+        title: finalTitle,
+        authorUsername: user.username,
+        username: user.username,
+        visibility: 'private',
+        verseOrder: `${readableReference},`,
+        userVerses: [userVerse],
+        notes: [],
+        favorites: false,
+      };
+
+      await createCollectionDB(newCollection, user.username);
+      const collectionId = await getMostRecentCollectionId(user.username);
+      await addUserVersesToNewCollection([userVerse], collectionId);
+      
+      const updatedCollections = await getUserCollections(user.username);
+      setCollections(updatedCollections);
+
+      const currentOrder = user.collectionsOrder ? user.collectionsOrder : '';
+      const newOrder = currentOrder ? `${currentOrder},${collectionId}` : collectionId.toString();
+      const updatedUser = { ...user, collectionsOrder: newOrder };
+      setUser(updatedUser);
+      await updateCollectionsOrderDB(newOrder, user.username);
+
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+
+      incrementVerseSaveAdjustment(readableReference);
+      setShowVodCollectionPicker(false);
+      setSelectedVodVerse(null);
+      setPickedVodCollection(undefined);
+      setNewVodCollectionTitle('');
+      setSnackbarMessage('Collection created and verse saved');
+      setSnackbarVisible(true);
+    } catch (error) {
+      console.error('Failed to create collection:', error);
+      setSnackbarMessage('Failed to create collection');
+      setSnackbarVisible(true);
+    } finally {
+      setIsCreatingNewVodCollection(false);
+    }
   };
 
   const handleAddVodToCollection = async () => {
@@ -367,6 +420,22 @@ export default function Index() {
     }
   };
 
+  const handleShareVodVerse = async (readableReference: string) => {
+    // Check if the user has already saved this verse
+    const savedUserVerse = collections
+      .flatMap(col => col.userVerses || [])
+      .find(uv => uv.readableReference?.toLowerCase().trim() === readableReference.toLowerCase().trim());
+    
+    if (savedUserVerse && savedUserVerse.id) {
+      // Use the saved UserVerse
+      setVersesToShare([savedUserVerse]);
+    } else {
+      // Show message that verse needs to be saved first
+      setSnackbarMessage('Please save this verse to a collection first before sharing');
+      setSnackbarVisible(true);
+    }
+  };
+
   const handlePracticeVodVerse = (readableReference: string) => {
     const verses = vodTexts[readableReference];
     if (!verses || verses.length === 0) {
@@ -388,26 +457,12 @@ export default function Index() {
     router.push('/practiceSession');
   };
 
-  const handleShareVodVerse = (readableReference: string) => {
-    const verses = vodTexts[readableReference];
-    if (!verses || verses.length === 0) {
-      setSnackbarMessage('Verse not loaded yet. Please wait...');
-      setSnackbarVisible(true);
-      return;
-    }
-    
-    // Use the first verse from the search results
-    const verse = verses[0];
-    // Ensure verse_reference is set
-    const formattedVerse: Verse = {
-      ...verse,
-      verse_reference: verse.verse_reference || readableReference,
-    };
-    setVerseToShare(formattedVerse);
-  };
 
   const hideDialog = () => setVisible(false);
-  const hideDeleteDialog = () => setDeleteDialogVisible(false);
+  const hideDeleteDialog = () => {
+    setDeleteDialogVisible(false);
+    setIsDeletingCollection(false);
+  };
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -431,31 +486,40 @@ export default function Index() {
 
   const deleteCollectionHandle = async () => {
     const collectionId = deleteDialogCollection?.collectionId;
-    if (!collectionId) return;
+    if (!collectionId || isDeletingCollection) return;
     
-    deleteCollectionStore(collectionId);
-    await deleteCollection(deleteDialogCollection);
-    setShouldReloadPracticeList(true);
-    
-    const currentOrder = user.collectionsOrder || '';
-    const orderArray = currentOrder.split(',').filter(id => id.trim() !== collectionId.toString()).join(',');
-    const updatedUser = { ...user, collectionsOrder: orderArray };
-    setUser(updatedUser);
-    
+    setIsDeletingCollection(true);
     try {
-      await updateCollectionsOrderDB(orderArray, user.username);
+      deleteCollectionStore(collectionId);
+      await deleteCollection(deleteDialogCollection);
+      setShouldReloadPracticeList(true);
+      
+      const currentOrder = user.collectionsOrder || '';
+      const orderArray = currentOrder.split(',').filter(id => id.trim() !== collectionId.toString()).join(',');
+      const updatedUser = { ...user, collectionsOrder: orderArray };
+      setUser(updatedUser);
+      
+      try {
+        await updateCollectionsOrderDB(orderArray, user.username);
+      } catch (error) {
+        console.error('Failed to update collections order:', error);
+      }
+      
+      try {
+        const refreshedUser = await refreshUser(user.username);
+        setUser(refreshedUser);
+      } catch (error) {
+        console.error('Failed to refresh user:', error);
+      }
+      
+      hideDeleteDialog();
     } catch (error) {
-      console.error('Failed to update collections order:', error);
+      console.error('Failed to delete collection:', error);
+      setSnackbarMessage('Failed to delete collection');
+      setSnackbarVisible(true);
+    } finally {
+      setIsDeletingCollection(false);
     }
-    
-    try {
-      const refreshedUser = await refreshUser(user.username);
-      setUser(refreshedUser);
-    } catch (error) {
-      console.error('Failed to refresh user:', error);
-    }
-    
-    hideDeleteDialog();
   }
 
   const handleCreateCopy = async (collectionToCopy: Collection) => {
@@ -537,198 +601,38 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
 
 
 
-  // ***************************************************
-  //                    Animations   
-  // ***************************************************
-
-
-  const offset = .1;
-  const settingsSheetHeight = height * (.5 + offset);
-  const settingsClosedPosition = height;
-  const settingsOpenPosition = height - settingsSheetHeight + (height * offset);
-
-  const collectionSettingsSheetHeight = height * (.45 + offset);
-  const collectionsSettingsClosedPosition = height;
-  const collectionsSettingsOpenPosition = height - collectionSettingsSheetHeight + (height * offset);
-
-  const settingsTranslateY = useSharedValue(settingsClosedPosition);
-  const settingsStartY = useSharedValue(0);
-
-  const collectionsSettingsTranslateY = useSharedValue(collectionsSettingsClosedPosition);
-  const collectionsSettingsStartY = useSharedValue(0);
-
+  // Bottom sheet snap points
+  const settingsSnapPoints = useMemo(() => ['50%'], []);
+  const collectionsSettingsSnapPoints = useMemo(() => ['45%'], []);
   const openCollectionsSettingsSheet = () => {
     setIsCollectionsSettingsSheetOpen(true);
-    collectionsSettingsTranslateY.value = withSpring(collectionsSettingsOpenPosition, {
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,
-    });
-  }
+    collectionsSettingsSheetRef.current?.snapToIndex(0);
+  };
 
-  const closeCollectionsSettingsSheet = (onCloseComplete?: () => void) => {
-    collectionsSettingsTranslateY.value = withSpring(collectionsSettingsClosedPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,
-    }, (isFinished) => {
-      'worklet';
-      if (isFinished) {
-        if (onCloseComplete) {
-          runOnJS(onCloseComplete)();
-        }
-        runOnJS(setIsCollectionsSettingsSheetOpen)(false);
-      }
-    });
-  }
+  const closeCollectionsSettingsSheet = () => {
+    collectionsSettingsSheetRef.current?.close();
+  };
 
-  const collectionsSettingsAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: collectionsSettingsTranslateY.value }],
-  }));
-
-  const collectionsBackdropAnimatedStyle = useAnimatedStyle(() => {
-    const sheetProgress =
-      (collectionsSettingsClosedPosition - collectionsSettingsTranslateY.value) / collectionSettingsSheetHeight;
-
-    const opacity = Math.min(1, Math.max(0, sheetProgress)) * 0.5;
-
-    return {
-      opacity,
-      pointerEvents: opacity > 0.001 ? 'auto' : 'none',
-    };
-  });
-
-  const collectionsSettingsPanGesture = Gesture.Pan()
-    .onStart(() => {
-      'worklet';
-      collectionsSettingsStartY.value = collectionsSettingsTranslateY.value;
-    })
-    .onUpdate(e => {
-      'worklet';
-      const newPosition = collectionsSettingsStartY.value + e.translationY;
-      collectionsSettingsTranslateY.value = Math.max(collectionsSettingsOpenPosition, newPosition);
-    })
-    .onEnd(e => {
-      'worklet';
-      const SWIPE_DISTANCE_THRESHOLD = 150;
-      const VELOCITY_THRESHOLD = 500;
-
-      const isDraggedDownFar = collectionsSettingsTranslateY.value > collectionsSettingsOpenPosition + SWIPE_DISTANCE_THRESHOLD;
-      const isFlickedDown = e.velocityY > VELOCITY_THRESHOLD;
-
-      if (isDraggedDownFar || isFlickedDown) {
-        collectionsSettingsTranslateY.value = withSpring(collectionsSettingsClosedPosition, {       
-          stiffness: 900,
-          damping: 110,
-          mass: 2,
-          overshootClamping: true,
-          energyThreshold: 6e-9,
-        }, (isFinished) => {
-          'worklet';
-          if (isFinished) {
-            runOnJS(closeCollectionsSettingsSheet)();
-          }
-        });
-      } else {
-        collectionsSettingsTranslateY.value = withSpring(collectionsSettingsOpenPosition, {       
-          stiffness: 900,
-          damping: 110,
-          mass: 2,
-          overshootClamping: true,
-          energyThreshold: 6e-9,
-        });
-      }
-    })
+  const handleCollectionsSettingsSheetChange = useCallback((index: number) => {
+    if (index === -1) {
+      setIsCollectionsSettingsSheetOpen(false);
+    }
+  }, []);
 
   const openSettingsSheet = () => {
     setIsSettingsSheetOpen(true);
-    settingsTranslateY.value = withSpring(settingsOpenPosition, {
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-  }
+    settingsSheetRef.current?.snapToIndex(0);
+  };
 
-  const closeSettingsSheet = (onCloseComplete?: () => void) => {
-    settingsTranslateY.value = withSpring(settingsClosedPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,}, (isFinished) => {
-      'worklet';
-      if (isFinished) {
-        if (onCloseComplete) {
-          runOnJS(onCloseComplete)();
-        }
-        runOnJS(setIsSettingsSheetOpen)(false);
-      }
-    });
-  }
+  const closeSettingsSheet = () => {
+    settingsSheetRef.current?.close();
+  };
 
-  const settingsAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: settingsTranslateY.value }],
-  }));
-
-  const backdropAnimatedStyle = useAnimatedStyle(() => {
-    const sheetProgress =
-      (settingsClosedPosition - settingsTranslateY.value) / settingsSheetHeight;
-
-    const opacity = Math.min(1, Math.max(0, sheetProgress)) * 0.5;
-
-    return {
-      opacity,
-      pointerEvents: opacity > 0.001 ? 'auto' : 'none',
-    };
-  });
-
-  const settingsPanGesture = Gesture.Pan()
-    .onStart(() => {
-      'worklet';
-      settingsStartY.value = settingsTranslateY.value;
-    })
-    .onUpdate(e => {
-      'worklet';
-      const newPosition = settingsStartY.value + e.translationY;
-      settingsTranslateY.value = Math.max(settingsOpenPosition, newPosition);
-    })
-    .onEnd(e => {
-      'worklet';
-      const SWIPE_DISTANCE_THRESHOLD = 150;
-      const VELOCITY_THRESHOLD = 500;
-
-      const isDraggedDownFar = settingsTranslateY.value > settingsOpenPosition + SWIPE_DISTANCE_THRESHOLD;
-      const isFlickedDown = e.velocityY > VELOCITY_THRESHOLD;
-
-      if (isDraggedDownFar || isFlickedDown) {
-        settingsTranslateY.value = withSpring(settingsClosedPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,}, (isFinished) => {
-          'worklet';
-          if (isFinished) {
-            runOnJS(closeSettingsSheet)();
-          }
-        });
-      } else {
-        settingsTranslateY.value = withSpring(settingsOpenPosition, {       
-      stiffness: 900,
-      damping: 110,
-      mass: 2,
-      overshootClamping: true,
-      energyThreshold: 6e-9,});
-      }
-    })
-
-
-  // End Animations
+  const handleSettingsSheetChange = useCallback((index: number) => {
+    if (index === -1) {
+      setIsSettingsSheetOpen(false);
+    }
+  }, []);
 
 
 
@@ -737,13 +641,13 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
 
 
   const handleMenuPress = (collection: Collection) => {
+    setSettingsCollection(collection);
     if (isSettingsSheetOpen) {
-      setSettingsCollection(collection);
-      closeSettingsSheet(() => {
+      closeSettingsSheet();
+      setTimeout(() => {
         openSettingsSheet();
-      });
+      }, 100);
     } else {
-      setSettingsCollection(collection);
       openSettingsSheet();
     }
   }
@@ -832,14 +736,14 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           zIndex: 10,
         }, animatedStyle]}
     >
-      <Button
+      <TouchableOpacity
         style={{
           backgroundColor: theme.colors.background
         }}
         onPress={() => router.push('../collections/addnew')}
       >
         <Ionicons name="add" size={32} color={theme.colors.onBackground} />
-      </Button>
+      </TouchableOpacity>
     </Animated.View>
     )
   }
@@ -897,8 +801,34 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               }
             ]}
           >
-            <Text style={{ ...styles.tinyText, color: theme.colors.onSurface, fontFamily: 'Inter', marginRight: 12, height: '100% ' }}>
+            <Text style={{ ...styles.tinyText, color: theme.colors.onSurface, fontFamily: 'Inter', marginRight: 12, height: '100%' }}>
               {siteBanner.message}
+            </Text>
+          </Banner>
+        ) : null}
+
+        {/* Collection Review Message */}
+        {collectionReviewMessage && !reviewMessageDismissed ? (
+          <Banner
+            visible
+            icon="information-outline"
+            style={{
+              width: '100%',
+              marginBottom: 20,
+              backgroundColor: theme.colors.primaryContainer
+            }}
+            actions={[
+              {
+                label: 'Close',
+                onPress: () => {
+                  setReviewMessageDismissed(true);
+                  setCollectionReviewMessage(null);
+                }
+              }
+            ]}
+          >
+            <Text style={{ ...styles.tinyText, color: theme.colors.onPrimaryContainer, fontFamily: 'Inter', marginRight: 12, height: '100%' }}>
+              {collectionReviewMessage}
             </Text>
           </Banner>
         ) : null}
@@ -964,192 +894,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           </View>
         </View>
 
-        {/* Recent Practice Section */}
-        {recentPracticeLoaded && (
-          <View style={{ width: '100%', marginBottom: 30, marginTop: 5, borderRadius: 20 }}>
-            <Text style={{ ...styles.text, fontFamily: 'Inter bold', marginBottom: 5, backgroundColor: theme.colors.background, zIndex: 9999 }}>Recent Practice</Text>
-            {recentPractice.length > 0 ? (
-              <View style={{ flexDirection: 'row', position: 'relative' }}>
-                <View style={{ flex: 1, marginLeft: 20 }}>
-                  {recentPractice.map((uv, index) => (
-                    <View key={uv.id || index} style={{ 
-                      flexDirection: 'row', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      position: 'relative'
-                    }}>
-                      <View style={{
-                        position: 'absolute',
-                        left: -10,
-                        top: 0,
-                        width: 4,
-                        height: 34,
-                        borderRadius: 9999,
-                        backgroundColor: theme.colors.onBackground
-                      }}/>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginLeft: 10, height: 30, marginTop: 0 }}>
-                        <Text style={{ fontFamily: 'Inter', fontSize: 16, color: theme.colors.onBackground, marginRight: 12 }}>
-                          {uv.readableReference}
-                        </Text>
-                        <Text style={{ fontFamily: 'Inter', fontSize: 14, color: theme.colors.onSurfaceVariant }}>
-                          {uv.progressPercent === 100 ? '100%' : `${Math.round(uv.progressPercent || 0)}%`}
-                        </Text>
-                      </View>
-                      <TouchableOpacity 
-                        activeOpacity={0.1}
-                        onPress={async () => {
-                          try {
-                            // Populate verses if not already populated
-                            let verseToPractice = uv;
-                            if (!verseToPractice.verses || verseToPractice.verses.length === 0) {
-                              const searchData = await getVerseSearchResult(uv.readableReference);
-                              verseToPractice = { ...uv, verses: searchData.verses || [] };
-                            }
-                            const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-                            setEditingUserVerse(verseToPractice);
-                            router.push('/practiceSession');
-                          } catch (e) {
-                            console.error('Failed to load verse for practice', e);
-                            setSnackbarMessage('Failed to load verse');
-                            setSnackbarVisible(true);
-                          }
-                        }}
-                      >
-                        <Text style={{ ...styles.tinyText, fontSize: 12, textDecorationLine: 'underline', opacity: 0.8}}>
-                          Learn again
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', position: 'relative', marginTop: 5 }}>
-                {/* L shape for empty state */}
-                <View style={{ marginLeft: 20, alignItems: 'flex-start' }}>
-                  
-                      <View style={{
-                        position: 'absolute',
-                        left: -10,
-                        top: 0,
-                        width: 4,
-                        height: 30,
-                        borderRadius: 9999,
-                        backgroundColor: theme.colors.onBackground
-                      }}/>
-                </View>
-                <View style={{ flex: 1, alignItems: 'flex-start', marginLeft: 10, marginTop: 5 }}>
-                  <Text style={{ 
-                    fontFamily: 'Inter', 
-                    fontSize: 14, 
-                    color: theme.colors.onBackground,
-                  }}>
-                    No passages practiced
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Overdue Section */}
-        {overdueVersesLoaded && (
-          <View style={{ width: '100%', marginBottom: 24, borderRadius: 20 }}>
-            <Text style={{ ...styles.text, fontFamily: 'Inter bold', marginBottom: 12 }}>Overdue</Text>
-            {overdueVerses.length > 0 ? (
-              <View style={{ flexDirection: 'row', position: 'relative' }}>
-                <View style={{ flex: 1, marginLeft: 30 }}>
-                  {overdueVerses.map((uv, index) => {
-                    const lastPracticed = uv.lastPracticed ? new Date(uv.lastPracticed) : null;
-                    const now = new Date();
-                    const diffMs = lastPracticed ? now.getTime() - lastPracticed.getTime() : 0;
-                    const diffHours = diffMs ? Math.floor(diffMs / (1000 * 60 * 60)) : 0;
-                    const diffDays = diffMs ? Math.floor(diffMs / (1000 * 60 * 60 * 24)) : 0;
-                    const timeAgo = diffDays > 0 ? `${diffDays}d ago` : `${diffHours}hr ago`;
-                    
-                    return (
-                    <View key={uv.id || index} style={{ 
-                      flexDirection: 'row', 
-                      alignItems: 'center', 
-                      justifyContent: 'space-between',
-                      position: 'relative'
-                    }}>
-                      <View style={{
-                        position: 'absolute',
-                        left: -10,
-                        top: 0,
-                        width: 4,
-                        height: 30,
-                        borderRadius: 9999,
-                        backgroundColor: theme.colors.onBackground
-                      }}/>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginLeft: 10, height: 30 }}>
-                          <Text style={{ color: '#ff4444', fontSize: 16, marginRight: 8 }}>!</Text>
-                        <Text style={{ fontFamily: 'Inter', fontSize: 16, color: theme.colors.onBackground, marginRight: 12 }}>
-                            {uv.readableReference}
-                          </Text>
-                          <Text style={{ fontFamily: 'Inter', fontSize: 12, color: theme.colors.onSurfaceVariant }}>
-                            {timeAgo}
-                          </Text>
-                        </View>
-                        <TouchableOpacity 
-                          activeOpacity={0.1}
-                          onPress={async () => {
-                            try {
-                              // Populate verses if not already populated
-                              let verseToPractice = uv;
-                              if (!verseToPractice.verses || verseToPractice.verses.length === 0) {
-                                const searchData = await getVerseSearchResult(uv.readableReference);
-                                verseToPractice = { ...uv, verses: searchData.verses || [] };
-                              }
-                              const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-                              setEditingUserVerse(verseToPractice);
-                              router.push('/practiceSession');
-                            } catch (e) {
-                              console.error('Failed to load verse for practice', e);
-                              setSnackbarMessage('Failed to load verse');
-                              setSnackbarVisible(true);
-                            }
-                          }}
-                        >
-                          <Text style={{ fontFamily: 'Inter', fontSize: 14, color: theme.colors.primary, textDecorationLine: 'underline' }}>
-                            Practice &gt;
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : (
-              <View style={{ flexDirection: 'row', position: 'relative' }}>
-                {/* L shape for empty state */}
-                <View style={{ marginLeft: 20, alignItems: 'flex-start' }}>
-                  
-                      <View style={{
-                        position: 'absolute',
-                        left: -10,
-                        top: 0,
-                        width: 4,
-                        height: 30,
-                        borderRadius: 9999,
-                        backgroundColor: theme.colors.onBackground
-                      }}/>
-                </View>
-                <View style={{ flex: 1, alignItems: 'flex-start', marginLeft: 10, marginTop: 5 }}>
-                  <Text style={{ 
-                    fontFamily: 'Inter', 
-                    fontSize: 14, 
-                    color: theme.colors.onBackground,
-                  }}>
-                    No passages overdue
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
-        )}
-
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: -10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 20 }}>
@@ -1164,13 +908,16 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           </View>
             <Text style={{ ...styles.subheading, marginBottom: 0 }}>My Verses</Text>
           <TouchableOpacity activeOpacity={0.1} onPress={() => openCollectionsSettingsSheet()}>
-            <Ionicons name={"settings"} size={24} color={theme.colors.onBackground}  />
+            <Ionicons name={"reorder-four"} size={24} color={theme.colors.onBackground}  />
           </TouchableOpacity>
         </View>
         <View style={styles.collectionsContainer}>
 
           {orderedCollections.map((collection) => (
+            <>
+            <Divider style={{marginHorizontal: -50, marginTop: 10, marginBottom: -10}} />
             <CollectionItem key={collection.collectionId} collection={collection} onMenuPress={handleMenuPress} />
+            </>
           ))}
 
         </View>
@@ -1201,47 +948,18 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <Ionicons name="add" size={42} color={theme.colors.background} />
         </TouchableOpacity>
 
+      {/* Settings Sheet */}
       <Portal>
-        <Animated.View
-          style={[
-            {
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              zIndex: 9998,
-            },
-            backdropAnimatedStyle
-          ]}
+        <BottomSheet
+          ref={settingsSheetRef}
+          index={isSettingsSheetOpen ? 0 : -1}
+          snapPoints={settingsSnapPoints}
+          enablePanDownToClose
+          onChange={handleSettingsSheetChange}
+          backgroundStyle={{ backgroundColor: theme.colors.surface }}
+          handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
         >
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={0.5}
-            onPress={() => closeSettingsSheet()}
-          />
-        </Animated.View>
-
-        <Animated.View style={[{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          height: settingsSheetHeight,
-          backgroundColor: theme.colors.surface,
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          paddingTop: 20,
-          paddingBottom: 80,
-          zIndex: 9999,
-          boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
-        }, settingsAnimatedStyle]}>
-          <GestureDetector gesture={settingsPanGesture}>
-            <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
-              <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
-            </View>
-          </GestureDetector>
-
+        <BottomSheetView style={{ flex: 1 }}>
           <Divider style={{margin: 0}} />
           {isOwnedCollection ? (
             <>
@@ -1302,7 +1020,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                   }
                 }}>
                 <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
-                  {settingsCollection?.visibility === 'Public' ? 'Make Private' : 'Make Public'}
+                  {settingsCollection?.visibility === 'Public' ? 'Make Not Visible to Friends' : 'Make Visible to Friends'}
                 </Text>
               </TouchableOpacity>
               <Divider />
@@ -1322,8 +1040,8 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 onPress={() => {
                   if (!settingsCollection?.collectionId) return;
                   closeSettingsSheet();
-                  const setEditingCollection = useAppStore.getState().setEditingCollection;
-                  setEditingCollection(settingsCollection);
+                  const setPublishingCollection = useAppStore.getState().setPublishingCollection;
+                  setPublishingCollection(settingsCollection);
                   router.push('../collections/publishCollection');
                 }}>
                   <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
@@ -1358,59 +1076,49 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               <Divider />
             </>
           )}
-        </Animated.View>
+        </BottomSheetView>
+      </BottomSheet>
       </Portal>
 
+      {/* Collections Settings Sheet */}
       <Portal>
-        <Animated.View
-          style={[
-            {
-              position: 'absolute',
-              top: 0,
-              bottom: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              zIndex: 9998,
-            },
-            collectionsBackdropAnimatedStyle
-          ]}
+        <BottomSheet
+          ref={collectionsSettingsSheetRef}
+          index={isCollectionsSettingsSheetOpen ? 0 : -1}
+          snapPoints={collectionsSettingsSnapPoints}
+          enablePanDownToClose
+          onChange={handleCollectionsSettingsSheetChange}
+          backgroundStyle={{ backgroundColor: theme.colors.surface }}
+          handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
         >
-          <TouchableOpacity
-            style={{ flex: 1 }}
-            activeOpacity={0.5}
-            onPress={() => closeCollectionsSettingsSheet()}
-          />
-        </Animated.View>
-
-        <Animated.View style={[{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          height: collectionSettingsSheetHeight,
-          backgroundColor: theme.colors.surface,
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          paddingTop: 20,
-          paddingBottom: 80,
-          zIndex: 9999,
-          boxShadow: '1px 1px 15px rgba(0, 0, 0, 0.2)',
-        }, collectionsSettingsAnimatedStyle]}>
-          <GestureDetector gesture={collectionsSettingsPanGesture}>
-            <View style={{ padding: 20, marginTop: -20, alignItems: 'center' }}>
-              <View style={{ width: 50, height: 4, borderRadius: 2, backgroundColor: theme.colors.onBackground }} />
-            </View>
-          </GestureDetector>
-
+        <BottomSheetView style={{ flex: 1 }}>
           <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Collections By:</Text>
           <Divider />
-                <TouchableOpacity
+          <TouchableOpacity
+            style={sheetItemStyle.settingsItem}
+            activeOpacity={0.1}
+            onPress={async () => {
+              const updatedUser = { ...user, collectionsSortBy: 0 };
+              setUser(updatedUser);
+              closeCollectionsSettingsSheet();
+              updateCollectionsOrder();
+              try {
+                await updateCollectionsSortBy(0, user.username);
+              } catch (error) {
+                console.error('Failed to update collections sort by:', error);
+              }
+            }}>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 0 ? '700' : '500' }}>Use Custom Order</Text>
+          </TouchableOpacity>
+          <Divider />
+          <TouchableOpacity
+            style={sheetItemStyle.settingsItem}
             activeOpacity={0.1}
             onPress={() => {
               closeCollectionsSettingsSheet();
               router.push('../collections/reorderCollections');
             }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Custom Order (Reorder)</Text>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Reorder Custom Order</Text>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
@@ -1427,7 +1135,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 console.error('Failed to update collections sort by:', error);
               }
             }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Newest Modified</Text>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 1 ? '700' : '500' }}>Newest Modified</Text>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
@@ -1444,7 +1152,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 console.error('Failed to update collections sort by:', error);
               }
             }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Percent Memorized</Text>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 2 ? '700' : '500' }}>Percent Memorized</Text>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity
@@ -1461,22 +1169,42 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 console.error('Failed to update collections sort by:', error);
               }
             }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Most Overdue</Text>
+            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 3 ? '700' : '500' }}>Most Overdue</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </BottomSheetView>
+      </BottomSheet>
       </Portal>
       <Portal>
-      <Dialog visible={deleteDialogVisible} onDismiss={hideDialog}>
+        <Dialog visible={deleteDialogVisible} onDismiss={hideDialog}>
         <Dialog.Content>
           <Text style={{...styles.tinyText}}>Are you sure you want to {deleteDialogIsOwned ? 'delete' : 'remove'} the collection "{deleteDialogCollection?.title}"?</Text>
         </Dialog.Content>
         <Dialog.Actions>
-          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} activeOpacity={0.1} onPress={() => hideDeleteDialog()}>
-            <Text style={{...styles.buttonText_outlined}}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={{...styles.button_text, width: '50%', height: 30}} activeOpacity={0.1} onPress={() => deleteCollectionHandle()}>
-            <Text style={{...styles.buttonText_outlined, color: theme.colors.error}}>{deleteDialogIsOwned ? 'Delete' : 'Remove'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', width: '100%' }}>
+            <View style={{ width: '50%', paddingRight: 8 }}>
+              <Button 
+                title="Cancel" 
+                onPress={() => hideDeleteDialog()} 
+                variant="text"
+                style={{ height: 30 }}
+              />
+            </View>
+            <View style={{ width: '50%', paddingLeft: 8 }}>
+              {isDeletingCollection ? (
+                <View style={{ height: 30, justifyContent: 'center', alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={theme.colors.error} />
+                </View>
+              ) : (
+                <Button 
+                  title={deleteDialogIsOwned ? 'Delete' : 'Remove'} 
+                  onPress={() => deleteCollectionHandle()} 
+                  variant="text"
+                  style={{ height: 30 }}
+                  textStyle={{ color: theme.colors.error }}
+                />
+              )}
+            </View>
+          </View>
         </Dialog.Actions>
       </Dialog>
       </Portal>
@@ -1495,26 +1223,30 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         }}
       />
 
+      <ShareVerseSheet
+        visible={versesToShare.length > 0}
+        userVerses={versesToShare}
+        onClose={() => setVersesToShare([])}
+        onShareSuccess={(friendUsername) => {
+          setSnackbarMessage(`Verse shared with ${friendUsername}!`);
+          setSnackbarVisible(true);
+        }}
+        onShareError={() => {
+          setSnackbarMessage('Failed to share verse');
+          setSnackbarVisible(true);
+        }}
+      />
+
       {/* Collection Picker Modal for Verse of the Day Save */}
-      <Modal
-        visible={showVodCollectionPicker}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowVodCollectionPicker(false)}
-      >
-        <View style={{ 
-          flex: 1, 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          backgroundColor: 'rgba(0, 0, 0, 0.5)' 
-        }}>
-          <View style={{ 
-            backgroundColor: theme.colors.surface, 
-            borderRadius: 16, 
-            padding: 20, 
-            width: '85%',
-            maxHeight: '70%'
-          }}>
+      <Portal>
+        <Modal
+          visible={showVodCollectionPicker}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowVodCollectionPicker(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ backgroundColor: theme.colors.surface, borderRadius: 16, width: '85%', maxHeight: '70%', padding: 20 }}>
             <Text style={{ 
               fontSize: 20,
               fontWeight: '600',
@@ -1524,11 +1256,45 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             }}>
               Choose a Collection
             </Text>
-            
-            <ScrollView>
+
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
+                New Collection Title
+              </Text>
+              <TextInput
+                value={newVodCollectionTitle}
+                onChangeText={handleVodInputChange}
+                placeholder="Enter title to create new collection"
+                placeholderTextColor={theme.colors.onSurfaceVariant}
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.colors.onSurfaceVariant,
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 16,
+                  fontFamily: 'Inter',
+                  color: theme.colors.onBackground,
+                  backgroundColor: theme.colors.background,
+                }}
+              />
+            </View>
+            <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
+              Or select existing collection
+            </Text>
+            <ScrollView style={{ maxHeight: height * 0.35, marginBottom: 20 }}>
               {(() => {
-                const favorites = collections.filter(col => col.favorites || col.title === 'Favorites');
-                const nonFavorites = collections.filter(col => !col.favorites && col.title !== 'Favorites');
+                // Filter to only show collections owned by the user
+                const userOwnedCollections = collections.filter(col => {
+                  const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+                  const owner = col.username ? normalize(col.username) : undefined;
+                  const author = col.authorUsername ? normalize(col.authorUsername) : undefined;
+                  const currentUser = normalize(user?.username);
+                  
+                  // Collection is owned by user if username matches OR authorUsername matches (and username is not set or also matches)
+                  return (owner === currentUser) || (author === currentUser && (!owner || owner === currentUser));
+                });
+                const favorites = userOwnedCollections.filter(col => col.favorites || col.title === 'Favorites');
+                const nonFavorites = userOwnedCollections.filter(col => !col.favorites && col.title !== 'Favorites');
                 
                 return (
                   <>
@@ -1548,7 +1314,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                           justifyContent: 'space-between',
                           alignItems: 'center'
                         }}
-                        onPress={() => setPickedVodCollection(collection)}
+                        onPress={() => handleVodCollectionSelect(collection)}
                       >
                         <Text style={{
                           fontSize: 16,
@@ -1581,7 +1347,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                             : 'transparent',
                           borderRadius: 8
                         }}
-                        onPress={() => setPickedVodCollection(collection)}
+                        onPress={() => handleVodCollectionSelect(collection)}
                       >
                         <Text style={{
                           fontSize: 16,
@@ -1613,6 +1379,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 activeOpacity={0.1}
                 onPress={() => {
                   setPickedVodCollection(undefined);
+                  setNewVodCollectionTitle('');
                   setShowVodCollectionPicker(false);
                 }}
               >
@@ -1625,35 +1392,64 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                style={{
-                  backgroundColor: theme.colors.primary,
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  borderRadius: 8,
-                  opacity: (!pickedVodCollection || isAddingVodToCollection) ? 0.5 : 1
-                }}
-                activeOpacity={0.1}
-                onPress={handleAddVodToCollection}
-                disabled={!pickedVodCollection || isAddingVodToCollection}
-              >
-                {isAddingVodToCollection ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={{
-                    fontSize: 16,
-                    color: '#fff',
-                    fontFamily: 'Inter',
-                    fontWeight: '600'
-                  }}>
-                    Add
-                  </Text>
-                )}
-              </TouchableOpacity>
+              {newVodCollectionTitle.trim() ? (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    paddingVertical: 12,
+                    paddingHorizontal: 24,
+                    borderRadius: 8,
+                    opacity: (!newVodCollectionTitle.trim() || isCreatingNewVodCollection) ? 0.5 : 1
+                  }}
+                  activeOpacity={0.1}
+                  onPress={handleCreateNewVodCollection}
+                  disabled={!newVodCollectionTitle.trim() || isCreatingNewVodCollection}
+                >
+                  {isCreatingNewVodCollection ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{
+                      fontSize: 16,
+                      color: '#fff',
+                      fontFamily: 'Inter',
+                      fontWeight: '600'
+                    }}>
+                      Create
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: theme.colors.primary,
+                    paddingVertical: 12,
+                    paddingHorizontal: 24,
+                    borderRadius: 8,
+                    opacity: (!pickedVodCollection || isAddingVodToCollection) ? 0.5 : 1
+                  }}
+                  activeOpacity={0.1}
+                  onPress={handleAddVodToCollection}
+                  disabled={!pickedVodCollection || isAddingVodToCollection}
+                >
+                  {isAddingVodToCollection ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{
+                      fontSize: 16,
+                      color: '#fff',
+                      fontFamily: 'Inter',
+                      fontWeight: '600'
+                    }}>
+                      Add
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      </Portal>
       
       <Snackbar
         visible={snackbarVisible}
@@ -1666,20 +1462,6 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         </Text>
       </Snackbar>
 
-      <ShareVerseSheet
-        visible={!!verseToShare}
-        verseReference={verseToShare?.verse_reference || null}
-        onClose={() => setVerseToShare(null)}
-        onShareSuccess={(friend) => { 
-          setVerseToShare(null); 
-          setSnackbarMessage(`Verse shared with ${friend}`); 
-          setSnackbarVisible(true); 
-        }}
-        onShareError={() => { 
-          setSnackbarMessage('Failed to share verse'); 
-          setSnackbarVisible(true); 
-        }}
-      />
     </View>
     </>
   );

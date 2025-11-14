@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Collection, useAppStore } from '../store'; // Adjust the import path for your Collection type
 import getStyles from '../styles';
 import useAppTheme from '../theme';
@@ -48,12 +48,13 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
     : collection.visibility ?? '';
 
   return (
-      <Pressable
+      <TouchableOpacity
         key={collection.collectionId}
         style={{
           padding: 0,
           borderRadius: 10,
         }}
+        activeOpacity={0.5}
         onPress={() => router.push(`../collections/${collection.collectionId}`)}>
       <View style={styles.collectionItem}>
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
@@ -95,18 +96,11 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
                   
               </View>
             <View>
-
-              {/* author */}
-              {collection.title === 'Favorites' || isOwnedCollection ? (
-                null
-              ) : (
-                <Text>@{collection.authorUsername}</Text>
-              )}
             </View>
           </View>
           
         </View>
       </View>
-    </Pressable>
+    </TouchableOpacity>
   );
 }

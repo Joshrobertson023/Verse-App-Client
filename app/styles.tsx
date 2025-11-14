@@ -30,17 +30,14 @@ export default function useStyles() {
       width: '100%',
     },
     collectionItem: {
-      height: 100,
-      minHeight: 50,
+      height: 80,
       marginTop: 25,
       borderRadius: 10,
       display: 'flex',
-      paddingLeft: 15,
-      padding: 10,
       justifyContent: 'flex-start',
       width: '100%',
       marginBottom: 0,
-      backgroundColor: theme.colors.surface,
+      backgroundColor: theme.colors.background,
     },
     text: {
       color: theme.colors.onBackground,
@@ -137,6 +134,36 @@ export default function useStyles() {
     },
     signinButton: {
       marginBottom: 10,
+    },
+    // Global button styles for React Native Button component
+    button: {
+      borderRadius: 20,
+      height: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    buttonOutlined: {
+      backgroundColor: 'transparent',
+      borderColor: theme.colors.onBackground,
+      borderWidth: 1,
+      borderRadius: 20,
+      height: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    buttonFilled: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: 20,
+      height: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    buttonText: {
+      backgroundColor: 'transparent',
+      borderRadius: 20,
+      height: 40,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
   });
 

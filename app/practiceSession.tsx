@@ -1,16 +1,31 @@
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { ActivityIndicator, Snackbar } from 'react-native-paper';
-import { getAllUserVerses, getUserActivity, getUserCollections, memorizeUserVerse, memorizeVerseOfDay } from './db';
+import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Button from './components/Button';
+
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
+import { getAllUserVerses, getUserActivity, getUserCollections, memorizeUserVerse, memorizeVerseOfDay, refreshUser, recordPractice, getStreakLength } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
 
-const TOTAL_STAGES = 1;
-const HIDE_PERCENTAGE_PER_STAGE = 0.25;
+const MIN_STAGES = 3;
+const MAX_STAGES = 6;
+const DEFAULT_STAGES = 4;
+const HIDE_PERCENTAGE_PER_STAGE = 0.35;
 const MIN_STAGE_HEIGHT = 200;
+
+const PRACTICE_SETTINGS_KEYS = {
+  RESTART_STAGE_ON_WRONG: '@verseApp:practice:restartStageOnWrong',
+  LEARN_VERSE_REFERENCE: '@verseApp:practice:learnVerseReference',
+  TOTAL_STAGES: '@verseApp:practice:totalStages',
+};
 
 interface Word {
   id: number;
@@ -34,6 +49,7 @@ export default function PracticeSessionScreen() {
   const theme = useAppTheme();
   const editingUserVerse = useAppStore((state) => state.editingUserVerse);
   const user = useAppStore((state) => state.user);
+  const setUser = useAppStore((state) => state.setUser);
   const [allWords, setAllWords] = useState<Word[]>([]);
   const [displayWords, setDisplayWords] = useState<Word[]>([]);
   const [currentStage, setCurrentStage] = useState(1);
@@ -44,6 +60,7 @@ export default function PracticeSessionScreen() {
   const [typedWords, setTypedWords] = useState<string[]>([]);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [streakSnackbarVisible, setStreakSnackbarVisible] = useState(false);
   const [completed, setCompleted] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const collections = useAppStore((state) => state.collections);
@@ -53,6 +70,100 @@ export default function PracticeSessionScreen() {
     const profileCache = useAppStore((state) => state.profileCache);
     const setProfileCache = useAppStore((state) => state.setProfileCache);
     const resetProfileCache = useAppStore((state) => state.resetProfileCache);
+  const [showSettings, setShowSettings] = useState(false);
+  const [restartStageOnWrong, setRestartStageOnWrong] = useState(true);
+  const [learnVerseReference, setLearnVerseReference] = useState(true);
+  const [totalStages, setTotalStages] = useState(DEFAULT_STAGES);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  
+  // Animation values for error feedback
+  const shakeAnimation = useSharedValue(0);
+  const errorColorAnimation = useSharedValue(0);
+
+  // Load settings from AsyncStorage on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const [restartStage, learnReference, stages] = await Promise.all([
+          AsyncStorage.getItem(PRACTICE_SETTINGS_KEYS.RESTART_STAGE_ON_WRONG),
+          AsyncStorage.getItem(PRACTICE_SETTINGS_KEYS.LEARN_VERSE_REFERENCE),
+          AsyncStorage.getItem(PRACTICE_SETTINGS_KEYS.TOTAL_STAGES),
+        ]);
+
+        if (restartStage !== null) {
+          setRestartStageOnWrong(restartStage === 'true');
+        }
+        if (learnReference !== null) {
+          setLearnVerseReference(learnReference === 'true');
+        }
+        if (stages !== null) {
+          const parsedStages = parseInt(stages, 10);
+          if (!isNaN(parsedStages) && parsedStages >= MIN_STAGES && parsedStages <= MAX_STAGES) {
+            setTotalStages(parsedStages);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load practice settings:', error);
+      } finally {
+        setSettingsLoaded(true);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  // Save restartStageOnWrong to AsyncStorage
+  const handleSetRestartStageOnWrong = async (value: boolean) => {
+    setRestartStageOnWrong(value);
+    try {
+      await AsyncStorage.setItem(PRACTICE_SETTINGS_KEYS.RESTART_STAGE_ON_WRONG, value.toString());
+    } catch (error) {
+      console.error('Failed to save restartStageOnWrong setting:', error);
+    }
+  };
+
+  // Save learnVerseReference to AsyncStorage
+  const handleSetLearnVerseReference = async (value: boolean) => {
+    setLearnVerseReference(value);
+    try {
+      await AsyncStorage.setItem(PRACTICE_SETTINGS_KEYS.LEARN_VERSE_REFERENCE, value.toString());
+      // Reset the practice session when this setting changes
+      const reference = editingUserVerse?.readableReference || '';
+      const referenceWords = value ? parseReference(reference) : [];
+      const verseTextWords = parseVerseText(editingUserVerse?.verses || []);
+      const all = [...referenceWords, ...verseTextWords];
+      setAllWords(all);
+      setDisplayWords(hideWordsForStage(all, currentStage));
+      setCurrentWordIndex(0);
+      setUserInput('');
+      setTypedWords([]);
+    } catch (error) {
+      console.error('Failed to save learnVerseReference setting:', error);
+    }
+  };
+
+  // Save totalStages to AsyncStorage
+  const handleSetTotalStages = async (value: number) => {
+    setTotalStages(value);
+    try {
+      await AsyncStorage.setItem(PRACTICE_SETTINGS_KEYS.TOTAL_STAGES, value.toString());
+      // If current stage exceeds new total, reset to stage 1
+      if (currentStage > value) {
+        setCurrentStage(1);
+        setHighestCompletedStage(1);
+        setStageHistory([]);
+        setCurrentWordIndex(0);
+        setUserInput('');
+        setTypedWords([]);
+        setDisplayWords(hideWordsForStage(allWords, 1));
+      } else {
+        // Update display words for current stage with new total
+        setDisplayWords(hideWordsForStage(allWords, currentStage));
+      }
+    } catch (error) {
+      console.error('Failed to save totalStages setting:', error);
+    }
+  };
 
   const createWord = (id: number, word: string, isNumber: boolean, showSpace: boolean): Word => ({
     id,
@@ -200,7 +311,34 @@ export default function PracticeSessionScreen() {
       return words.map(w => ({ ...w, isVisible: true }));
     }
 
-    const totalHidePercent = (stage - 1) * HIDE_PERCENTAGE_PER_STAGE;
+    // Final stage hides all hints
+    if (stage === totalStages) {
+      return words.map(w => ({ ...w, isVisible: false }));
+    }
+
+    // Calculate hide percentage based on stage number and total stages
+    // Stage 2 is always 50% easier than normal increment
+    // Progress from 0% at stage 1 to 100% at final stage
+    let totalHidePercent;
+    if (stage === 2) {
+      // Stage 2: 50% easier (half of normal increment)
+      // Calculate the increment size needed to go from 0% to 100% across all stages
+      // Stage 1 to 2: increment of Y (50% of normal)
+      // Stage 2 to 3+: increment of 2Y (normal)
+      // Total: Y + (totalStages - 2) * 2Y = (2 * totalStages - 3) * Y = 100%
+      // So Y = 100% / (2 * totalStages - 3)
+      const stage2Increment = 1.0 / (2 * totalStages - 3);
+      totalHidePercent = stage2Increment; // Stage 2 hides Y%
+    } else {
+      // Stage 3+: progressive hiding
+      // Stage 2 hides Y%, then each stage after adds 2Y%
+      // Stage 3 hides Y% + 2Y% = 3Y%
+      // Stage 4 hides 3Y% + 2Y% = 5Y%
+      // etc.
+      const stage2Increment = 1.0 / (2 * totalStages - 3);
+      const normalIncrement = 2 * stage2Increment;
+      totalHidePercent = stage2Increment + ((stage - 2) * normalIncrement);
+    }
     const verseTextStartIndex = words.findIndex(w => w.id >= 1000);
     if (verseTextStartIndex === -1) 
       return words;
@@ -256,8 +394,13 @@ export default function PracticeSessionScreen() {
       return;
     }
 
+    // Wait for settings to load before initializing
+    if (!settingsLoaded) {
+      return;
+    }
+
     const reference = editingUserVerse.readableReference || '';
-    const referenceWords = parseReference(reference);
+    const referenceWords = learnVerseReference ? parseReference(reference) : [];
     const verseTextWords = parseVerseText(editingUserVerse.verses);
     const all = [...referenceWords, ...verseTextWords];
     
@@ -269,7 +412,7 @@ export default function PracticeSessionScreen() {
     setCurrentWordIndex(0);
     setUserInput('');
     setTypedWords([]);
-  }, [editingUserVerse]);
+  }, [editingUserVerse, learnVerseReference, totalStages, settingsLoaded]);
 
   // Runs when stage changes
   useEffect(() => {
@@ -386,7 +529,7 @@ export default function PracticeSessionScreen() {
     setUserInput('');
 
     if (nextIndex >= allWords.length) {
-      if (currentStage < TOTAL_STAGES) {
+      if (currentStage < totalStages) {
         setTimeout(() => {
           const nextStage = currentStage + 1;
           setStageHistory(prev => [...prev, currentStage]);
@@ -397,8 +540,8 @@ export default function PracticeSessionScreen() {
         }, 500);
       } else {
         setTimeout(() => handleCompleted(), 500);
-        if (currentStage === TOTAL_STAGES && currentStage > highestCompletedStage) {
-          setHighestCompletedStage(TOTAL_STAGES);
+        if (currentStage === totalStages && currentStage > highestCompletedStage) {
+          setHighestCompletedStage(totalStages);
         }
       }
     }
@@ -407,6 +550,33 @@ export default function PracticeSessionScreen() {
   const handleIncorrectInput = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     setUserInput('');
+    
+    // If restart stage on wrong is enabled, restart the current stage
+    if (restartStageOnWrong) {
+      // Reset to beginning of current stage
+      setCurrentWordIndex(0);
+      setTypedWords([]);
+      setUserInput('');
+      // Reset display words for current stage
+      setDisplayWords(hideWordsForStage(allWords, currentStage));
+    }
+    
+    // Red color appears immediately, then shake happens, then red disappears
+    errorColorAnimation.value = withSequence(
+      withTiming(1, { duration: 0 }), // Appear immediately
+      withTiming(1, { duration: 250 }), // Stay red during shake
+      withTiming(0, { duration: 100 }) // Fade out after shake
+    );
+    
+    // Shake animation starts after red appears (half strength)
+    shakeAnimation.value = withSequence(
+      withTiming(0, { duration: 0 }), // Start position
+      withTiming(-5, { duration: 50 }),
+      withTiming(5, { duration: 50 }),
+      withTiming(-5, { duration: 50 }),
+      withTiming(5, { duration: 50 }),
+      withTiming(0, { duration: 50 })
+    );
   };
 
   const handleCompleted = () => {
@@ -422,6 +592,14 @@ export default function PracticeSessionScreen() {
       editingUserVerse.progressPercent = 100;
       editingUserVerse.lastPracticed = new Date(); // Update LAST_PRACTICED
       
+      // Get current streak length before memorizing
+      let streakBefore = 0;
+      try {
+        streakBefore = await getStreakLength(user.username);
+      } catch (error) {
+        console.error('Failed to get streak length:', error);
+      }
+      
       // Check if this is a verse of day practice (no id means it's not saved to user's collection)
       const isVerseOfDay = !editingUserVerse.id || editingUserVerse.id === 0;
       
@@ -431,6 +609,26 @@ export default function PracticeSessionScreen() {
       } else {
         // For regular user verses, use the normal endpoint
         await memorizeUserVerse(editingUserVerse);
+      }
+      
+      // Record practice and check if today's activity was newly tracked
+      let streakAfter = streakBefore;
+      try {
+        streakAfter = await recordPractice(user.username);
+        // If streak increased, it means today's activity was newly recorded
+        if (streakAfter > streakBefore) {
+          setStreakSnackbarVisible(true);
+        }
+      } catch (error) {
+        console.error('Failed to record practice:', error);
+      }
+      
+      // Refresh user to get updated points
+      try {
+        const refreshedUser = await refreshUser(user.username);
+        setUser(refreshedUser);
+      } catch (error) {
+        console.error('Failed to refresh user:', error);
       }
     } else {
       alert('Error sending update to server: editingUserVerse was undefined.');
@@ -444,10 +642,7 @@ export default function PracticeSessionScreen() {
       getUserActivity(user.username, 5),
     ]);
 
-    const memorized = (verses || []).filter((verse: any) => verse.progressPercent === 100).length;
-
     setProfileCache({
-      memorizedCount: memorized,
       activity: activity || [],
       isLoaded: true,
       isLoading: false,
@@ -495,6 +690,24 @@ export default function PracticeSessionScreen() {
     return null;
   }
 
+  const animatedInputStyle = useAnimatedStyle(() => {
+    const textColor = errorColorAnimation.value === 1 
+      ? '#ff4444' 
+      : theme.colors.onBackground;
+    return {
+      color: textColor,
+    };
+  });
+
+  const animatedHintTextStyle = useAnimatedStyle(() => {
+    const textColor = errorColorAnimation.value === 1 
+      ? '#ff4444' 
+      : theme.colors.onBackground;
+    return {
+      color: textColor,
+    };
+  });
+
   const inputStyle = {
     ...styles.text,
     fontFamily: 'Noto Serif',
@@ -514,7 +727,7 @@ export default function PracticeSessionScreen() {
           flexDirection: 'row', 
           justifyContent: 'space-between', 
           alignItems: 'center',
-          marginBottom: 8 
+          marginBottom: 12 
         }}>
           <Text style={{ 
             fontSize: 16, 
@@ -523,33 +736,11 @@ export default function PracticeSessionScreen() {
           }}>
             Stage {currentStage} / {totalStages}
           </Text>
-          <Text style={{ 
-            fontSize: 16, 
-            fontWeight: '600', 
-            color: theme.colors.onBackground 
-          }}>
-            {Math.round(progressPercent)}%
-          </Text>
-        </View>
-        
-        <View style={{
-          height: 8,
-          backgroundColor: theme.colors.surface,
-          borderRadius: 4,
-          overflow: 'hidden'
-        }}>
-          <View style={{
-            height: '100%',
-            width: `${progressPercent}%`,
-            backgroundColor: theme.colors.primary,
-            borderRadius: 4,
-          }} />
         </View>
         
         <View style={{ 
           flexDirection: 'row', 
           justifyContent: 'space-between',
-          marginTop: 8,
         }}>
           {Array.from({ length: totalStages }).map((_, index) => {
             const stageNum = index + 1;
@@ -586,11 +777,20 @@ export default function PracticeSessionScreen() {
     <>
       <Stack.Screen
         options={{
-          title: editingUserVerse.readableReference,
+          title: learnVerseReference ? '' : (editingUserVerse?.readableReference || ''),
           headerBackVisible: true,
           headerStyle: { backgroundColor: theme.colors.surface },
           headerTintColor: theme.colors.onBackground,
           headerShadowVisible: false,
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={() => setShowSettings(true)}
+              style={{ marginRight: 16 }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="settings-outline" size={24} color={theme.colors.onBackground} />
+            </TouchableOpacity>
+          ),
         }}
       />
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -600,7 +800,7 @@ export default function PracticeSessionScreen() {
         >
           <ProgressBar 
             currentStage={currentStage} 
-            totalStages={TOTAL_STAGES}
+            totalStages={totalStages}
             progressPercent={calculateProgress()}
             highestCompletedStage={highestCompletedStage}
             theme={theme}
@@ -629,22 +829,33 @@ export default function PracticeSessionScreen() {
             </Text>
           </TouchableOpacity>
           
-          <View style={{ position: 'relative', marginBottom: 20, minHeight: MIN_STAGE_HEIGHT }}>
+          <Animated.View 
+            style={[
+              { position: 'relative', marginBottom: 20, minHeight: MIN_STAGE_HEIGHT, borderRadius: 8 },
+              useAnimatedStyle(() => {
+                return {
+                  transform: [{ translateX: shakeAnimation.value }],
+                };
+              })
+            ]}
+          >
             {/* Background text */}
             <View style={{
               borderRadius: 8, 
-              backgroundColor: theme.colors.background,
+              backgroundColor: 'transparent',
               width: '90%'
             }}>
-              <Text style={{
-                ...styles.text,
-                fontFamily: 'Noto Serif',
-                fontSize: 18,
-                color: theme.colors.onBackground,
-                opacity: 0.7,
-                padding: 0,
-                margin: 0,
-              }}>
+              <Animated.Text style={[
+                {
+                  ...styles.text,
+                  fontFamily: 'Noto Serif',
+                  fontSize: 18,
+                  opacity: 0.7,
+                  padding: 0,
+                  margin: 0,
+                },
+                animatedHintTextStyle
+              ]}>
                 {displayWords.map((w, index) => {
                   const space = w.showSpace && index > 0 ? ' ' : '';
                   const shouldHide = !w.isVisible;
@@ -652,7 +863,7 @@ export default function PracticeSessionScreen() {
                     <Text 
                       key={`${w.id}-${index}`} 
                       style={{ 
-                        color: shouldHide ? theme.colors.surface : 'transparent',
+                        color: shouldHide ? theme.colors.background : 'transparent',
                         opacity: shouldHide ? 0 : 0.6,
                       }}
                     >
@@ -660,7 +871,7 @@ export default function PracticeSessionScreen() {
                     </Text>
                   );
                 })}
-              </Text>
+              </Animated.Text>
             </View>
             
             {/* Input overlay */}
@@ -671,11 +882,11 @@ export default function PracticeSessionScreen() {
               backgroundColor: 'transparent',
               width: '90%'
             }}>
-              <TextInput
+              <AnimatedTextInput
                 ref={inputRef}
                 value={getDisplayedInput()}
                 onChangeText={handleInputChange}
-                style={inputStyle}
+                style={[inputStyle, animatedInputStyle]}
                 multiline
                 autoFocus
                 autoCapitalize="none"
@@ -687,16 +898,15 @@ export default function PracticeSessionScreen() {
                 selection={{ start: getDisplayedInput().length, end: getDisplayedInput().length }}
               />
             </View>
-          </View>
+          </Animated.View>
 
           {completed && (
-            <TouchableOpacity style={{
-              ...styles.button_text,
-              marginTop: -10
-            }}
-            onPress={() => {handleBack()}}>
-              <Text style={{...styles.text}}>Go Back</Text>
-            </TouchableOpacity>
+            <Button 
+              title="Go Back" 
+              onPress={() => {handleBack()}} 
+              variant="text"
+              style={{ marginTop: -10 }}
+            />
           )}
         </ScrollView>
         
@@ -726,6 +936,260 @@ export default function PracticeSessionScreen() {
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       )}
+      <Snackbar
+        visible={streakSnackbarVisible}
+        onDismiss={() => setStreakSnackbarVisible(false)}
+        duration={3000}
+        style={{ 
+          backgroundColor: '#4CAF50',
+          position: 'absolute',
+          top: 60, left: 0, right: 0, margin: 0
+        }}
+        wrapperStyle={{ top: 60 }}
+      >
+        Streak completed for today! 🔥
+      </Snackbar>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettings}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+          activeOpacity={1}
+          onPress={() => setShowSettings(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: theme.colors.surface,
+              borderRadius: 16,
+              padding: 24,
+              width: '85%',
+              maxWidth: 400,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: '600',
+                color: theme.colors.onBackground,
+                marginBottom: 24,
+                fontFamily: 'Inter',
+              }}
+            >
+              Practice Settings
+            </Text>
+
+            {/* Restart Stage on Wrong Input Setting */}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 24,
+              }}
+            >
+              <View style={{ flex: 1, marginRight: 16 }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    fontFamily: 'Inter',
+                    marginBottom: 4,
+                  }}
+                >
+                  Restart stage when wrong input
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                  }}
+                >
+                  When enabled, the stage restarts from the beginning when you make an error
+                </Text>
+              </View>
+              <Switch
+                value={restartStageOnWrong}
+                onValueChange={handleSetRestartStageOnWrong}
+                trackColor={{
+                  false: theme.colors.surface2,
+                  true: theme.colors.primary,
+                }}
+                thumbColor={theme.colors.background}
+              />
+            </View>
+
+            {/* Learn Verse Reference Setting */}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 24,
+              }}
+            >
+              <View style={{ flex: 1, marginRight: 16 }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    fontFamily: 'Inter',
+                    marginBottom: 4,
+                  }}
+                >
+                  Learn verse reference
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                  }}
+                >
+                  When enabled, you'll practice typing the verse reference (e.g., "John 3:16") along with the verse text
+                </Text>
+              </View>
+              <Switch
+                value={learnVerseReference}
+                onValueChange={handleSetLearnVerseReference}
+                trackColor={{
+                  false: theme.colors.surface2,
+                  true: theme.colors.primary,
+                }}
+                thumbColor={theme.colors.background}
+              />
+            </View>
+
+            {/* Number of Stages Setting */}
+            <View
+              style={{
+                marginBottom: 16,
+              }}
+            >
+              <View style={{ marginBottom: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    fontFamily: 'Inter',
+                    marginBottom: 4,
+                  }}
+                >
+                  Number of stages: {totalStages}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                  }}
+                >
+                  Adjust the number of practice stages ({MIN_STAGES}-{MAX_STAGES}). Stage 2 is always 50% easier, and the final stage hides all hints.
+                </Text>
+              </View>
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface2,
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Ionicons name="warning-outline" size={20} color={theme.colors.onSurfaceVariant} />
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                    flex: 1,
+                  }}
+                >
+                  Changing this will restart you on the first stage
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                    minWidth: 30,
+                  }}
+                >
+                  {MIN_STAGES}
+                </Text>
+                <Slider
+                  style={{ flex: 1, height: 40 }}
+                  minimumValue={MIN_STAGES}
+                  maximumValue={MAX_STAGES}
+                  step={1}
+                  value={totalStages}
+                  onValueChange={(value: number) => {
+                    const newTotalStages = Math.round(value);
+                    handleSetTotalStages(newTotalStages);
+                  }}
+                  minimumTrackTintColor={theme.colors.primary}
+                  maximumTrackTintColor={theme.colors.surface2}
+                  thumbTintColor={theme.colors.primary}
+                />
+                <Text
+                  style={{
+                    fontSize: 14,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                    minWidth: 30,
+                    textAlign: 'right',
+                  }}
+                >
+                  {MAX_STAGES}
+                </Text>
+              </View>
+            </View>
+
+            {/* Close Button */}
+            <TouchableOpacity
+              onPress={() => setShowSettings(false)}
+              style={{
+                marginTop: 8,
+                paddingVertical: 12,
+                paddingHorizontal: 24,
+                backgroundColor: theme.colors.primary,
+                borderRadius: 8,
+                alignItems: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  color: theme.colors.onPrimary,
+                  fontFamily: 'Inter',
+                  fontSize: 16,
+                  fontWeight: '600',
+                }}
+              >
+                Close
+              </Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </>
   );
 }

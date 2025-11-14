@@ -1,12 +1,15 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
-import { Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { deleteUser, submitBugReport, updateActivityNotifications, updatePushNotifications, updateSubscribedVerseOfDay } from './db';
+import React, { useState, useEffect } from 'react';
+import { Modal, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { TextInput } from 'react-native-paper';
+import { Picker } from '@react-native-picker/picker';
+import { deleteUser, submitBugReport, updateActivityNotifications, updatePushNotifications, updateSubscribedVerseOfDay, updateBibleVersion, updateUsername, updateEmail, updatePassword, updateUserProfile, refreshUser, updateNotifyMemorizedVerse, updateNotifyPublishedCollection, updateNotifyCollectionSaved } from './db';
 import { ThemePreference, useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
+import { ensurePushTokenRegistered, unregisterStoredPushToken } from './pushTokenManager';
 
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
 
@@ -21,11 +24,41 @@ export default function SettingsScreen() {
   const [subscribedVerseOfDay, setSubscribedVerseOfDay] = useState(user.subscribedVerseOfDay ?? true);
   const [pushNotificationsEnabled, setPushNotificationsEnabled] = useState(user.pushNotificationsEnabled ?? true);
   const [activityNotificationsEnabled, setActivityNotificationsEnabled] = useState(user.activityNotificationsEnabled ?? true);
+  const [notifyMemorizedVerse, setNotifyMemorizedVerse] = useState(user.notifyMemorizedVerse ?? true);
+  const [notifyPublishedCollection, setNotifyPublishedCollection] = useState(user.notifyPublishedCollection ?? true);
+  const [notifyCollectionSaved, setNotifyCollectionSaved] = useState(user.notifyCollectionSaved ?? true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showUsernameConfirm, setShowUsernameConfirm] = useState(false);
+  const [deleteUsernameInput, setDeleteUsernameInput] = useState('');
   const [showBugReport, setShowBugReport] = useState(false);
   const [bugReportText, setBugReportText] = useState('');
   const [submittingBugReport, setSubmittingBugReport] = useState(false);
   const [showBugReportSuccess, setShowBugReportSuccess] = useState(false);
+  
+  // Profile settings state
+  const [firstName, setFirstName] = useState(user.firstName || '');
+  const [lastName, setLastName] = useState(user.lastName || '');
+  const [bio, setBio] = useState(user.description || '');
+  const [bibleVersion, setBibleVersion] = useState(user.bibleVersion || 'KJV');
+  const [showUsernameDialog, setShowUsernameDialog] = useState(false);
+  const [showEmailDialog, setShowEmailDialog] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+
+  // Sync profile state when user changes
+  useEffect(() => {
+    setFirstName(user.firstName || '');
+    setLastName(user.lastName || '');
+    setBio(user.description || '');
+    setBibleVersion(user.bibleVersion || 'KJV');
+    setNotifyMemorizedVerse(user.notifyMemorizedVerse ?? true);
+    setNotifyPublishedCollection(user.notifyPublishedCollection ?? true);
+    setNotifyCollectionSaved(user.notifyCollectionSaved ?? true);
+  }, [user]);
 
   const themeOptions: Array<{ key: ThemePreference; label: string; description: string; icon: keyof typeof Ionicons.glyphMap }> = [
     { key: 'light', label: 'Light', description: '', icon: 'sunny-outline' },
@@ -59,9 +92,16 @@ export default function SettingsScreen() {
         ...user,
         pushNotificationsEnabled: value
       });
+
+      if (value) {
+        await ensurePushTokenRegistered({ ...user, pushNotificationsEnabled: value });
+      } else {
+        await unregisterStoredPushToken(user);
+      }
     } catch (error) {
       console.error('Failed to update push notifications:', error);
       alert('Failed to update push notifications');
+      setPushNotificationsEnabled(!value);
     }
   };
 
@@ -76,11 +116,68 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('Failed to update activity notifications:', error);
       alert('Failed to update activity notifications');
+      setActivityNotificationsEnabled(!value);
     }
   };
 
-  const handleDeleteAccount = async () => {
+  const handleToggleNotifyMemorizedVerse = async (value: boolean) => {
+    setNotifyMemorizedVerse(value);
+    try {
+      await updateNotifyMemorizedVerse(user.username, value);
+      setUser({
+        ...user,
+        notifyMemorizedVerse: value
+      });
+    } catch (error) {
+      console.error('Failed to update notify memorized verse:', error);
+      alert('Failed to update notify memorized verse setting');
+      setNotifyMemorizedVerse(!value);
+    }
+  };
+
+  const handleToggleNotifyPublishedCollection = async (value: boolean) => {
+    setNotifyPublishedCollection(value);
+    try {
+      await updateNotifyPublishedCollection(user.username, value);
+      setUser({
+        ...user,
+        notifyPublishedCollection: value
+      });
+    } catch (error) {
+      console.error('Failed to update notify published collection:', error);
+      alert('Failed to update notify published collection setting');
+      setNotifyPublishedCollection(!value);
+    }
+  };
+
+  const handleToggleNotifyCollectionSaved = async (value: boolean) => {
+    setNotifyCollectionSaved(value);
+    try {
+      await updateNotifyCollectionSaved(user.username, value);
+      setUser({
+        ...user,
+        notifyCollectionSaved: value
+      });
+    } catch (error) {
+      console.error('Failed to update notify collection saved:', error);
+      alert('Failed to update notify collection saved setting');
+      setNotifyCollectionSaved(!value);
+    }
+  };
+
+  const handleDeleteAccountConfirm = () => {
     setShowDeleteConfirm(false);
+    setShowUsernameConfirm(true);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteUsernameInput.trim() !== user.username) {
+      alert('Username does not match. Please type your username exactly as shown.');
+      return;
+    }
+
+    setShowUsernameConfirm(false);
+    setDeleteUsernameInput('');
     try {
       await deleteUser(user.username);
       await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
@@ -116,10 +213,219 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSaveProfile = async () => {
+    setUpdatingProfile(true);
+    try {
+      const updatedUser = {
+        ...user,
+        firstName,
+        lastName,
+        description: bio,
+        bibleVersion
+      };
+      await updateUserProfile(updatedUser);
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+      alert('Profile updated successfully');
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      alert('Failed to update profile. Please try again.');
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  const handleBibleVersionChange = async (version: string) => {
+    setBibleVersion(version);
+    try {
+      await updateBibleVersion(user.username, version);
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+    } catch (error) {
+      console.error('Failed to update Bible version:', error);
+      alert('Failed to update Bible version');
+      setBibleVersion(user.bibleVersion || 'KJV');
+    }
+  };
+
+  const handleChangeUsername = async () => {
+    if (!newUsername.trim()) {
+      alert('Please enter a username');
+      return;
+    }
+
+    try {
+      await updateUsername(user.username, newUsername.trim());
+      const refreshedUser = await refreshUser(newUsername.trim());
+      setUser(refreshedUser);
+      setShowUsernameDialog(false);
+      setNewUsername('');
+      alert('Username updated successfully');
+    } catch (error) {
+      console.error('Failed to update username:', error);
+      alert(error instanceof Error ? error.message : 'Failed to update username');
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    if (!newEmail.trim()) {
+      alert('Please enter an email');
+      return;
+    }
+
+    try {
+      await updateEmail(user.username, newEmail.trim());
+      const refreshedUser = await refreshUser(user.username);
+      setUser(refreshedUser);
+      setShowEmailDialog(false);
+      setNewEmail('');
+      alert('Email updated successfully');
+    } catch (error) {
+      console.error('Failed to update email:', error);
+      alert('Failed to update email');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!newPassword || !confirmPassword) {
+      alert('Please enter and confirm your new password');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert('Passwords do not match');
+      return;
+    }
+
+    if (newPassword.length < 12) {
+      alert('Password must be at least 12 characters long');
+      return;
+    }
+
+    try {
+      await updatePassword(user.username, newPassword);
+      setShowPasswordDialog(false);
+      setNewPassword('');
+      setConfirmPassword('');
+      alert('Password updated successfully');
+    } catch (error) {
+      console.error('Failed to update password:', error);
+      alert('Failed to update password');
+    }
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <ScrollView style={{ flex: 1 }}>
         <View style={{ padding: 20 }}>
+
+          {/* Profile Settings Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 15,
+              fontFamily: 'Inter'
+            }}>
+              Profile Settings
+            </Text>
+
+            <TextInput
+              label="First Name"
+              mode="outlined"
+              value={firstName}
+              onChangeText={setFirstName}
+              style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
+              textColor={theme.colors.onSurface}
+            />
+
+            <TextInput
+              label="Last Name"
+              mode="outlined"
+              value={lastName}
+              onChangeText={setLastName}
+              style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
+              textColor={theme.colors.onSurface}
+            />
+
+            <TextInput
+              label="Bio"
+              mode="outlined"
+              value={bio}
+              onChangeText={setBio}
+              multiline
+              numberOfLines={4}
+              style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
+              textColor={theme.colors.onSurface}
+            />
+
+            <Text style={{
+              fontSize: 14,
+              color: theme.colors.onSurfaceVariant,
+              marginBottom: 8,
+              fontFamily: 'Inter'
+            }}>
+              Preferred Bible Version
+            </Text>
+            <View style={{
+              borderWidth: 1,
+              borderColor: theme.colors.outline,
+              borderRadius: 4,
+              marginBottom: 12,
+              backgroundColor: theme.colors.surface
+            }}>
+              <Picker
+                selectedValue={bibleVersion}
+                onValueChange={handleBibleVersionChange}
+                style={{ color: theme.colors.onSurface }}
+                dropdownIconColor={theme.colors.onSurface}
+              >
+                <Picker.Item label="King James Version (KJV)" value="KJV" />
+                <Picker.Item label="New King James Version (NKJV)" value="NKJV" enabled={false} />
+                <Picker.Item label="American Standard Version (ASV)" value="ASV" enabled={false} />
+                <Picker.Item label="New International Version (NIV)" value="NIV" enabled={false} />
+                <Picker.Item label="English Standard Version (ESV)" value="ESV" enabled={false} />
+                <Picker.Item label="New American Standard Bible (NASB)" value="NASB" enabled={false} />
+                <Picker.Item label="Christian Standard Bible (CSB)" value="CSB" enabled={false} />
+              </Picker>
+            </View>
+
+            <TouchableOpacity
+              style={{
+                ...styles.button_filled,
+                marginBottom: 12,
+                opacity: updatingProfile ? 0.6 : 1
+              }}
+              onPress={handleSaveProfile}
+              disabled={updatingProfile}
+            >
+              <Text style={styles.buttonText_filled}>
+                {updatingProfile ? 'Saving...' : 'Save Profile'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.button_outlined}
+              onPress={() => setShowUsernameDialog(true)}
+            >
+              <Text style={styles.buttonText_outlined}>Change Username</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.button_outlined}
+              onPress={() => setShowEmailDialog(true)}
+            >
+              <Text style={styles.buttonText_outlined}>Change Email</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.button_outlined}
+              onPress={() => setShowPasswordDialog(true)}
+            >
+              <Text style={styles.buttonText_outlined}>Change Password</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Notifications Section */}
           <View style={{ marginBottom: 30 }}>
@@ -202,6 +508,19 @@ export default function SettingsScreen() {
                 thumbColor={pushNotificationsEnabled ? theme.colors.surface : theme.colors.onSurfaceVariant}
               />
             </View>
+          </View>
+
+          {/* Activity Notifications Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 15,
+              fontFamily: 'Inter'
+            }}>
+              Activity Notifications
+            </Text>
 
             <View style={{
               backgroundColor: theme.colors.surface,
@@ -220,21 +539,91 @@ export default function SettingsScreen() {
                   marginBottom: 4,
                   fontFamily: 'Inter'
                 }}>
-                  Send Activity Notifications
+                  Memorized a Verse
                 </Text>
                 <Text style={{
                   fontSize: 14,
                   color: theme.colors.onSurfaceVariant,
                   fontFamily: 'Inter'
                 }}>
-                  Notify your friends about your activity (e.g. you memorized a verse)
+                  Notify friends when you memorize a verse
                 </Text>
               </View>
               <Switch
-                value={activityNotificationsEnabled}
-                onValueChange={handleToggleActivityNotifications}
+                value={notifyMemorizedVerse}
+                onValueChange={handleToggleNotifyMemorizedVerse}
                 trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
-                thumbColor={activityNotificationsEnabled ? theme.colors.surface : theme.colors.onSurfaceVariant}
+                thumbColor={notifyMemorizedVerse ? theme.colors.surface : theme.colors.onSurfaceVariant}
+              />
+            </View>
+
+            <View style={{
+              backgroundColor: theme.colors.surface,
+              borderRadius: 12,
+              padding: 15,
+              marginBottom: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: '500',
+                  color: theme.colors.onBackground,
+                  marginBottom: 4,
+                  fontFamily: 'Inter'
+                }}>
+                  Published Collection
+                </Text>
+                <Text style={{
+                  fontSize: 14,
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter'
+                }}>
+                  Notify friends when you publish a collection
+                </Text>
+              </View>
+              <Switch
+                value={notifyPublishedCollection}
+                onValueChange={handleToggleNotifyPublishedCollection}
+                trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
+                thumbColor={notifyPublishedCollection ? theme.colors.surface : theme.colors.onSurfaceVariant}
+              />
+            </View>
+
+            <View style={{
+              backgroundColor: theme.colors.surface,
+              borderRadius: 12,
+              padding: 15,
+              marginBottom: 10,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: '500',
+                  color: theme.colors.onBackground,
+                  marginBottom: 4,
+                  fontFamily: 'Inter'
+                }}>
+                  Collection Saved
+                </Text>
+                <Text style={{
+                  fontSize: 14,
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter'
+                }}>
+                  Get notified when someone saves your published collection
+                </Text>
+              </View>
+              <Switch
+                value={notifyCollectionSaved}
+                onValueChange={handleToggleNotifyCollectionSaved}
+                trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
+                thumbColor={notifyCollectionSaved ? theme.colors.surface : theme.colors.onSurfaceVariant}
               />
             </View>
           </View>
@@ -291,6 +680,77 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+
+          {/* Upgrade to Pro Section */}
+          <View style={{ marginTop: 30, marginBottom: 30 }}>
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 15,
+              fontFamily: 'Inter'
+            }}>
+              VerseMemorization Pro
+            </Text>
+
+            <View style={{
+              backgroundColor: theme.colors.primaryContainer || theme.colors.surface,
+              borderRadius: 16,
+              padding: 20,
+              marginBottom: 12,
+              borderWidth: 1,
+              borderColor: theme.colors.primary || theme.colors.surface2,
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Ionicons 
+                  name="star" 
+                  size={24} 
+                  color={theme.colors.primary}
+                  style={{ marginRight: 12 }}
+                />
+                <Text style={{
+                  fontSize: 18,
+                  fontWeight: '600',
+                  color: theme.colors.onBackground,
+                  fontFamily: 'Inter'
+                }}>
+                  Unlock Pro Features
+                </Text>
+              </View>
+              <Text style={{
+                fontSize: 14,
+                color: theme.colors.onSurfaceVariant,
+                fontFamily: 'Inter',
+                lineHeight: 20,
+                marginBottom: 16,
+              }}>
+                Get access to home screen widgets, AI commentary, unlimited collections, streak calendar, personalization, and priority review for published collections.
+              </Text>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: theme.colors.primary,
+                  borderRadius: 12,
+                  paddingVertical: 14,
+                  paddingHorizontal: 24,
+                  alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+                onPress={() => router.push('/pro')}
+              >
+                <Ionicons name="star" size={20} color={theme.colors.onPrimary || '#fff'} />
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: '600',
+                  color: theme.colors.onPrimary || '#fff',
+                  fontFamily: 'Inter'
+                }}>
+                  Upgrade to Pro
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Report Bug/Issue Section */}
@@ -353,7 +813,7 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
-      {/* Confirmation Dialog */}
+      {/* First Confirmation Dialog */}
       <Modal
         visible={showDeleteConfirm}
         transparent={true}
@@ -411,7 +871,7 @@ export default function SettingsScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleDeleteAccount}
+                onPress={handleDeleteAccountConfirm}
                 style={{
                   paddingHorizontal: 24,
                   paddingVertical: 12,
@@ -424,7 +884,115 @@ export default function SettingsScreen() {
                   fontFamily: 'Inter',
                   fontWeight: '600'
                 }}>
-                  Delete
+                  Continue
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Username Confirmation Dialog */}
+      <Modal
+        visible={showUsernameConfirm}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowUsernameConfirm(false);
+          setDeleteUsernameInput('');
+        }}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+          <View style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 400
+          }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '600',
+              color: theme.colors.error,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Confirm Username
+            </Text>
+            
+            <Text style={{
+              fontSize: 16,
+              color: theme.colors.onSurfaceVariant,
+              marginBottom: 12,
+              fontFamily: 'Inter',
+              lineHeight: 22
+            }}>
+              To confirm account deletion, please type your username:
+            </Text>
+
+            <Text style={{
+              fontSize: 14,
+              color: theme.colors.primary,
+              marginBottom: 16,
+              fontFamily: 'Inter',
+              fontWeight: '600'
+            }}>
+              {user.username}
+            </Text>
+            
+            <TextInput
+              label="Username"
+              mode="outlined"
+              value={deleteUsernameInput}
+              onChangeText={setDeleteUsernameInput}
+              style={{ marginBottom: 20, backgroundColor: theme.colors.background }}
+              textColor={theme.colors.onBackground}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowUsernameConfirm(false);
+                  setDeleteUsernameInput('');
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleDeleteAccount}
+                disabled={deleteUsernameInput.trim() !== user.username}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: deleteUsernameInput.trim() === user.username ? theme.colors.error : theme.colors.surface2,
+                  opacity: deleteUsernameInput.trim() === user.username ? 1 : 0.5
+                }}
+              >
+                <Text style={{
+                  color: deleteUsernameInput.trim() === user.username ? theme.colors.onError : theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Delete Account
                 </Text>
               </TouchableOpacity>
             </View>
@@ -580,6 +1148,263 @@ export default function SettingsScreen() {
                   fontWeight: '600'
                 }}>
                   OK
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change Username Dialog */}
+      <Modal
+        visible={showUsernameDialog}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowUsernameDialog(false)}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+          <View style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 400
+          }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Change Username
+            </Text>
+            
+            <TextInput
+              label="New Username"
+              mode="outlined"
+              value={newUsername}
+              onChangeText={setNewUsername}
+              style={{ marginBottom: 20, backgroundColor: theme.colors.background }}
+              textColor={theme.colors.onBackground}
+            />
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowUsernameDialog(false);
+                  setNewUsername('');
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleChangeUsername}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: theme.colors.primary
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onPrimary,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Save
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change Email Dialog */}
+      <Modal
+        visible={showEmailDialog}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEmailDialog(false)}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+          <View style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 400
+          }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Change Email
+            </Text>
+            
+            <TextInput
+              label="New Email"
+              mode="outlined"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={newEmail}
+              onChangeText={setNewEmail}
+              style={{ marginBottom: 20, backgroundColor: theme.colors.background }}
+              textColor={theme.colors.onBackground}
+            />
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEmailDialog(false);
+                  setNewEmail('');
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleChangeEmail}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: theme.colors.primary
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onPrimary,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Save
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Change Password Dialog */}
+      <Modal
+        visible={showPasswordDialog}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPasswordDialog(false)}
+      >
+        <View style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)'
+        }}>
+          <View style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 16,
+            padding: 24,
+            width: '90%',
+            maxWidth: 400
+          }}>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 16,
+              fontFamily: 'Inter'
+            }}>
+              Change Password
+            </Text>
+            
+            <TextInput
+              label="New Password"
+              mode="outlined"
+              secureTextEntry
+              value={newPassword}
+              onChangeText={setNewPassword}
+              style={{ marginBottom: 12, backgroundColor: theme.colors.background }}
+              textColor={theme.colors.onBackground}
+            />
+            
+            <TextInput
+              label="Confirm New Password"
+              mode="outlined"
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              style={{ marginBottom: 20, backgroundColor: theme.colors.background }}
+              textColor={theme.colors.onBackground}
+            />
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPasswordDialog(false);
+                  setNewPassword('');
+                  setConfirmPassword('');
+                }}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleChangePassword}
+                style={{
+                  paddingHorizontal: 24,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: theme.colors.primary
+                }}
+              >
+                <Text style={{
+                  color: theme.colors.onPrimary,
+                  fontFamily: 'Inter',
+                  fontWeight: '600'
+                }}>
+                  Save
                 </Text>
               </TouchableOpacity>
             </View>

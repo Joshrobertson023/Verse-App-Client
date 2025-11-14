@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '../store';
@@ -34,7 +34,16 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={{...styles.centered, marginBottom: 150}}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <ScrollView 
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={{...styles.centered, marginBottom: 150}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Enter your email:</Text>
                 <TextInput keyboardType="email-address"
                             autoCapitalize="none"
@@ -51,7 +60,9 @@ const nextClick = async () => {
                         <Text style={styles.buttonText_filled}>Next</Text>
                     )}
                 </TouchableOpacity>
-            </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }

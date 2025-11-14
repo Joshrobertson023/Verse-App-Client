@@ -46,6 +46,37 @@ export default function ExploreCollectionCard({ collection, onSaved, fullWidth =
       return;
     }
 
+    const targetAuthor = (collection.author ?? '').trim().toLowerCase();
+    const targetTitle = (collection.title ?? '').trim().toLowerCase();
+    const targetCopyTitle = (`${collection.title} (Copy)`).trim().toLowerCase();
+    const targetVerseOrder = (collection.verseOrder ?? '').trim();
+
+    const alreadyHasCollection =
+      targetAuthor.length > 0 &&
+      collections.some((existing) => {
+        const existingAuthor = (existing.authorUsername ?? existing.username ?? '').trim().toLowerCase();
+        if (!existingAuthor || existingAuthor !== targetAuthor) {
+          return false;
+        }
+
+        const existingTitle = (existing.title ?? '').trim().toLowerCase();
+        const titleMatches = existingTitle === targetTitle || existingTitle === targetCopyTitle;
+
+        const existingVerseOrder = (existing.verseOrder ?? '').trim();
+        const verseOrderMatches =
+          targetVerseOrder.length > 0 &&
+          existingVerseOrder.length > 0 &&
+          existingVerseOrder === targetVerseOrder;
+
+        return titleMatches || verseOrderMatches;
+      });
+
+    if (alreadyHasCollection) {
+      setSnackbarMessage('You already saved this collection');
+      setSnackbarVisible(true);
+      return;
+    }
+
     setIsSaving(true);
     try {
       const published = await getPublishedCollection(collection.publishedId);

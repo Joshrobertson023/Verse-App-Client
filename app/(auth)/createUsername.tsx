@@ -1,7 +1,8 @@
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Dialog, Portal, TextInput } from 'react-native-paper';
+import { Picker } from '@react-native-picker/picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import checkUsernameAvailable from '../db';
 import { useAppStore } from '../store';
@@ -20,6 +21,7 @@ export default function CreateUsernameScreen() {
   const [loading, setLoading] = useState(false);
   const theme = useAppTheme();
   const [dialogVisible, setDialogVisible] = useState(false);
+  const [bibleVersion, setBibleVersion] = useState('KJV');
 
   
   const hideDialog = () => setDialogVisible(false);
@@ -67,7 +69,7 @@ const nextClick = async () => {
         }
         setLoading(false);
         
-        setLoginInfo({ ...loginInfo, ['username']: username.trim() });
+        setLoginInfo({ ...loginInfo, ['username']: username.trim(), ['bibleVersion']: bibleVersion });
         router.push('/enterEmail');
     } catch (error) {
         console.error(error);
@@ -80,7 +82,16 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={{...styles.centered, marginBottom: 150}}>
+            <KeyboardAvoidingView 
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            >
+                <ScrollView 
+                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={{...styles.centered, marginBottom: 150}}>
                 <Portal>
                 <Dialog style={{backgroundColor: theme.colors.background, outlineWidth: 2, outlineColor: theme.colors.onBackground, zIndex: 10}} visible={dialogVisible} onDismiss={hideDialog}>
                     <Dialog.Content>
@@ -95,6 +106,25 @@ const nextClick = async () => {
                 </Portal>
                 <Text style={{...styles.startupText, marginBottom: 30}}>Create a Username</Text>
                 <TextInput label="Username" mode="outlined" style={styles.input} value={username} onChangeText={(text) => handleTextChange('username', text)} />
+                
+                <Text style={{...styles.tinyText, marginTop: 20, marginBottom: 8, color: theme.colors.onBackground}}>Preferred Bible Version</Text>
+                <View style={{borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 4, marginBottom: 12, backgroundColor: theme.colors.surface}}>
+                    <Picker
+                        selectedValue={bibleVersion}
+                        onValueChange={(itemValue) => setBibleVersion(itemValue)}
+                        style={{color: theme.colors.onSurface}}
+                        dropdownIconColor={theme.colors.onSurface}
+                    >
+                        <Picker.Item label="King James Version (KJV)" value="KJV" />
+                        <Picker.Item label="New King James Version (NKJV)" value="NKJV" enabled={false} />
+                        <Picker.Item label="American Standard Version (ASV)" value="ASV" enabled={false} />
+                        <Picker.Item label="New International Version (NIV)" value="NIV" enabled={false} />
+                        <Picker.Item label="English Standard Version (ESV)" value="ESV" enabled={false} />
+                        <Picker.Item label="New American Standard Bible (NASB)" value="NASB" enabled={false} />
+                        <Picker.Item label="Christian Standard Bible (CSB)" value="CSB" enabled={false} />
+                    </Picker>
+                </View>
+                
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
@@ -105,7 +135,9 @@ const nextClick = async () => {
                         <Text style={styles.buttonText_filled}>Next</Text>
                     )}
                 </TouchableOpacity>
-            </View>
+                    </View>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }
