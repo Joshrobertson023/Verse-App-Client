@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, TextInput } from 'react-native-paper';
+import { Keyboard, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, HelperText, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '../store';
 import useStyles from '../styles';
@@ -13,16 +13,31 @@ export default function EnterEmailScreen() {
     const setLoginInfo = useAppStore((state) => state.setLoginInfo);
     const email = loginInfo?.email;
     const [localEmail, setLocalEmail] = useState(email);
-    const [errorMessage, setErrorMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const theme = useAppTheme();
+    const [emailEmpty, setEmailEmpty] = useState(false);
+    const [invalidEmail, setInvalidEmail] = useState(false);
 
 
 const nextClick = async () => {
   try {
     Keyboard.dismiss();
-    if (errorMessage.includes('enter all fields')) setErrorMessage('');
-    setLoginInfo({ ...loginInfo, ['email']: localEmail.trim() });
+    setEmailEmpty(false);
+    setInvalidEmail(false);
+
+    const value = (localEmail || '').trim();
+    if (!value) {
+      setEmailEmpty(true);
+      return;
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+    if (!emailRegex.test(value)) {
+      setInvalidEmail(true);
+      return;
+    }
+    setLoginInfo({ ...loginInfo, ['email']: value });
     router.push('/createPassword');
   } catch (error) {
     console.error(error);
@@ -34,23 +49,28 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            >
-                <ScrollView 
-                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-                    keyboardShouldPersistTaps="handled"
-                >
-                    <View style={{...styles.centered, marginBottom: 150}}>
+                    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+                    <View style={{...styles.centered, marginBottom: 150, paddingHorizontal: 20}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Enter your email:</Text>
                 <TextInput keyboardType="email-address"
                             autoCapitalize="none"
                             autoCorrect={false}
                             autoComplete="email"
-                            textContentType="emailAddress" label="Email" mode="outlined" style={styles.input} value={localEmail} onChangeText={(text) => setLocalEmail(text)} />
-                {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
+                            textContentType="emailAddress"
+                            error={emailEmpty || invalidEmail}
+                            label="Email" mode="outlined" style={styles.input} value={localEmail} onChangeText={(text) => {
+                                setLocalEmail(text);
+                                if (text) {
+                                    setEmailEmpty(false);
+                                    setInvalidEmail(false);
+                                }
+                            }} />
+                <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={emailEmpty}>
+                    Enter your email
+                </HelperText>
+                <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={invalidEmail}>
+                    Enter a valid email address
+                </HelperText>
                 <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
                         <Text style={styles.buttonText_filled}>
@@ -61,8 +81,7 @@ const nextClick = async () => {
                     )}
                 </TouchableOpacity>
                     </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
         </SafeAreaView>
     )
 }

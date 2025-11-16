@@ -11,6 +11,7 @@ import ProfileContent from '../components/ProfileContent';
 import { getOverdueVerses, getUnreadNotificationCount } from '../db';
 import { defaultProfileDrawerControls, useAppStore } from '../store';
 import useAppTheme from '../theme';
+import { updateAppBadge } from '../utils/badgeManager';
 
 export default function TabLayout() {
   const theme = useAppTheme();
@@ -37,6 +38,8 @@ export default function TabLayout() {
         if (setNumNotifications) {
           setNumNotifications(count);
         }
+        // Update badge after checking notifications
+        await updateAppBadge();
       } catch (error) {
         console.error('Failed to check notifications:', error);
       }
@@ -70,6 +73,8 @@ export default function TabLayout() {
             validCollectionIds.has(item.collectionId)
         );
         setOverdueCount(filtered.length);
+        // Update badge after checking overdue verses
+        await updateAppBadge();
       } catch (error) {
         console.error('Failed to check overdue verses:', error);
       }
@@ -174,8 +179,30 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
         <Tabs.Screen 
         name="index"
         options={{
-          title: 'VerseMemorization',
-          headerTitleStyle: {fontFamily: 'Noto Serif bold', fontSize: 22},
+          headerTitle: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontFamily: 'Noto Serif bold', fontSize: 22, color: theme.colors.onBackground }}>
+                VerseMemorization
+              </Text>
+              {user.isPaid && (
+                <View style={{
+                  backgroundColor: theme.colors.primary,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 6,
+                }}>
+                  <Text style={{
+                    color: theme.colors.onPrimary,
+                    fontSize: 12,
+                    fontWeight: '700',
+                    fontFamily: 'Inter',
+                  }}>
+                    Pro
+                  </Text>
+                </View>
+              )}
+            </View>
+          ),
           headerRight: () => (
             <View style={{ flexDirection: 'row', gap: 15, marginRight: 10 }}>
               <TouchableOpacity onPress={() => router.push('.././notifications')}>

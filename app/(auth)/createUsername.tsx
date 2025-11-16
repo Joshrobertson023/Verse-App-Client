@@ -1,8 +1,8 @@
+import { Picker } from '@react-native-picker/picker';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Keyboard, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Dialog, Portal, TextInput } from 'react-native-paper';
-import { Picker } from '@react-native-picker/picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import checkUsernameAvailable from '../db';
 import { useAppStore } from '../store';
@@ -82,16 +82,7 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            >
-                <ScrollView 
-                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-                    keyboardShouldPersistTaps="handled"
-                >
-                    <View style={{...styles.centered, marginBottom: 150}}>
+                    <View style={{...styles.centered, marginBottom: 150, width: '100%'}}>
                 <Portal>
                 <Dialog style={{backgroundColor: theme.colors.background, outlineWidth: 2, outlineColor: theme.colors.onBackground, zIndex: 10}} visible={dialogVisible} onDismiss={hideDialog}>
                     <Dialog.Content>
@@ -108,11 +99,18 @@ const nextClick = async () => {
                 <TextInput label="Username" mode="outlined" style={styles.input} value={username} onChangeText={(text) => handleTextChange('username', text)} />
                 
                 <Text style={{...styles.tinyText, marginTop: 20, marginBottom: 8, color: theme.colors.onBackground}}>Preferred Bible Version</Text>
-                <View style={{borderWidth: 1, borderColor: theme.colors.outline, borderRadius: 4, marginBottom: 12, backgroundColor: theme.colors.surface}}>
+                <View style={{
+                    borderWidth: 1,
+                    borderColor: theme.colors.outline,
+                    borderRadius: 4,
+                    marginBottom: 12,
+                    backgroundColor: theme.colors.surface,
+                    width: '100%'
+                }}>
                     <Picker
                         selectedValue={bibleVersion}
                         onValueChange={(itemValue) => setBibleVersion(itemValue)}
-                        style={{color: theme.colors.onSurface}}
+                        style={{ color: theme.colors.onSurface, width: '100%' }}
                         dropdownIconColor={theme.colors.onSurface}
                     >
                         <Picker.Item label="King James Version (KJV)" value="KJV" />
@@ -136,8 +134,6 @@ const nextClick = async () => {
                     )}
                 </TouchableOpacity>
                     </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
         </SafeAreaView>
     )
 }

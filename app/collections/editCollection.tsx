@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Dimensions, ScrollView, StyleSheet, Text, TextInput as RNTextInput, TouchableOpacity, View } from 'react-native';
@@ -11,31 +12,38 @@ import AddPassage from '../components/addPassage';
 const generateId = () => {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
-import { addUserVersesToNewCollection, deleteUserVersesFromCollection, getUserCollections, getUserVersesPopulated, updateCollectionDB } from '../db';
+import { addUserVersesToNewCollection, deleteUserVersesFromCollection, getUserCollections, getUserVersesPopulated, populateVersesForUserVerses, updateCollectionDB } from '../db';
 import { useAppStore, UserVerse, Verse, CollectionNote } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
+import { buildVerseOrderString } from '../utils/collectionUtils';
 
 // Order verses by verseOrder
 function orderByVerseOrder(userVerses: UserVerse[], verseOrder?: string): UserVerse[] {
-  if (!verseOrder) return userVerses;
+  if (!verseOrder || !verseOrder.trim()) return userVerses;
   
-  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '');
+  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '').map(ref => ref.trim());
   const ordered: UserVerse[] = [];
   const unordered: UserVerse[] = [];
   
-  // Create a map for quick lookup
+  // Create a map for quick lookup (case-insensitive)
   const verseMap = new Map<string, UserVerse>();
   userVerses.forEach(uv => {
-    verseMap.set(uv.readableReference, uv);
+    if (uv.readableReference) {
+      const key = uv.readableReference.trim().toLowerCase();
+      if (!verseMap.has(key)) {
+        verseMap.set(key, uv);
+      }
+    }
   });
   
   // First, add verses in the order specified
   orderArray.forEach(ref => {
-    const verse = verseMap.get(ref.trim());
+    const key = ref.toLowerCase();
+    const verse = verseMap.get(key);
     if (verse) {
       ordered.push(verse);
-      verseMap.delete(ref.trim());
+      verseMap.delete(key);
     }
   });
   
@@ -84,28 +92,38 @@ export default function EditCollection() {
     const passageSnapPoints = useMemo(() => ['100%'], []);
     const noteSnapPoints = useMemo(() => ['100%'], []);
     const settingsSnapPoints = useMemo(() => ['40%'], []);
-    const buildVerseOrderString = (verses: UserVerse[], notes: CollectionNote[]): string => {
-      const verseRefs = verses
-        .map((uv) => uv.readableReference?.trim())
-        .filter((ref): ref is string => Boolean(ref && ref.length > 0));
-      const noteIds = notes.map((n) => n.id);
-      return [...verseRefs, ...noteIds].join(',');
-    };
 
 
     // Get collection from store
     const editingCollection = useAppStore((state) => state.editingCollection);
+    const hasLoadedVerses = useRef(false);
+    const collectionIdRef = useRef<number | undefined>(undefined);
 
     useEffect(() => {
-      if (editingCollection) {
-        setTitle(editingCollection.title);
-        setVisibility(editingCollection.visibility || 'Private');
-        
+      if (!editingCollection) {
+        hasLoadedVerses.current = false;
+        collectionIdRef.current = undefined;
+        return;
+      }
+
+      // Reset if collection ID changed
+      if (collectionIdRef.current !== editingCollection.collectionId) {
+        hasLoadedVerses.current = false;
+        collectionIdRef.current = editingCollection.collectionId;
+      }
+
+      setTitle(editingCollection.title);
+      setVisibility(editingCollection.visibility || 'Private');
+      
+      // Only load verses once per collection
+      if (!hasLoadedVerses.current) {
         // Check if userVerses are already populated
-        if (editingCollection.userVerses && editingCollection.userVerses.every(uv => uv.verses?.length > 0)) {
+        if (editingCollection.userVerses && editingCollection.userVerses.length > 0 && editingCollection.userVerses.every(uv => uv.verses && uv.verses.length > 0)) {
           // Order by verseOrder if it exists
           const sorted = orderByVerseOrder(editingCollection.userVerses, editingCollection.verseOrder);
           setReorderedUserVerses(sorted);
+          setNotes(editingCollection.notes || []);
+          hasLoadedVerses.current = true;
         } else {
           // Fetch populated user verses
           const fetchPopulated = async () => {
@@ -117,12 +135,14 @@ export default function EditCollection() {
               const sorted = orderByVerseOrder(data.userVerses ?? [], data.verseOrder);
               setReorderedUserVerses(sorted);
               setNotes(data.notes || []);
-              // Update editingCollection with populated data (already sorted by server)
+              // Update editingCollection with populated data - this is safe because hasLoadedVerses prevents re-triggering
               setEditingCollection({ ...editingCollection, userVerses: sorted, notes: data.notes || [], verseOrder: data.verseOrder });
+              hasLoadedVerses.current = true;
             } catch (err) {
               console.error(err);
               setReorderedUserVerses(editingCollection.userVerses || []);
               setNotes(editingCollection.notes || []);
+              hasLoadedVerses.current = true;
             } finally {
               setLoadingVerses(false);
             }
@@ -130,20 +150,58 @@ export default function EditCollection() {
           
           fetchPopulated();
         }
-        setNotes(editingCollection.notes || []);
+      } else {
+        // Collection already loaded, just update local state if needed
+        if (editingCollection.userVerses && editingCollection.userVerses.length > 0) {
+          const sorted = orderByVerseOrder(editingCollection.userVerses, editingCollection.verseOrder);
+          setReorderedUserVerses(sorted);
+        }
+        if (editingCollection.notes) {
+          setNotes(editingCollection.notes);
+        }
       }
-    }, [editingCollection]);
+    }, [editingCollection?.collectionId, setEditingCollection]);
 
-    // Update reorderedUserVerses when editingCollection changes (e.g., after reorder page)
+    // Reload collection data when returning from reorder page (similar to collection view page)
+    const reorderedUserVersesRef = useRef<UserVerse[]>([]);
     useEffect(() => {
-      if (editingCollection?.userVerses) {
-        // Sort by verseOrder if it exists
-        const sorted = orderByVerseOrder(editingCollection.userVerses, editingCollection.verseOrder);
-        setReorderedUserVerses(sorted);
-        setNotes(editingCollection.notes || []);
-        console.log('EditCollection: Updated reorderedUserVerses with verseOrder:', editingCollection.verseOrder);
-      }
-    }, [editingCollection?.userVerses, editingCollection?.verseOrder, editingCollection?.notes]);
+      reorderedUserVersesRef.current = reorderedUserVerses;
+    }, [reorderedUserVerses]);
+    
+    useFocusEffect(
+      useCallback(() => {
+        if (!editingCollection || !hasLoadedVerses.current) return;
+        
+        // When returning from reorder page, preserve verse text from current state
+        // and merge with new order from editingCollection
+        if (editingCollection.userVerses && editingCollection.userVerses.length > 0) {
+          // Create a map of current verses with text preserved (use ref to avoid dependency issues)
+          const currentVerseMap = new Map<string, UserVerse>();
+          reorderedUserVersesRef.current.forEach(uv => {
+            if (uv.readableReference) {
+              const key = uv.readableReference.trim().toLowerCase();
+              currentVerseMap.set(key, uv);
+            }
+          });
+          
+          // Get new verses from editingCollection and preserve text from current state
+          const newVerses = editingCollection.userVerses.map(uv => {
+            const key = uv.readableReference?.trim().toLowerCase();
+            const existingVerse = key ? currentVerseMap.get(key) : null;
+            // Preserve verse text from current state if available
+            return existingVerse && existingVerse.verses && existingVerse.verses.length > 0
+              ? existingVerse
+              : uv;
+          });
+          
+          const sorted = orderByVerseOrder(newVerses, editingCollection.verseOrder);
+          setReorderedUserVerses(sorted);
+        }
+        if (editingCollection.notes) {
+          setNotes(editingCollection.notes);
+        }
+      }, [editingCollection?.verseOrder, editingCollection?.userVerses, editingCollection?.notes])
+    );
 
     // Clean up editing state on unmount
     useEffect(() => {
@@ -226,14 +284,55 @@ export default function EditCollection() {
               visibility: visibility,
             };
             
-            // Create verseOrder from reordered user verses and notes using readable references and note IDs
-            updatedCollection.verseOrder = buildVerseOrderString(reorderedUserVerses, notes);
+            // Preserve the current verseOrder to maintain the mixed order of verses and notes
+            // Only rebuild if items were added/removed (filter out deleted items, append new ones)
+            let newVerseOrder = editingCollection.verseOrder || '';
+            
+            if (newVerseOrder && newVerseOrder.trim()) {
+              // Filter out items that no longer exist and add new items
+              const orderArray = newVerseOrder.split(',').filter(ref => ref.trim() !== '');
+              const verseRefs = new Set(reorderedUserVerses.map(uv => uv.readableReference?.trim().toLowerCase()).filter(Boolean));
+              const noteIdSet = new Set(notes.map(n => n.id).filter(Boolean));
+              
+              // Keep existing items that still exist
+              const validOrder: string[] = [];
+              orderArray.forEach(ref => {
+                const trimmedRef = ref.trim();
+                const lowerRef = trimmedRef.toLowerCase();
+                if (verseRefs.has(lowerRef) || noteIdSet.has(trimmedRef)) {
+                  validOrder.push(trimmedRef);
+                }
+              });
+              
+              // Add any new items not in the order
+              reorderedUserVerses.forEach(uv => {
+                const ref = uv.readableReference?.trim();
+                if (ref && !validOrder.some(r => r.toLowerCase() === ref.toLowerCase())) {
+                  validOrder.push(ref);
+                }
+              });
+              notes.forEach(note => {
+                if (note.id && !validOrder.includes(note.id)) {
+                  validOrder.push(note.id);
+                }
+              });
+              
+              newVerseOrder = validOrder.join(',');
+            } else {
+              // No existing order, build from arrays (verses first, then notes)
+              newVerseOrder = buildVerseOrderString(reorderedUserVerses, notes);
+            }
+            
+            updatedCollection.verseOrder = newVerseOrder;
             updatedCollection.userVerses = reorderedUserVerses;
             updatedCollection.notes = notes;
             
             if (title.trim() === 'Favorites') {
               updatedCollection.title = 'Favorites-Other'
             }
+            
+            // Update editingCollection in store immediately with new verseOrder
+            setEditingCollection({ ...updatedCollection, verseOrder: newVerseOrder });
             
             setProgressPercent(.50);
             
@@ -243,7 +342,7 @@ export default function EditCollection() {
             // Delete old user verses
             await deleteUserVersesFromCollection(editingCollection.collectionId);
             
-            // Add updated user verses
+            // Add updated user verses (in the correct order)
             await addUserVersesToNewCollection(reorderedUserVerses, editingCollection.collectionId);
             
             // Update store
@@ -253,6 +352,30 @@ export default function EditCollection() {
             const collections = await getUserCollections(user.username);
             setCollections(collections);
             
+            // Find the updated collection and update editingCollection with server data
+            const updatedCol = collections.find(c => c.collectionId === editingCollection.collectionId);
+            if (updatedCol) {
+              // Populate verse text for userVerses
+              let populatedUserVerses = updatedCol.userVerses || [];
+              try {
+                populatedUserVerses = await populateVersesForUserVerses(populatedUserVerses);
+              } catch (populateError) {
+                console.warn('Failed to populate verses after saving:', populateError);
+              }
+              
+              // Ensure userVerses are ordered by verseOrder
+              const orderedUserVerses = orderByVerseOrder(populatedUserVerses, newVerseOrder);
+              const finalCollection = { ...updatedCol, verseOrder: newVerseOrder, userVerses: orderedUserVerses };
+              
+              // Update the collection in the collections array with populated verses
+              const updatedCollectionsWithVerses = collections.map(c => 
+                c.collectionId === editingCollection.collectionId ? finalCollection : c
+              );
+              setCollections(updatedCollectionsWithVerses);
+              
+              setEditingCollection(finalCollection);
+            }
+            
             setProgressPercent(1);
             setCreatingCollection(false);
             setEditingCollection(undefined);
@@ -260,19 +383,40 @@ export default function EditCollection() {
     }
           
     const clickPlus = (verse: Verse) => {
-      const userVerse: UserVerse = {
-          username: user.username,
-          readableReference: verse.verse_reference,
-          verses: [verse],
-      }
-      if (reorderedUserVerses.find(r => r.readableReference === userVerse.readableReference)) {
+      try {
+        if (!verse || !verse.verse_reference) {
+          console.warn('Invalid verse passed to clickPlus');
           return;
+        }
+        
+        if (!user?.username) {
+          console.warn('No user found when adding verse');
+          return;
+        }
+        
+        const userVerse: UserVerse = {
+            username: user.username,
+            readableReference: verse.verse_reference,
+            verses: [verse],
+        }
+        
+        // Check if verse already exists (case-insensitive)
+        const refToCheck = userVerse.readableReference?.trim().toLowerCase();
+        const alreadyExists = reorderedUserVerses.some(r => 
+          r.readableReference?.trim().toLowerCase() === refToCheck
+        );
+        
+        if (alreadyExists) {
+          console.log('Verse already exists in collection:', userVerse.readableReference);
+          return;
+        }
+        
+        console.log('Adding verse to collection:', userVerse.readableReference);
+        addUserVerseToCollection(userVerse);
+        closeSheet();
+      } catch (error) {
+        console.error('Error in clickPlus:', error);
       }
-      console.log(userVerse.readableReference);
-      console.log(userVerse.verses.at(0)?.verse_reference);
-      addUserVerseToCollection(userVerse);
-      
-      closeSheet();
     }
 
       const handleDeleteUV = (userVerse: UserVerse) => {
@@ -293,17 +437,66 @@ export default function EditCollection() {
       }
 
       const addUserVerseToCollection = (userVerse: UserVerse) => {
-        const updatedUserVerses = [...reorderedUserVerses, userVerse];
-        const updatedVerseOrder = buildVerseOrderString(updatedUserVerses, notes);
-        setReorderedUserVerses(updatedUserVerses);
-        const current = useAppStore.getState().editingCollection;
-        if (current) {
-          setEditingCollection({
+        try {
+          // Check verse limit per collection for free users
+          if (!user.isPaid) {
+            const maxVersesPerCollection = 10;
+            if (reorderedUserVerses.length >= maxVersesPerCollection) {
+              router.push('/pro');
+              return;
+            }
+          }
+          
+          const updatedUserVerses = [...reorderedUserVerses, userVerse];
+          
+          // Preserve existing order and append new passage reference
+          const current = useAppStore.getState().editingCollection;
+          if (!current) {
+            console.warn('No editingCollection found when adding verse');
+            return;
+          }
+          
+          let updatedVerseOrder: string;
+          
+          if (current?.verseOrder && current.verseOrder.trim()) {
+            // Append new passage reference to existing order
+            const newRef = userVerse.readableReference?.trim();
+            if (newRef) {
+              // Check if reference already exists in order to avoid duplicates
+              const orderArray = current.verseOrder.split(',').filter(ref => ref.trim() !== '');
+              const refExists = orderArray.some(ref => ref.trim().toLowerCase() === newRef.toLowerCase());
+              if (!refExists) {
+                updatedVerseOrder = `${current.verseOrder}${newRef},`;
+              } else {
+                updatedVerseOrder = current.verseOrder;
+              }
+            } else {
+              updatedVerseOrder = current.verseOrder;
+            }
+          } else {
+            // No existing order, build from arrays
+            updatedVerseOrder = buildVerseOrderString(updatedUserVerses, notes);
+          }
+          
+          console.log('Updating reorderedUserVerses with new verse:', userVerse.readableReference);
+          console.log('Current reorderedUserVerses length:', reorderedUserVerses.length);
+          console.log('Updated userVerses length:', updatedUserVerses.length);
+          
+          setReorderedUserVerses(updatedUserVerses);
+          
+          const updatedCollection = {
             ...current,
             userVerses: updatedUserVerses,
             notes: notes,
             verseOrder: updatedVerseOrder,
-          });
+          };
+          setEditingCollection(updatedCollection);
+          // Also update the ref to keep it in sync
+          reorderedUserVersesRef.current = updatedUserVerses;
+          
+          console.log('Successfully added verse to collection. New verseOrder:', updatedVerseOrder);
+        } catch (error) {
+          console.error('Error in addUserVerseToCollection:', error);
         }
       }
 
@@ -449,28 +642,41 @@ export default function EditCollection() {
           <>
             <View style={{marginTop: 20, width: '100%'}}>
               {(() => {
-                // Combine verses and notes, order by verseOrder
-                const orderArray = editingCollection?.verseOrder?.split(',').filter(ref => ref.trim() !== '') || [];
-                const verseMap = new Map(reorderedUserVerses.map(uv => [uv.readableReference, uv]));
-                const noteMap = new Map(notes.map(n => [n.id, n]));
-                const ordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
-                const unordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+                // Use verseOrder from editingCollection to determine display order, but fallback to array order
+                const verseOrder = editingCollection?.verseOrder;
+                let allItems: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
                 
-                orderArray.forEach(ref => {
-                  const trimmedRef = ref.trim();
-                  if (verseMap.has(trimmedRef)) {
-                    ordered.push({type: 'verse', data: verseMap.get(trimmedRef)!});
-                    verseMap.delete(trimmedRef);
-                  } else if (noteMap.has(trimmedRef)) {
-                    ordered.push({type: 'note', data: noteMap.get(trimmedRef)!});
-                    noteMap.delete(trimmedRef);
-                  }
-                });
-                
-                verseMap.forEach(verse => unordered.push({type: 'verse', data: verse}));
-                noteMap.forEach(note => unordered.push({type: 'note', data: note}));
-                
-                const allItems = [...ordered, ...unordered];
+                if (verseOrder && verseOrder.trim()) {
+                  // Order by verseOrder if it exists
+                  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '');
+                  const verseMap = new Map(reorderedUserVerses.map(uv => [uv.readableReference?.trim().toLowerCase(), uv]));
+                  const noteMap = new Map(notes.map(n => [n.id, n]));
+                  const ordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+                  const unordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+                  
+                  orderArray.forEach(ref => {
+                    const trimmedRef = ref.trim();
+                    const verseKey = trimmedRef.toLowerCase();
+                    if (verseMap.has(verseKey)) {
+                      ordered.push({type: 'verse', data: verseMap.get(verseKey)!});
+                      verseMap.delete(verseKey);
+                    } else if (noteMap.has(trimmedRef)) {
+                      ordered.push({type: 'note', data: noteMap.get(trimmedRef)!});
+                      noteMap.delete(trimmedRef);
+                    }
+                  });
+                  
+                  verseMap.forEach(verse => unordered.push({type: 'verse', data: verse}));
+                  noteMap.forEach(note => unordered.push({type: 'note', data: note}));
+                  
+                  allItems = [...ordered, ...unordered];
+                } else {
+                  // If no verseOrder, use array order directly
+                  allItems = [
+                    ...reorderedUserVerses.map(uv => ({type: 'verse' as const, data: uv})),
+                    ...notes.map(n => ({type: 'note' as const, data: n}))
+                  ];
+                }
                 
                 return allItems.map((item, i) => {
                   if (item.type === 'verse') {
@@ -544,6 +750,10 @@ export default function EditCollection() {
               index={-1}
               snapPoints={passageSnapPoints}
               enablePanDownToClose
+              enableOverDrag={false}
+              android_keyboardInputMode="adjustResize"
+              keyboardBehavior="interactive"
+              keyboardBlurBehavior="restore"
               onChange={handlePassageSheetChange}
               backgroundStyle={{ backgroundColor: theme.colors.surface }}
               handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -553,7 +763,11 @@ export default function EditCollection() {
               style={{ flex: 1 }}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
             >
-              <AddPassage onAddPassage={addPassage} onClickPlus={clickPlus} />
+              <AddPassage 
+                onAddPassage={addPassage} 
+                onClickPlus={clickPlus}
+                onAddPassageVerses={addUserVerseToCollection}
+              />
             </BottomSheetScrollView>
           </BottomSheet>
           </Portal>
@@ -565,6 +779,10 @@ export default function EditCollection() {
               index={-1}
               snapPoints={noteSnapPoints}
               enablePanDownToClose
+              enableOverDrag={false}
+              android_keyboardInputMode="adjustResize"
+              keyboardBehavior="interactive"
+              keyboardBlurBehavior="restore"
               onChange={handleNoteSheetChange}
               backgroundStyle={{ backgroundColor: theme.colors.surface }}
               handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -630,6 +848,10 @@ export default function EditCollection() {
               index={-1}
               snapPoints={settingsSnapPoints}
               enablePanDownToClose
+              enableOverDrag={false}
+              android_keyboardInputMode="adjustResize"
+              keyboardBehavior="interactive"
+              keyboardBlurBehavior="restore"
               onChange={handleSettingsSheetChange}
               backgroundStyle={{ backgroundColor: theme.colors.surface }}
               handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}

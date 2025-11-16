@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, Text } from 'react-native';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -66,7 +66,7 @@ export default function Button({
       disabled={disabled || loading}
       style={({ pressed }) => [
         getButtonStyle(),
-        pressed && { opacity: 0.7 },
+        pressed && { opacity: 0.8 },
         (disabled || loading) && { opacity: 0.5 }
       ]}
     >

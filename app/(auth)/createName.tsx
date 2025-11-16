@@ -1,7 +1,7 @@
 import { Link, router } from 'expo-router';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { TextInput } from 'react-native-paper';
+import { Alert, Keyboard, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { HelperText, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Logo from '../components/logo';
 import { useAppStore } from '../store';
@@ -15,13 +15,16 @@ export default function CreateNameScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [firstNameEmpty, setFirstNameEmpty] = useState(false);
+  const [lastNameEmpty, setLastNameEmpty] = useState(false);
   const theme = useAppTheme();
 
   const nextClick = () => {
     Keyboard.dismiss();
 
     if (!firstName.trim() || !lastName.trim()) {
-      setErrorMessage('Please enter all fields');
+      setFirstNameEmpty(!firstName.trim());
+      setLastNameEmpty(!lastName.trim());
       return;
     }
 
@@ -33,28 +36,30 @@ export default function CreateNameScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            >
-                <ScrollView 
-                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-                    keyboardShouldPersistTaps="handled"
-                >
                     <Logo />
-                    <View style={{...styles.centered, marginBottom: 0}}>
+                    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+                    <View style={{...styles.centered, marginBottom: 0, paddingHorizontal: 20}}>
                 <Text style={{...styles.startupText, marginBottom: 30}}>Create an Account</Text>
-                <TextInput label="First Name" mode="outlined" style={styles.input} value={firstName} 
-                    onChangeText={(text) => { 
-                        setFirstName(text); 
-                        if (errorMessage.includes('enter all fields')) setErrorMessage(''); 
+                <TextInput label="First Name" mode="outlined" style={styles.input} value={firstName}
+                    error={firstNameEmpty}
+                    onChangeText={(text) => {
+                        setFirstName(text);
+                        if (errorMessage.includes('enter all fields')) setErrorMessage('');
+                        if (text) setFirstNameEmpty(false);
                     }} />
-                <TextInput label="Last Name" mode="outlined" style={styles.input} value={lastName} 
-                    onChangeText={(text) => { 
-                        setLastName(text); 
-                        if (errorMessage.includes('enter all fields')) setErrorMessage(''); 
+                <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={firstNameEmpty}>
+                    Enter your first name
+                </HelperText>
+                <TextInput label="Last Name" mode="outlined" style={styles.input} value={lastName}
+                    error={lastNameEmpty}
+                    onChangeText={(text) => {
+                        setLastName(text);
+                        if (errorMessage.includes('enter all fields')) setErrorMessage('');
+                        if (text) setLastNameEmpty(false);
                     }} />
+                <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={lastNameEmpty}>
+                    Enter your last name
+                </HelperText>
                 {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
                 <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
                     <Text style={styles.buttonText_filled}>Next</Text>
@@ -64,8 +69,7 @@ export default function CreateNameScreen() {
                     <Text style={{...styles.tinyText, color: theme.colors.primary, textDecorationLine: 'underline'}}>Log In</Text>
                 </Link>
                     </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
         </SafeAreaView>
     )
 }

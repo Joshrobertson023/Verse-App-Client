@@ -22,6 +22,7 @@ export default function ReorderVerses() {
   
   // Initialize with combined verses and notes
   const [reorderedData, setReorderedData] = useState<ReorderableItem[]>([]);
+  const [saveButtonEnabled, setSaveButtonEnabled] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Build initial reordered data from collection
@@ -114,12 +115,12 @@ export default function ReorderVerses() {
 
   const handleDragEnd = useCallback(({ data }: { data: ReorderableItem[] }) => {
     console.log('handleDragEnd - updating reorderedData with', data.length, 'items');
+    setSaveButtonEnabled(true);
     setReorderedData(data);
   }, []);
 
   const handleSave = async () => {
     setIsSaving(true);
-    
     // Separate verses and notes from reordered data
     const reorderedVerses: UserVerse[] = [];
     const reorderedNotes: CollectionNote[] = [];
@@ -174,29 +175,28 @@ export default function ReorderVerses() {
           ? item.data.readableReference || item.data.verses[0]?.verse_reference || 'unknown'
           : item.data.id}
         onDragEnd={handleDragEnd}
-        contentContainerStyle={{paddingBottom: 100}}
+        contentContainerStyle={{paddingBottom: 200}}
+        onDragBegin={() => setSaveButtonEnabled(false)}
       />
 
-      {/* Shadow for Cancel button - positioned behind */}
       <View style={{
         position: 'absolute',
-        bottom: 60,
+        bottom: 70,
         left: 20,
         width: '47%',
-        height: 56,
+        height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
         boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
         zIndex: 5,
       }}></View>
 
-      {/* Shadow for Save button - positioned behind */}
       <View style={{
         position: 'absolute',
-        bottom: 60,
+        bottom: 70,
         right: 20,
         width: '47%',
-        height: 56,
+        height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
         boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
@@ -206,7 +206,7 @@ export default function ReorderVerses() {
       <View style={{
         flexDirection: 'row',
         position: 'absolute',
-        bottom: 60,
+        bottom: 70,
         left: 0,
         right: 0,
         justifyContent: 'space-around',
@@ -226,22 +226,34 @@ export default function ReorderVerses() {
         >
           <Text style={{...styles.tinyText, fontWeight: '600', color: colors.error}}>Cancel</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          onPress={handleSave}
-          disabled={isSaving}
-          style={{
-            flex: 1,
-            marginLeft: 10,
-            padding: 15,
-            backgroundColor: isSaving ? theme.colors.surface : theme.colors.primary,
-            borderRadius: 10,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{...styles.tinyText, fontWeight: '600', color: isSaving ? theme.colors.onSurface : theme.colors.onPrimary}}>
-            {isSaving ? 'Saving...' : 'Save'}
-          </Text>
-        </TouchableOpacity>
+        {saveButtonEnabled === true ? (
+            <TouchableOpacity 
+              onPress={handleSave}
+              disabled={isSaving}
+              style={{
+                flex: 1,
+                marginLeft: 10,
+                padding: 15,
+                backgroundColor: isSaving ? theme.colors.surface : theme.colors.primary,
+                borderRadius: 10,
+                alignItems: 'center',
+              }}>
+              <Text style={{...styles.tinyText, fontWeight: '600', color: isSaving ? theme.colors.onSurface : theme.colors.onPrimary}}>
+                {isSaving ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+          <View style={{
+              flex: 1,
+              marginLeft: 10,
+              padding: 15,
+              backgroundColor: theme.colors.surface,
+              borderRadius: 10,
+              alignItems: 'center',
+          }}>
+            <Text style={{...styles.tinyText, fontWeight: '600', color: theme.colors.surface2}}>Save</Text>
+          </View>
+        )}
       </View>
     </View>
   )

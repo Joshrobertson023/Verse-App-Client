@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
-import { AdminSummary, Category, createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, getAllCategories, createCategory, deleteCategory, getSiteBanner, updateSiteBanner, deleteSiteBanner, getAdmins, resetVerseOfDayQueue, getUnapprovedNotes, approveNote, denyNote, VerseNote, getVerseOfDaySuggestions, approveVerseOfDaySuggestion, deleteVerseOfDaySuggestion, VerseOfDaySuggestion, getPendingCollections, approveCollection, rejectCollection, PublishedCollection } from './db';
+import { AdminSummary, createVerseOfDay, deleteVerseOfDay, getAllUsers, getUpcomingVerseOfDay, sendNotificationToAll, getAllReports, ReportItem, deleteReport, makeUserAdmin, removeUserAdmin, deleteUser, banUser, getSiteBanner, updateSiteBanner, deleteSiteBanner, getAdmins, resetVerseOfDayQueue, getUnapprovedNotes, approveNote, denyNote, VerseNote, getVerseOfDaySuggestions, approveVerseOfDaySuggestion, deleteVerseOfDaySuggestion, VerseOfDaySuggestion, getPendingCollections, approveCollection, rejectCollection, PublishedCollection, makeUserPaid, removeUserPaid, getPaidUsers } from './db';
 import { formatDate as formatDateUtil } from './dateUtils';
 
 type VerseOfDayQueueItem = {
@@ -25,6 +25,8 @@ export default function AdminScreen() {
   const setUserStore = useAppStore((state) => state.setUser);
   const [users, setUsers] = useState<any[]>([]);
   const [admins, setAdmins] = useState<AdminSummary[]>([]);
+  const [paidUsers, setPaidUsers] = useState<AdminSummary[]>([]);
+  const [loadingPaidUsers, setLoadingPaidUsers] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -37,9 +39,6 @@ export default function AdminScreen() {
   const itemsPerPage = 10;
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [loadingCategories, setLoadingCategories] = useState(false);
   const [unapprovedNotes, setUnapprovedNotes] = useState<VerseNote[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(false);
   const [showDenyModal, setShowDenyModal] = useState(false);
@@ -55,7 +54,9 @@ export default function AdminScreen() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showPinDialog, setShowPinDialog] = useState(false);
   const [pinInput, setPinInput] = useState('');
-  const [pinDialogAction, setPinDialogAction] = useState<'sendNotification' | 'makeAdmin' | 'removeAdmin' | 'deleteUser' | 'saveBanner' | 'deleteBanner'>('sendNotification');
+  const [pinDialogAction, setPinDialogAction] = useState<'sendNotification' | 'makeAdmin' | 'removeAdmin' | 'banUser' | 'saveBanner' | 'deleteBanner' | 'makePaidUser' | 'removePaidUser'>('sendNotification');
+  const [banReason, setBanReason] = useState('');
+  const [banExpireDate, setBanExpireDate] = useState('');
   const [pinDialogTargetUser, setPinDialogTargetUser] = useState('');
   const [bannerMessage, setBannerMessage] = useState('');
   const [loadingBanner, setLoadingBanner] = useState(false);
@@ -116,6 +117,18 @@ export default function AdminScreen() {
       setLoadingAdmins(false);
     }
   }, [syncCurrentUserAdminFlag]);
+
+  const loadPaidUsers = useCallback(async () => {
+    setLoadingPaidUsers(true);
+    try {
+      const data = await getPaidUsers();
+      setPaidUsers(data);
+    } catch (error) {
+      console.error('Failed to load paid users:', error);
+    } finally {
+      setLoadingPaidUsers(false);
+    }
+  }, []);
 
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true);
@@ -234,16 +247,18 @@ export default function AdminScreen() {
       } finally {
         setLoading(false);
       }
-    } else if (pinDialogAction === 'deleteUser') {
+    } else if (pinDialogAction === 'banUser') {
       setLoading(true);
       try {
-        await deleteUser(pinDialogTargetUser);
+        await banUser(pinDialogTargetUser, user.username, banReason || undefined, banExpireDate || undefined);
         await loadAdmins();
         await loadUsers();
-        alert(`${pinDialogTargetUser}'s account has been deleted.`);
+        setBanReason('');
+        setBanExpireDate('');
+        alert(`${pinDialogTargetUser} has been banned.`);
       } catch (error) {
-        console.error('Failed to delete user:', error);
-        alert('Failed to delete user');
+        console.error('Failed to ban user:', error);
+        alert('Failed to ban user');
       } finally {
         setLoading(false);
       }
@@ -279,6 +294,33 @@ export default function AdminScreen() {
       } finally {
         setPendingBannerMessage(null);
         setLoadingBanner(false);
+      }
+    } else if (pinDialogAction === 'makePaidUser') {
+      setLoading(true);
+      try {
+        await makeUserPaid(pinDialogTargetUser, user.username, currentPin);
+        await loadPaidUsers();
+        await loadUsers();
+        alert(`${pinDialogTargetUser} is now a paid user`);
+      } catch (error) {
+        console.error('Failed to make user paid:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to make user paid';
+        alert(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    } else if (pinDialogAction === 'removePaidUser') {
+      setLoading(true);
+      try {
+        await removeUserPaid(pinDialogTargetUser, user.username, currentPin);
+        await loadPaidUsers();
+        await loadUsers();
+        alert(`Paid status removed from ${pinDialogTargetUser}`);
+      } catch (error) {
+        console.error('Failed to remove paid status:', error);
+        alert('Failed to remove paid status');
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -354,18 +396,6 @@ export default function AdminScreen() {
     }
   }, []);
 
-  const loadCategories = useCallback(async () => {
-    setLoadingCategories(true);
-    try {
-      const data = await getAllCategories();
-      setCategories(data);
-    } catch (e) {
-      console.error('Failed to load categories:', e);
-    } finally {
-      setLoadingCategories(false);
-    }
-  }, []);
-
   const loadBanner = useCallback(async () => {
     setLoadingBanner(true);
     try {
@@ -423,40 +453,15 @@ export default function AdminScreen() {
     useCallback(() => {
       loadUsers();
       loadAdmins();
+      loadPaidUsers();
       loadVerseOfDays();
       loadReports();
-      loadCategories();
       loadBanner();
       loadUnapprovedNotes();
       loadSuggestions();
       loadPendingCollections();
-    }, [loadAdmins, loadBanner, loadCategories, loadReports, loadUsers, loadVerseOfDays, loadUnapprovedNotes, loadSuggestions, loadPendingCollections])
+    }, [loadAdmins, loadBanner, loadReports, loadUsers, loadVerseOfDays, loadUnapprovedNotes, loadSuggestions, loadPendingCollections, loadPaidUsers])
   );
-
-  const handleAddCategory = async () => {
-    const name = newCategoryName.trim();
-    if (!name) {
-      alert('Please enter a category name');
-      return;
-    }
-    try {
-      await createCategory(name);
-      setNewCategoryName('');
-      await loadCategories();
-      alert('Category created');
-    } catch (e) {
-      alert('Failed to create category');
-    }
-  };
-
-  const handleDeleteCategory = async (id: number) => {
-    try {
-      await deleteCategory(id);
-      await loadCategories();
-    } catch (e) {
-      alert('Failed to delete category');
-    }
-  };
 
   const formatDate = (dateString?: string | null) => {
     if (!dateString) return '—';
@@ -468,47 +473,344 @@ export default function AdminScreen() {
       <ScrollView style={{ flex: 1 }}>
         <View style={{ padding: 20 }}>
 
-          {/* Admins Section */}
+          {/* Unapproved Notes Section */}
           <View style={{ marginBottom: 30 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
-              All Admins
+              Unapproved Notes
             </Text>
-            
-            {loadingAdmins ? (
-              <ActivityIndicator style={{ marginTop: 20 }} color={theme.colors.primary} />
+
+            {loadingNotes ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
             ) : (
               <ScrollView horizontal style={{ marginTop: 10 }}>
                 <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
                   <DataTable.Header>
-                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Username</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Name</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Email</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Verse</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 300 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Text</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>User</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
+                  </DataTable.Header>
+
+                  {unapprovedNotes.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 1010 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No unapproved notes</Text>
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ) : (
+                    unapprovedNotes.map((note) => (
+                      <DataTable.Row key={note.id}>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{note.verseReference}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 300 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }} numberOfLines={2}>
+                            {note.text}
+                          </Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{note.username}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 140 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(note.createdDate)}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 220 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!user?.username) return;
+                                try {
+                                  await approveNote(note.id, user.username);
+                                  await loadUnapprovedNotes();
+                                  alert('Note approved');
+                                } catch (error) {
+                                  console.error('Failed to approve note:', error);
+                                  alert('Failed to approve note');
+                                }
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'green'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Approve
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setDenyNoteId(note.id);
+                                setDenyReason('');
+                                setShowDenyModal(true);
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'red'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Deny
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
+                </DataTable>
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Pending Collections Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              Collections Needing Review
+            </Text>
+
+            {loadingPendingCollections ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
+            ) : (
+              <ScrollView horizontal style={{ marginTop: 10 }}>
+                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                  <DataTable.Header>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Title</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Author</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 250 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Description</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 280 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
+                  </DataTable.Header>
+
+                  {pendingCollections.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 960 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No collections pending review</Text>
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ) : (
+                    pendingCollections.map((collection) => (
+                      <DataTable.Row key={collection.publishedId}>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{collection.title}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{collection.author}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 250 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }} numberOfLines={2}>
+                            {collection.description || 'No description'}
+                          </Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 140 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(typeof collection.publishedDate === 'string' ? collection.publishedDate : collection.publishedDate.toISOString())}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 280 }}>
+                          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!collection.publishedId) return;
+                                router.push(`/explore/collection/${collection.publishedId}`);
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: theme.colors.primary
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                View
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!user?.username) return;
+                                try {
+                                  await approveCollection(collection.publishedId, user.username);
+                                  await loadPendingCollections();
+                                  alert('Collection approved and published');
+                                } catch (error) {
+                                  console.error('Failed to approve collection:', error);
+                                  alert('Failed to approve collection');
+                                }
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'green'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Approve
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setRejectCollectionId(collection.publishedId);
+                                setRejectCollectionReason('');
+                                setShowRejectCollectionModal(true);
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'red'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Reject
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
+                </DataTable>
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Verse of Day Suggestions Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              Verse of Day Suggestions
+            </Text>
+
+            {loadingSuggestions ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
+            ) : (
+              <ScrollView horizontal style={{ marginTop: 10 }}>
+                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                  <DataTable.Header>
+                    <DataTable.Title style={{ minWidth: 250 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Reference</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Suggested By</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Status</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
+                  </DataTable.Header>
+
+                  {suggestions.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 860 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No suggestions</Text>
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ) : (
+                    suggestions.map((suggestion) => (
+                      <DataTable.Row key={suggestion.id}>
+                        <DataTable.Cell style={{ minWidth: 250 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{suggestion.readableReference}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{suggestion.suggesterUsername}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 140 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(suggestion.createdDate)}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 100 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{suggestion.status}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 220 }}>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {suggestion.status === 'PENDING' && (
+                              <TouchableOpacity
+                                onPress={async () => {
+                                  if (!user?.username) return;
+                                  try {
+                                    await approveVerseOfDaySuggestion(suggestion.id, user.username);
+                                    await loadSuggestions();
+                                    await loadVerseOfDays();
+                                    alert('Suggestion approved and added to queue');
+                                  } catch (error) {
+                                    console.error('Failed to approve suggestion:', error);
+                                    alert(error instanceof Error ? error.message : 'Failed to approve suggestion');
+                                  }
+                                }}
+                                style={{
+                                  padding: 6,
+                                  paddingHorizontal: 12,
+                                  borderRadius: 8,
+                                  backgroundColor: 'green'
+                                }}
+                              >
+                                <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                  Add
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              onPress={async () => {
+                                if (!user?.username) return;
+                                try {
+                                  await deleteVerseOfDaySuggestion(suggestion.id, user.username);
+                                  await loadSuggestions();
+                                  alert('Suggestion deleted');
+                                } catch (error) {
+                                  console.error('Failed to delete suggestion:', error);
+                                  alert('Failed to delete suggestion');
+                                }
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'red'
+                              }}
+                            >
+                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                                Delete
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
+                </DataTable>
+              </ScrollView>
+            )}
+          </View>
+
+          {/* Bug Reports Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              Bug Reports
+            </Text>
+
+            {loadingReports ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
+            ) : (
+              <ScrollView horizontal style={{ marginTop: 10 }}>
+                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                  <DataTable.Header>
+                    <DataTable.Title style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Reporter</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 300 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Issue</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
                     <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Action</Text></DataTable.Title>
                   </DataTable.Header>
 
-                  {admins.map((adminItem, index) => {
-                    const matchingUser = users.find((u) => u.username === adminItem.username);
-                    const fullName = matchingUser ? `${matchingUser.firstName ?? ''} ${matchingUser.lastName ?? ''}`.trim() : '';
-                    const email = adminItem.email ?? matchingUser?.email ?? '—';
-                    return (
-                    <DataTable.Row key={adminItem.username}>
-                      <DataTable.Cell style={{ minWidth: 150 }}>
-                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{adminItem.username}</Text>
-                      </DataTable.Cell>
-                      <DataTable.Cell style={{ minWidth: 150 }}>
-                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>
-                          {fullName.length > 0 ? fullName : '—'}
-                        </Text>
-                      </DataTable.Cell>
-                      <DataTable.Cell style={{ minWidth: 200 }}>
-                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{email}</Text>
-                      </DataTable.Cell>
+                  {reports.filter(r => r.reported_Username === 'SYSTEM').map((r) => (
+                    <DataTable.Row key={r.report_Id}>
+                      <DataTable.Cell style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{r.reporter_Username}</Text></DataTable.Cell>
+                      <DataTable.Cell style={{ minWidth: 300 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{r.reported_Email || 'N/A'}</Text></DataTable.Cell>
+                      <DataTable.Cell style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(r.created_Date)}</Text></DataTable.Cell>
                       <DataTable.Cell style={{ minWidth: 100 }}>
                         <TouchableOpacity
-                          onPress={() => {
-                            setPinDialogAction('removeAdmin');
-                            setPinDialogTargetUser(adminItem.username);
-                            setShowPinDialog(true);
+                          onPress={async () => {
+                            try {
+                              await deleteReport(r.report_Id);
+                              await loadReports();
+                            } catch (error) {
+                              console.error('Failed to delete report:', error);
+                              alert('Failed to delete report');
+                            }
                           }}
                           style={{
                             padding: 6,
@@ -517,18 +819,13 @@ export default function AdminScreen() {
                             backgroundColor: 'red'
                           }}
                         >
-                          <Text style={{
-                            color: 'white',
-                            fontFamily: 'Inter',
-                            fontSize: 12,
-                            fontWeight: '600'
-                          }}>
-                            Remove
+                          <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
+                            Delete
                           </Text>
                         </TouchableOpacity>
                       </DataTable.Cell>
                     </DataTable.Row>
-                  )})}
+                  ))}
                 </DataTable>
               </ScrollView>
             )}
@@ -657,7 +954,7 @@ export default function AdminScreen() {
                       <DataTable.Cell style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{userItem.firstName} {userItem.lastName}</Text></DataTable.Cell>
                       <DataTable.Cell style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{userItem.email}</Text></DataTable.Cell>
                       <DataTable.Cell style={{ minWidth: 200 }}>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                           {!admins.some((admin) => admin.username === userItem.username) && (
                             <TouchableOpacity
                               onPress={() => {
@@ -682,10 +979,36 @@ export default function AdminScreen() {
                               </Text>
                             </TouchableOpacity>
                           )}
+                          {!paidUsers.some((paid) => paid.username === userItem.username) && (
+                            <TouchableOpacity
+                              onPress={() => {
+                                setPinDialogAction('makePaidUser');
+                                setPinDialogTargetUser(userItem.username);
+                                setShowPinDialog(true);
+                              }}
+                              style={{
+                                padding: 6,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'green'
+                              }}
+                            >
+                              <Text style={{
+                                color: 'white',
+                                fontFamily: 'Inter',
+                                fontSize: 12,
+                                fontWeight: '600'
+                              }}>
+                                Make Paid
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                           <TouchableOpacity
                             onPress={() => {
-                              setPinDialogAction('deleteUser');
+                              setPinDialogAction('banUser');
                               setPinDialogTargetUser(userItem.username);
+                              setBanReason('');
+                              setBanExpireDate('');
                               setShowPinDialog(true);
                             }}
                             style={{
@@ -701,7 +1024,7 @@ export default function AdminScreen() {
                               fontSize: 12,
                               fontWeight: '600'
                             }}>
-                              Delete
+                              Ban
                             </Text>
                           </TouchableOpacity>
                         </View>
@@ -757,7 +1080,7 @@ export default function AdminScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Verse of Day Section */}
+          {/* Verse of Day Queue Section */}
           <View style={{ marginBottom: 30 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
               Verse of the Day Queue
@@ -971,362 +1294,144 @@ export default function AdminScreen() {
             )}
           </View>
 
-          {/* Verse of Day Suggestions Section */}
-          <View style={{ marginBottom: 30 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
-              Verse of Day Suggestions
-            </Text>
-
-            {loadingSuggestions ? (
-              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
-            ) : (
-              <ScrollView horizontal style={{ marginTop: 10 }}>
-                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
-                  <DataTable.Header>
-                    <DataTable.Title style={{ minWidth: 250 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Reference</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Suggested By</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Status</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
-                  </DataTable.Header>
-
-                  {suggestions.length === 0 ? (
-                    <DataTable.Row>
-                      <DataTable.Cell style={{ minWidth: 860 }}>
-                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No suggestions</Text>
-                      </DataTable.Cell>
-                    </DataTable.Row>
-                  ) : (
-                    suggestions.map((suggestion) => (
-                      <DataTable.Row key={suggestion.id}>
-                        <DataTable.Cell style={{ minWidth: 250 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{suggestion.readableReference}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 150 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{suggestion.suggesterUsername}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 140 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(suggestion.createdDate)}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 100 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{suggestion.status}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 220 }}>
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            {suggestion.status === 'PENDING' && (
-                              <TouchableOpacity
-                                onPress={async () => {
-                                  if (!user?.username) return;
-                                  try {
-                                    await approveVerseOfDaySuggestion(suggestion.id, user.username);
-                                    await loadSuggestions();
-                                    await loadVerseOfDays();
-                                    alert('Suggestion approved and added to queue');
-                                  } catch (error) {
-                                    console.error('Failed to approve suggestion:', error);
-                                    alert(error instanceof Error ? error.message : 'Failed to approve suggestion');
-                                  }
-                                }}
-                                style={{
-                                  padding: 6,
-                                  paddingHorizontal: 12,
-                                  borderRadius: 8,
-                                  backgroundColor: 'green'
-                                }}
-                              >
-                                <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
-                                  Add
-                                </Text>
-                              </TouchableOpacity>
-                            )}
-                            <TouchableOpacity
-                              onPress={async () => {
-                                if (!user?.username) return;
-                                try {
-                                  await deleteVerseOfDaySuggestion(suggestion.id, user.username);
-                                  await loadSuggestions();
-                                  alert('Suggestion deleted');
-                                } catch (error) {
-                                  console.error('Failed to delete suggestion:', error);
-                                  alert('Failed to delete suggestion');
-                                }
-                              }}
-                              style={{
-                                padding: 6,
-                                paddingHorizontal: 12,
-                                borderRadius: 8,
-                                backgroundColor: 'red'
-                              }}
-                            >
-                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
-                                Delete
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </DataTable.Cell>
-                      </DataTable.Row>
-                    ))
-                  )}
-                </DataTable>
-              </ScrollView>
-            )}
-          </View>
-
-          {/* Pending Collections Section */}
-          <View style={{ marginBottom: 30 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
-              Collections Needing Review
-            </Text>
-
-            {loadingPendingCollections ? (
-              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
-            ) : (
-              <ScrollView horizontal style={{ marginTop: 10 }}>
-                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
-                  <DataTable.Header>
-                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Title</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Author</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 250 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Description</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
-                  </DataTable.Header>
-
-                  {pendingCollections.length === 0 ? (
-                    <DataTable.Row>
-                      <DataTable.Cell style={{ minWidth: 960 }}>
-                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No collections pending review</Text>
-                      </DataTable.Cell>
-                    </DataTable.Row>
-                  ) : (
-                    pendingCollections.map((collection) => (
-                      <DataTable.Row key={collection.publishedId}>
-                        <DataTable.Cell style={{ minWidth: 200 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{collection.title}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 150 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{collection.author}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 250 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }} numberOfLines={2}>
-                            {collection.description || 'No description'}
-                          </Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 140 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(collection.publishedDate)}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 220 }}>
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <TouchableOpacity
-                              onPress={async () => {
-                                if (!user?.username) return;
-                                try {
-                                  await approveCollection(collection.publishedId, user.username);
-                                  await loadPendingCollections();
-                                  alert('Collection approved and published');
-                                } catch (error) {
-                                  console.error('Failed to approve collection:', error);
-                                  alert('Failed to approve collection');
-                                }
-                              }}
-                              style={{
-                                padding: 6,
-                                paddingHorizontal: 12,
-                                borderRadius: 8,
-                                backgroundColor: 'green'
-                              }}
-                            >
-                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
-                                Approve
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setRejectCollectionId(collection.publishedId);
-                                setRejectCollectionReason('');
-                                setShowRejectCollectionModal(true);
-                              }}
-                              style={{
-                                padding: 6,
-                                paddingHorizontal: 12,
-                                borderRadius: 8,
-                                backgroundColor: 'red'
-                              }}
-                            >
-                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
-                                Reject
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </DataTable.Cell>
-                      </DataTable.Row>
-                    ))
-                  )}
-                </DataTable>
-              </ScrollView>
-            )}
-          </View>
-
-          {/* Unapproved Notes Section */}
-          <View style={{ marginBottom: 30 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
-              Unapproved Notes
-            </Text>
-
-            {loadingNotes ? (
-              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
-            ) : (
-              <ScrollView horizontal style={{ marginTop: 10 }}>
-                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
-                  <DataTable.Header>
-                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Verse</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 300 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Text</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>User</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 140 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Date</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
-                  </DataTable.Header>
-
-                  {unapprovedNotes.length === 0 ? (
-                    <DataTable.Row>
-                      <DataTable.Cell style={{ minWidth: 1010 }}>
-                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No unapproved notes</Text>
-                      </DataTable.Cell>
-                    </DataTable.Row>
-                  ) : (
-                    unapprovedNotes.map((note) => (
-                      <DataTable.Row key={note.id}>
-                        <DataTable.Cell style={{ minWidth: 200 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{note.verseReference}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 300 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }} numberOfLines={2}>
-                            {note.text}
-                          </Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 150 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{note.username}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 140 }}>
-                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(note.createdDate)}</Text>
-                        </DataTable.Cell>
-                        <DataTable.Cell style={{ minWidth: 220 }}>
-                          <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <TouchableOpacity
-                              onPress={async () => {
-                                if (!user?.username) return;
-                                try {
-                                  await approveNote(note.id, user.username);
-                                  await loadUnapprovedNotes();
-                                  alert('Note approved');
-                                } catch (error) {
-                                  console.error('Failed to approve note:', error);
-                                  alert('Failed to approve note');
-                                }
-                              }}
-                              style={{
-                                padding: 6,
-                                paddingHorizontal: 12,
-                                borderRadius: 8,
-                                backgroundColor: 'green'
-                              }}
-                            >
-                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
-                                Approve
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setDenyNoteId(note.id);
-                                setDenyReason('');
-                                setShowDenyModal(true);
-                              }}
-                              style={{
-                                padding: 6,
-                                paddingHorizontal: 12,
-                                borderRadius: 8,
-                                backgroundColor: 'red'
-                              }}
-                            >
-                              <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>
-                                Deny
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </DataTable.Cell>
-                      </DataTable.Row>
-                    ))
-                  )}
-                </DataTable>
-              </ScrollView>
-            )}
-          </View>
         </View>
-          {/* Categories Section */}
+
+          {/* Paid Users Section */}
           <View style={{ marginBottom: 30 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
-              Categories
+              Paid Users
             </Text>
 
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 10 }}>
-              <TextInput
-                style={{
-                  flex: 1,
-                  backgroundColor: theme.colors.surface,
-                  borderRadius: 12,
-                  padding: 12,
-                  color: theme.colors.onBackground,
-                  fontSize: 16
-                }}
-                placeholder="New category name"
-                placeholderTextColor={theme.colors.onSurfaceVariant}
-                value={newCategoryName}
-                onChangeText={setNewCategoryName}
-              />
-              <TouchableOpacity
-                style={styles.button_filled}
-                onPress={handleAddCategory}
-                disabled={loadingCategories}
-              >
-                {loadingCategories ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <Text style={styles.buttonText_filled}>Add</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            {loadingPaidUsers ? (
+              <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
+            ) : (
+              <ScrollView horizontal style={{ marginTop: 10 }}>
+                <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
+                  <DataTable.Header style={{ backgroundColor: theme.colors.background }}>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Username</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Email</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
+                  </DataTable.Header>
 
-            {loadingCategories ? (
+                  {paidUsers.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 550 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No paid users found</Text>
+                      </DataTable.Cell>
+                    </DataTable.Row>
+                  ) : (
+                    paidUsers.map((paidUser) => (
+                      <DataTable.Row key={paidUser.username}>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{paidUser.username}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{paidUser.email || 'N/A'}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setPinDialogAction('removePaidUser');
+                              setPinDialogTargetUser(paidUser.username);
+                              setShowPinDialog(true);
+                            }}
+                            style={{
+                              padding: 6,
+                              paddingHorizontal: 12,
+                              borderRadius: 8,
+                              backgroundColor: 'red'
+                            }}
+                          >
+                            <Text style={{
+                              color: 'white',
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: '600'
+                            }}>
+                              Remove Paid
+                            </Text>
+                          </TouchableOpacity>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
+                </DataTable>
+              </ScrollView>
+            )}
+          </View>
+
+          {/* All Admins Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 10, fontFamily: 'Inter' }}>
+              All Admins
+            </Text>
+
+            {loadingAdmins ? (
               <ActivityIndicator style={{ marginTop: 10 }} color={theme.colors.primary} />
             ) : (
               <ScrollView horizontal style={{ marginTop: 10 }}>
                 <DataTable style={{ backgroundColor: theme.colors.surface, borderRadius: 12 }}>
                   <DataTable.Header>
-                    <DataTable.Title style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>ID</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Name</Text></DataTable.Title>
-                    <DataTable.Title style={{ minWidth: 120 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Action</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 150 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Username</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Email</Text></DataTable.Title>
+                    <DataTable.Title style={{ minWidth: 200 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Actions</Text></DataTable.Title>
                   </DataTable.Header>
 
-                  {categories.map((c) => (
-                    <DataTable.Row key={c.categoryId}>
-                      <DataTable.Cell style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{c.categoryId}</Text></DataTable.Cell>
-                      <DataTable.Cell style={{ minWidth: 220 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{c.name}</Text></DataTable.Cell>
-                      <DataTable.Cell style={{ minWidth: 120 }}>
-                        <TouchableOpacity
-                          onPress={() => handleDeleteCategory(c.categoryId)}
-                          style={{
-                            padding: 6,
-                            paddingHorizontal: 12,
-                            borderRadius: 8,
-                            backgroundColor: 'red'
-                          }}
-                        >
-                          <Text style={{ color: 'white', fontFamily: 'Inter', fontSize: 12, fontWeight: '600' }}>Delete</Text>
-                        </TouchableOpacity>
+                  {admins.length === 0 ? (
+                    <DataTable.Row>
+                      <DataTable.Cell style={{ minWidth: 550 }}>
+                        <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>No admins found</Text>
                       </DataTable.Cell>
                     </DataTable.Row>
-                  ))}
+                  ) : (
+                    admins.map((admin) => (
+                      <DataTable.Row key={admin.username}>
+                        <DataTable.Cell style={{ minWidth: 150 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>@{admin.username}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{admin.email || 'N/A'}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell style={{ minWidth: 200 }}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setPinDialogAction('removeAdmin');
+                              setPinDialogTargetUser(admin.username);
+                              setShowPinDialog(true);
+                            }}
+                            style={{
+                              padding: 6,
+                              paddingHorizontal: 12,
+                              borderRadius: 8,
+                              backgroundColor: 'red'
+                            }}
+                          >
+                            <Text style={{
+                              color: 'white',
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: '600'
+                            }}>
+                              Remove Admin
+                            </Text>
+                          </TouchableOpacity>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))
+                  )}
                 </DataTable>
               </ScrollView>
             )}
+          </View>
+
+          {/* Categories Management Button */}
+          <View style={{ marginBottom: 30 }}>
+            <TouchableOpacity
+              style={styles.button_filled}
+              onPress={() => router.push('/admin/categories')}
+            >
+              <Text style={styles.buttonText_filled}>Manage Categories</Text>
+            </TouchableOpacity>
           </View>
 
 
@@ -1696,8 +1801,63 @@ export default function AdminScreen() {
               {pinDialogAction === 'sendNotification' ? 'Send Notification' : 
                pinDialogAction === 'makeAdmin' ? 'Make Admin' : 
                pinDialogAction === 'removeAdmin' ? 'Remove Admin' : 
-               'Delete User'}
+               pinDialogAction === 'makePaidUser' ? 'Make Paid User' :
+               pinDialogAction === 'removePaidUser' ? 'Remove Paid Status' :
+               'Ban User'}
             </Text>
+            
+            {pinDialogAction === 'banUser' && (
+              <>
+                <Text style={{
+                  fontSize: 16,
+                  color: theme.colors.onSurfaceVariant,
+                  marginBottom: 8,
+                  fontFamily: 'Inter'
+                }}>
+                  Ban Reason (optional):
+                </Text>
+                <TextInput
+                  style={{
+                    backgroundColor: theme.colors.background,
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 16,
+                    color: theme.colors.onBackground,
+                    fontSize: 16,
+                    fontFamily: 'Inter'
+                  }}
+                  placeholder="Enter ban reason"
+                  placeholderTextColor={theme.colors.onSurfaceVariant}
+                  value={banReason}
+                  onChangeText={setBanReason}
+                  multiline
+                  numberOfLines={3}
+                />
+                <Text style={{
+                  fontSize: 16,
+                  color: theme.colors.onSurfaceVariant,
+                  marginBottom: 8,
+                  fontFamily: 'Inter'
+                }}>
+                  Ban Expire Date (optional, leave empty for permanent):
+                </Text>
+                <TextInput
+                  style={{
+                    backgroundColor: theme.colors.background,
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 16,
+                    color: theme.colors.onBackground,
+                    fontSize: 16,
+                    fontFamily: 'Inter'
+                  }}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.colors.onSurfaceVariant}
+                  value={banExpireDate}
+                  onChangeText={setBanExpireDate}
+                />
+              </>
+            )}
             
             <Text style={{
               fontSize: 16,
@@ -1727,7 +1887,7 @@ export default function AdminScreen() {
               keyboardType="numeric"
               secureTextEntry
               maxLength={4}
-              autoFocus
+              autoFocus={pinDialogAction !== 'banUser'}
             />
             
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>

@@ -628,8 +628,30 @@ export async function uploadProfilePicture(username: string, imageUri: string): 
         
         // Get file name from URI
         const filename = imageUri.split('/').pop() || 'profile.jpg';
-        const match = /\.(\w+)$/.exec(filename);
-        const type = match ? `image/${match[1]}` : 'image/jpeg';
+        
+        // Determine content type from file extension
+        let type = 'image/jpeg'; // default
+        const match = /\.(\w+)$/.exec(filename.toLowerCase());
+        if (match) {
+            const ext = match[1].toLowerCase();
+            switch (ext) {
+                case 'jpg':
+                case 'jpeg':
+                    type = 'image/jpeg';
+                    break;
+                case 'png':
+                    type = 'image/png';
+                    break;
+                case 'gif':
+                    type = 'image/gif';
+                    break;
+                case 'webp':
+                    type = 'image/webp';
+                    break;
+                default:
+                    type = 'image/jpeg';
+            }
+        }
         
         // React Native FormData format
         formData.append('file', {
@@ -646,18 +668,19 @@ export async function uploadProfilePicture(username: string, imageUri: string): 
 
         if (!response.ok) {
             const responseText = await response.text();
-            throw new Error(responseText || 'Failed to upload profile picture');
+            console.error('Profile picture upload failed:', response.status, responseText);
+            throw new Error(responseText || `Failed to upload profile picture (${response.status})`);
         }
 
         const result = await response.json();
         // Return full URL
         const profilePictureUrl = result.profilePictureUrl;
         if (profilePictureUrl && !profilePictureUrl.startsWith('http')) {
-            return `${baseUrl}${profilePictureUrl}`;
+            return `${baseUrl}${profilePictureUrl.startsWith('/') ? '' : '/'}${profilePictureUrl}`;
         }
         return profilePictureUrl || '';
     } catch (error) {
-        console.error(error);
+        console.error('Error uploading profile picture:', error);
         throw error;
     }
 }
@@ -683,6 +706,9 @@ export async function searchUsers(query: string): Promise<User[]> {
         const response = await fetch(`${baseUrl}/users/search/${encodeURIComponent(query)}`);
         if (response.ok) {
             const data: User[] = await response.json();
+            // Cache profile pictures for search results (low quality for list view)
+            const { cacheProfilePictures } = await import('./utils/profilePictureCache');
+            await cacheProfilePictures(data, true);
             return data;
         } else {
             const responseText = await response.text();
@@ -752,6 +778,9 @@ export async function getFriends(username: string): Promise<User[]> {
         const response = await fetch(`${baseUrl}/relationships/friends/${username}`);
         if (response.ok) {
             const data: User[] = await response.json();
+            // Cache profile pictures for friends (low quality for list view)
+            const { cacheProfilePictures } = await import('./utils/profilePictureCache');
+            await cacheProfilePictures(data, true);
             return data;
         } else {
             const responseText = await response.text();
@@ -1524,6 +1553,60 @@ export async function removeUserAdmin(username: string): Promise<void> {
     }
 }
 
+export async function makeUserPaid(username: string, adminUsername: string, pin: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/users/${username}/make-paid`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ adminUsername, pin }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to make user paid');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function removeUserPaid(username: string, adminUsername: string, pin: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/users/${username}/remove-paid`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ adminUsername, pin }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to remove paid status');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getPaidUsers(): Promise<AdminSummary[]> {
+    try {
+        const response = await fetch(`${baseUrl}/admin/users/paid`);
+        if (response.ok) {
+            const data: AdminSummary[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get paid users');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function updatePushNotifications(username: string, enabled: boolean): Promise<void> {
     try {
         const response = await fetch(`${baseUrl}/users/pushNotifications/${username}`, {
@@ -1638,7 +1721,26 @@ export async function updateNotifyPublishedCollection(username: string, enabled:
 
 export async function updateNotifyCollectionSaved(username: string, enabled: boolean): Promise<void> {
     try {
-        const response = await fetch(`${baseUrl}/users/notifyCollectionSaved/${username}`, {
+        const response = await fetch(`${baseUrl}/users/${encodeURIComponent(username)}/notify-collection-saved`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ enabled }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update notification setting');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateNotifyNoteLiked(username: string, enabled: boolean): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/notifyNoteLiked/${username}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1647,7 +1749,45 @@ export async function updateNotifyCollectionSaved(username: string, enabled: boo
         });
         if (!response.ok) {
             const responseText = await response.text();
-            throw new Error(responseText || 'Failed to update notify collection saved setting');
+            throw new Error(responseText || 'Failed to update notify note liked setting');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateBadgeNotificationsEnabled(username: string, enabled: boolean): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/badge-notifications/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(enabled)
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update badge notifications setting');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateBadgeOverdueEnabled(username: string, enabled: boolean): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/badge-overdue/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(enabled)
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update badge overdue setting');
         }
     } catch (error) {
         console.error(error);
@@ -1740,6 +1880,74 @@ export async function deleteUser(username: string): Promise<void> {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to delete user');
         }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export interface Ban {
+    banId: number;
+    username: string;
+    adminBanned: string;
+    reason?: string;
+    banDate: string;
+    banExpireDate?: string;
+}
+
+export async function getActiveBan(username: string): Promise<Ban | null> {
+    try {
+        const response = await fetch(`${baseUrl}/bans/user/${encodeURIComponent(username)}`);
+        if (response.ok) {
+            const data: Ban = await response.json();
+            return data;
+        } else if (response.status === 404) {
+            return null;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get active ban');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function checkIfBanned(username: string): Promise<boolean> {
+    try {
+        const response = await fetch(`${baseUrl}/bans/check/${encodeURIComponent(username)}`);
+        if (response.ok) {
+            const data: { isBanned: boolean } = await response.json();
+            return data.isBanned;
+        } else {
+            return false;
+        }
+    } catch (error) {
+        console.error(error);
+        return false;
+    }
+}
+
+export async function banUser(username: string, adminBanned: string, reason?: string, banExpireDate?: string): Promise<Ban> {
+    try {
+        const response = await fetch(`${baseUrl}/bans`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username,
+                adminBanned,
+                reason,
+                banExpireDate: banExpireDate ? new Date(banExpireDate).toISOString() : null
+            }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to ban user');
+        }
+        const data: Ban = await response.json();
+        return data;
     } catch (error) {
         console.error(error);
         throw error;
@@ -1846,7 +2054,7 @@ export async function shareCollection(fromUsername: string, toUsername: string, 
     }
 }
 
-export async function shareVerse(fromUsername: string, toUsername: string, userVerseIds: number[]): Promise<void> {
+export async function shareVerse(fromUsername: string, toUsername: string, verseReferences: string[]): Promise<void> {
     try {
         const response = await fetch(`${baseUrl}/notifications/share-verse`, {
             method: 'POST',
@@ -1856,7 +2064,7 @@ export async function shareVerse(fromUsername: string, toUsername: string, userV
             body: JSON.stringify({
                 fromUsername,
                 toUsername,
-                userVerseIds
+                verseReferences
             }),
         });
         if (!response.ok) {
@@ -1955,7 +2163,8 @@ export interface PublishedCollection {
     collectionId?: number | null,
     categoryIds?: number[],
     publishedDate: Date,
-    userVerses: UserVerse[]
+    userVerses: UserVerse[],
+    notes?: import('./store').CollectionNote[]
 }
 
 export async function getAllCategories(): Promise<Category[]> {
@@ -1970,6 +2179,29 @@ export async function getAllCategories(): Promise<Category[]> {
     } catch (error) {
         console.error(error);
         return [];
+    }
+}
+
+// Get top categories by number of published collections (server should aggregate efficiently)
+export async function getTopCategories(limit: number = 8): Promise<Category[]> {
+    try {
+        const response = await fetch(`${baseUrl}/categories/top/${limit}`);
+        if (response.ok) {
+            const data: Category[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch top categories');
+        }
+    } catch (error) {
+        console.error('getTopCategories failed:', error);
+        // Fallback to all categories if top endpoint is unavailable
+        try {
+            const all = await getAllCategories();
+            return all.slice(0, limit);
+        } catch {
+            return [];
+        }
     }
 }
 
@@ -2000,6 +2232,60 @@ export async function deleteCategory(categoryId: number): Promise<void> {
         if (!response.ok) {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to delete category');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function addVerseToCategory(categoryId: number, verseReference: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/categories/${categoryId}/verses`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ verseReference })
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to add verse to category');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function deleteVerseFromCategory(categoryId: number, verseReference: string): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/categories/${categoryId}/verses`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ verseReference })
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to remove verse from category');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getCategoryVerses(categoryId: number): Promise<string[]> {
+    try {
+        const response = await fetch(`${baseUrl}/categories/${categoryId}/verses`);
+        if (response.ok) {
+            const data: string[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || `Failed to fetch verses for category: ${categoryId}`);
         }
     } catch (error) {
         console.error(error);
@@ -2522,9 +2808,11 @@ export interface VerseNote {
     username: string;
     text: string;
     isPublic: boolean;
-    approved: boolean | null;
+    approved?: boolean | null;
     createdDate: string;
     originalReference?: string;
+    likeCount?: number;
+    userLiked?: boolean;
 }
 
 export async function createNote(verseReference: string, username: string, text: string, isPublic: boolean, originalReference?: string): Promise<VerseNote> {
@@ -2569,10 +2857,65 @@ export async function deleteNote(id: number): Promise<void> {
     }
 }
 
-export async function getPublicNotesByVerseReference(verseReference: string): Promise<VerseNote[]> {
+export async function getPublicNotesByVerseReference(verseReference: string, currentUsername?: string): Promise<VerseNote[]> {
     try {
         const encodedVerseRef = encodeURIComponent(verseReference);
-        const response = await fetch(`${baseUrl}/notes/verse/${encodedVerseRef}/public`);
+        const url = currentUsername
+            ? `${baseUrl}/notes/verse/${encodedVerseRef}/public?currentUsername=${encodeURIComponent(currentUsername)}`
+            : `${baseUrl}/notes/verse/${encodedVerseRef}/public`;
+        const response = await fetch(url);
+        if (response.ok) {
+            const data: VerseNote[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get notes');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getAllNotesByChapter(book: string, chapter: number, noteType: 'private' | 'public', username?: string, currentUsername?: string): Promise<VerseNote[]> {
+    try {
+        const encodedBook = encodeURIComponent(book);
+        let url: string;
+        if (noteType === 'private') {
+            if (!username) {
+                throw new Error('Username is required for private notes');
+            }
+            url = `${baseUrl}/notes/chapter/${encodedBook}/${chapter}/all/private?username=${encodeURIComponent(username)}`;
+            if (currentUsername) {
+                url += `&currentUsername=${encodeURIComponent(currentUsername)}`;
+            }
+        } else {
+            url = `${baseUrl}/notes/chapter/${encodedBook}/${chapter}/all/public`;
+            if (currentUsername) {
+                url += `?currentUsername=${encodeURIComponent(currentUsername)}`;
+            }
+        }
+        const response = await fetch(url);
+        if (response.ok) {
+            const data: VerseNote[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get chapter notes');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getNotesByVerseReference(verseReference: string, username?: string): Promise<VerseNote[]> {
+    try {
+        const encodedVerseRef = encodeURIComponent(verseReference);
+        const url = username 
+            ? `${baseUrl}/notes/verse/${encodedVerseRef}?username=${encodeURIComponent(username)}`
+            : `${baseUrl}/notes/verse/${encodedVerseRef}`;
+        const response = await fetch(url);
         if (response.ok) {
             const data: VerseNote[] = await response.json();
             return data;
@@ -2645,6 +2988,74 @@ export async function denyNote(id: number, username: string, reason: string): Pr
         if (!response.ok) {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to deny note');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getVersesWithPrivateNotes(username: string, book: string, chapter: number): Promise<string[]> {
+    try {
+        const response = await fetch(`${baseUrl}/notes/chapter/${encodeURIComponent(book)}/${chapter}/private?username=${encodeURIComponent(username)}`);
+        if (response.ok) {
+            const data: string[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get verses with private notes');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getVersesWithPublicNotes(book: string, chapter: number): Promise<string[]> {
+    try {
+        const response = await fetch(`${baseUrl}/notes/chapter/${encodeURIComponent(book)}/${chapter}/public`);
+        if (response.ok) {
+            const data: string[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get verses with public notes');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function likeNote(noteId: number, username: string): Promise<{ likeCount: number; liked: boolean }> {
+    try {
+        const response = await fetch(`${baseUrl}/notes/${noteId}/like?username=${encodeURIComponent(username)}`, {
+            method: 'POST',
+        });
+        if (response.ok) {
+            const data: { likeCount: number; liked: boolean } = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to like note');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function unlikeNote(noteId: number, username: string): Promise<{ likeCount: number; liked: boolean }> {
+    try {
+        const response = await fetch(`${baseUrl}/notes/${noteId}/like?username=${encodeURIComponent(username)}`, {
+            method: 'DELETE',
+        });
+        if (response.ok) {
+            const data: { likeCount: number; liked: boolean } = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to unlike note');
         }
     } catch (error) {
         console.error(error);

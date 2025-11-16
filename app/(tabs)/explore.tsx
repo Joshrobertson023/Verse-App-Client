@@ -8,7 +8,7 @@ import ExploreCollectionCard from '../components/exploreCollectionCard';
 import SearchResultVerseCard from '../components/searchResultVerseCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { Skeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getCollectionsByCategory, getMostRecentCollectionId, getPopularPublishedCollections, getRecentPublishedCollections, getTopMemorizedVerses, getTopSavedVerses, getUserCollections, PublishedCollection, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getCollectionsByCategory, getMostRecentCollectionId, getPopularPublishedCollections, getRecentPublishedCollections, getTopCategories, getTopMemorizedVerses, getTopSavedVerses, getUserCollections, PublishedCollection, getPublishedCollectionsByAuthor, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { Collection, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -22,6 +22,7 @@ export default function ExploreScreen() {
   const [popular, setPopular] = useState<PublishedCollection[]>([]);
   const [recent, setRecent] = useState<PublishedCollection[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [myCollections, setMyCollections] = useState<PublishedCollection[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [categoryCollections, setCategoryCollections] = useState<PublishedCollection[]>([]);
   const [topSaved, setTopSaved] = useState<any[]>([]);
@@ -54,6 +55,16 @@ export default function ExploreScreen() {
     });
   }, []);
 
+  // Attach category names to PublishedCollection for efficient display
+  const attachCategoryNames = useCallback((cols: PublishedCollection[], cats: Category[]) => {
+    if (!Array.isArray(cols) || !Array.isArray(cats) || cats.length === 0) return cols;
+    const idToName = new Map<number, string>(cats.map(c => [c.categoryId, c.name]));
+    return cols.map(c => {
+      const names = (c.categoryIds || []).map(id => idToName.get(id)).filter((n): n is string => !!n);
+      return { ...c, categoryNames: names };
+    }) as PublishedCollection[];
+  }, []);
+
   const fetchCategoryCollections = useCallback(async (id: number | null) => {
     if (id == null) {
       setCategoryCollections([]);
@@ -63,13 +74,13 @@ export default function ExploreScreen() {
     setIsCategoryLoading(true);
     try {
       const cols = await getCollectionsByCategory(id);
-      setCategoryCollections(sortCollectionsBySaves(cols));
+      setCategoryCollections(sortCollectionsBySaves(attachCategoryNames(cols, categories)));
     } catch (e) {
       setCategoryCollections([]);
     } finally {
       setIsCategoryLoading(false);
     }
-  }, [sortCollectionsBySaves]);
+  }, [sortCollectionsBySaves, attachCategoryNames, categories]);
 
   const loadExploreData = useCallback(async (initial = false) => {
     if (initial) {
@@ -78,8 +89,12 @@ export default function ExploreScreen() {
       setRefreshing(true);
     }
     try {
-      const loadedCategories = await getAllCategories();
+      const [loadedCategories, myPublished] = await Promise.all([
+        getTopCategories(8),
+        getPublishedCollectionsByAuthor(user.username)
+      ]);
       setCategories(loadedCategories);
+      setMyCollections(sortCollectionsBySaves(myPublished));
 
       let categoryId = selectedCategoryRef.current;
 
@@ -104,8 +119,8 @@ export default function ExploreScreen() {
         getTopMemorizedVerses()
       ]);
 
-      setPopular(pop);
-      setRecent(rec);
+      setPopular(attachCategoryNames(pop, loadedCategories));
+      setRecent(attachCategoryNames(rec, loadedCategories));
       setTopSaved(saved);
       setTopMemorized(memorized);
     } catch (e) {
@@ -124,8 +139,10 @@ export default function ExploreScreen() {
   }, [fetchCategoryCollections]);
 
   useEffect(() => {
+    // Run initial load once on mount to avoid re-fetch loops from changing callbacks/state
     loadExploreData(true);
-  }, [loadExploreData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const SectionHeader = ({ title, route }: { title: string; route: string }) => (
@@ -220,7 +237,15 @@ export default function ExploreScreen() {
 
   const handleCreateNewCollection = async () => {
     if (!selectedVerse || !user?.username || isCreatingNewCollection || !newCollectionTitle.trim()) return;
-    if (collections.length >= 40) {
+    
+    // Check collection limit based on paid status
+    const maxCollections = user.isPaid ? 40 : 5;
+    const createdByMeCount = collections.filter((c) => (c.authorUsername ?? c.username) === user.username).length;
+    if (createdByMeCount >= maxCollections) {
+      if (!user.isPaid) {
+        router.push('/pro');
+        return;
+      }
       setSnackbarMessage('You can create up to 40 collections.');
       setSnackbarVisible(true);
       return;
@@ -282,6 +307,17 @@ export default function ExploreScreen() {
 
   const handleAddToCollection = async () => {
     if (!pickedCollection || !selectedVerse || !user.username || isAddingToCollection) return;
+
+    // Check verse limit per collection for free users
+    if (!user.isPaid) {
+      const currentVerseCount = pickedCollection.userVerses?.length ?? 0;
+      const maxVersesPerCollection = 10;
+      
+      if (currentVerseCount >= maxVersesPerCollection) {
+        router.push('/pro');
+        return;
+      }
+    }
 
     const parsed = parseVerseReference(selectedVerse.verse_reference);
     if (!parsed) return;
@@ -391,10 +427,26 @@ export default function ExploreScreen() {
       }
     >
       
-      {/* Category header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 16 }}>
-        <Text style={{ ...styles.text, fontWeight: 700 }}>Category</Text>
-      </View>
+      {/* My Collections (published by me) */}
+      <SectionHeader title="My Collections" route="../explore/my" />
+      {isLoading ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
+          {[1,2,3].map(i => (
+            <View key={`my-skel-${i}`} style={{ marginHorizontal: 8 }}>
+              <Skeleton width={300} height={110} borderRadius={14} />
+            </View>
+          ))}
+        </ScrollView>
+      ) : myCollections.length === 0 ? (
+        <View style={{ marginHorizontal: 16, paddingVertical: 8 }}>
+          <Text style={{ ...styles.tinyText, color: theme.colors.onSurface }}>You have no published collections yet.</Text>
+        </View>
+      ) : (
+        <Horizontal data={myCollections} />
+      )}
+
+      {/* Top Categories header */}
+      <SectionHeader title="Top Categories" route="../explore/categories" />
       {/* Category chips below header */}
       <View style={{ marginTop: 8 }}>
         {isLoading && categories.length === 0 ? (
@@ -510,36 +562,6 @@ export default function ExploreScreen() {
         </ScrollView>
       )}
       <View style={{height: 20}} />
-      
-      {/* Verse Catalog Button */}
-      <TouchableOpacity
-        style={{
-          marginHorizontal: 16,
-          marginBottom: 20,
-          paddingVertical: 16,
-          paddingHorizontal: 24,
-          backgroundColor: theme.colors.primary,
-          borderRadius: 12,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8
-        }}
-        onPress={() => router.push('../collections/verseCatalog')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="book-outline" size={20} color={theme.colors.onPrimary} />
-        <Text style={{
-          fontSize: 16,
-          fontWeight: '600',
-          color: theme.colors.onPrimary,
-          fontFamily: 'Inter'
-        }}>
-          Verse Catalog
-        </Text>
-      </TouchableOpacity>
-      
-      <View style={{height: 40}} />
 
       <Modal
         visible={showCollectionPicker}

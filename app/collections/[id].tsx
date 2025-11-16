@@ -5,16 +5,17 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
-import { Divider, Portal, Snackbar, Text } from 'react-native-paper';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { Dialog, Divider, Portal, Snackbar, Text } from 'react-native-paper';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
 import SaveVerseToCollectionSheet from '../components/saveVerseToCollectionSheet';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
+import CollectionNoteItem from '../components/collectionNote';
 import { formatISODate, getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, deleteUserVerse, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, insertUserVerse, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
-import { Collection, useAppStore, UserVerse, Verse } from '../store';
+import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, deleteUserVerse, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, insertUserVerse, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { Collection, CollectionNote, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -72,6 +73,104 @@ function orderByVerseOrder(userVerses: UserVerse[], verseOrder?: string): UserVe
   return [...ordered, ...unordered];
 }
 
+function orderVersesAndNotes(userVerses: UserVerse[], notes: CollectionNote[], verseOrder?: string): Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> {
+  if (!verseOrder || !verseOrder.trim()) {
+    // If no verseOrder, return verses first, then notes
+    const result: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+    userVerses.forEach(uv => result.push({type: 'verse', data: uv}));
+    notes.forEach(note => result.push({type: 'note', data: note}));
+    return result;
+  }
+  
+  const orderArray = verseOrder.split(',').filter(ref => ref.trim() !== '').map(ref => ref.trim());
+  const verseMap = new Map<string, UserVerse>();
+  const noteMap = new Map<string, CollectionNote>();
+  const ordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+  const unordered: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+  
+  // Create maps for quick lookup
+  // For verses, use lowercase for case-insensitive matching
+  userVerses.forEach(uv => {
+    if (uv.readableReference) {
+      const key = uv.readableReference.trim().toLowerCase();
+      if (!verseMap.has(key)) {
+        verseMap.set(key, uv);
+      }
+    }
+  });
+  
+  // For notes, use exact ID match (note IDs are typically UUIDs or timestamps, so exact match)
+  // Store notes with both trimmed and original ID for flexible matching
+  const noteIdMap = new Map<string, string>(); // Maps normalized IDs to original keys
+  notes.forEach(note => {
+    if (note.id) {
+      const noteId = note.id.trim();
+      noteMap.set(noteId, note);
+      // Also store a mapping for case-insensitive lookup if needed
+      noteIdMap.set(noteId.toLowerCase(), noteId);
+    }
+  });
+  
+  // First, add items in the order specified
+  // Check notes first since note IDs are unique and specific
+  orderArray.forEach(ref => {
+    const trimmedRef = ref.trim();
+    let matched = false;
+    
+    // First, try to match as a note ID (exact match)
+    if (noteMap.has(trimmedRef)) {
+      ordered.push({type: 'note', data: noteMap.get(trimmedRef)!});
+      noteMap.delete(trimmedRef);
+      matched = true;
+    } else if (noteMap.size > 0) {
+      // Try case-insensitive note ID match
+      const lowerRef = trimmedRef.toLowerCase();
+      if (noteIdMap.has(lowerRef)) {
+        const actualNoteId = noteIdMap.get(lowerRef)!;
+        if (noteMap.has(actualNoteId)) {
+          ordered.push({type: 'note', data: noteMap.get(actualNoteId)!});
+          noteMap.delete(actualNoteId);
+          noteIdMap.delete(lowerRef);
+          matched = true;
+        }
+      } else {
+        // Last resort: check if trimmedRef matches any note ID (handles whitespace/case issues)
+        for (const [noteId, note] of noteMap.entries()) {
+          if (noteId === trimmedRef || noteId.trim() === trimmedRef || noteId.toLowerCase() === trimmedRef.toLowerCase()) {
+            ordered.push({type: 'note', data: note});
+            noteMap.delete(noteId);
+            if (noteIdMap.has(noteId.toLowerCase())) {
+              noteIdMap.delete(noteId.toLowerCase());
+            }
+            matched = true;
+            break;
+          }
+        }
+      }
+    }
+    
+    // If not matched as a note, try to match as a verse reference (case-insensitive)
+    if (!matched) {
+      const verseKey = trimmedRef.toLowerCase();
+      if (verseMap.has(verseKey)) {
+        ordered.push({type: 'verse', data: verseMap.get(verseKey)!});
+        verseMap.delete(verseKey);
+        matched = true;
+      }
+    }
+  });
+  
+  // Then add any items not in the order (verses first, then notes)
+  verseMap.forEach(verse => {
+    unordered.push({type: 'verse', data: verse});
+  });
+  noteMap.forEach(note => {
+    unordered.push({type: 'note', data: note});
+  });
+  
+  return [...ordered, ...unordered];
+}
+
 export default function Index() {
   const styles = useStyles();
   const theme = useAppTheme();
@@ -80,6 +179,7 @@ export default function Index() {
   const setCollections = useAppStore((state) => state.setCollections);
   const setUser = useAppStore((state) => state.setUser);
   const updateCollection = useAppStore((state) => state.updateCollection);
+  const deleteCollectionStore = useAppStore((state) => state.removeCollection);
   const params = useLocalSearchParams();
   const setCollectionsSheetControls = useAppStore((state) => state.setCollectionsSheetControls);
 
@@ -89,8 +189,9 @@ export default function Index() {
     
     const [loadingVerses, setLoadingVerses] = useState(false);
     const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
-    const [orderedUserVerses, setOrderedUserVerses] = useState<UserVerse[]>([]);
-    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order (verseOrder) or date added, 1 = progress
+  const [orderedUserVerses, setOrderedUserVerses] = useState<UserVerse[]>([]);
+  const [orderedItems, setOrderedItems] = useState<Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}>>([]);
+  const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order (verseOrder) or date added, 1 = progress
     const [isVersesSettingsSheetOpen, setIsVersesSettingsSheetOpen] = useState(false);
     const [isCreatingCopy, setIsCreatingCopy] = useState(false);
     
@@ -98,20 +199,27 @@ export default function Index() {
     const collectionSettingsSheetRef = useRef<BottomSheet>(null);
     const versesSettingsSheetRef = useRef<BottomSheet>(null);
     const userVerseSettingsSheetRef = useRef<BottomSheet>(null);
+    const noteSettingsSheetRef = useRef<BottomSheet>(null);
     
     // Snap points for settings sheets
     const collectionSettingsSnapPoints = useMemo(() => ['50%'], []);
     const versesSettingsSnapPoints = useMemo(() => ['40%'], []);
     const userVerseSettingsSnapPoints = useMemo(() => ['40%'], []);
+    const noteSettingsSnapPoints = useMemo(() => ['35%'], []);
     
     const [isUserVerseSettingsSheetOpen, setIsUserVerseSettingsSheetOpen] = useState(false);
+    const [isNoteSettingsSheetOpen, setIsNoteSettingsSheetOpen] = useState(false);
     const [isShareSheetVisible, setIsShareSheetVisible] = useState(false);
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
+    const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+    const [deleteDialogCollection, setDeleteDialogCollection] = useState<Collection | undefined>(undefined);
+    const [isDeletingCollection, setIsDeletingCollection] = useState(false);
     const isFetchingRef = useRef(false);
     const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
     const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
     const [selectedUserVerse, setSelectedUserVerse] = useState<UserVerse | null>(null);
+    const [selectedNote, setSelectedNote] = useState<CollectionNote | null>(null);
     const [showSaveToCollectionSheet, setShowSaveToCollectionSheet] = useState(false);
     const [showShareVerseSheet, setShowShareVerseSheet] = useState(false);
     const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
@@ -139,7 +247,15 @@ export default function Index() {
 
   const handleCreateCopy = async () => {
     if (!collection) return;
-    if (collections.length >= 40) {
+    
+    // Check collection limit based on paid status
+    const maxCollections = user.isPaid ? 40 : 5;
+    const createdByMeCount = collections.filter((c) => (c.authorUsername ?? c.username) === user.username).length;
+    if (createdByMeCount >= maxCollections) {
+      if (!user.isPaid) {
+        router.push('/pro');
+        return;
+      }
       setSnackbarMessage('You can create up to 40 collections');
       setSnackbarVisible(true);
       return;
@@ -193,6 +309,49 @@ export default function Index() {
     }
   };
 
+  const hideDeleteDialog = () => {
+    setDeleteDialogVisible(false);
+    setDeleteDialogCollection(undefined);
+  };
+
+  const deleteCollectionHandle = async () => {
+    const collectionId = deleteDialogCollection?.collectionId;
+    if (!collectionId || isDeletingCollection) return;
+    
+    setIsDeletingCollection(true);
+    try {
+      deleteCollectionStore(collectionId);
+      await deleteCollection(deleteDialogCollection!);
+      setShouldReloadPracticeList(true);
+      
+      const currentOrder = user.collectionsOrder || '';
+      const orderArray = currentOrder.split(',').filter(id => id.trim() !== collectionId.toString()).join(',');
+      const updatedUser = { ...user, collectionsOrder: orderArray };
+      setUser(updatedUser);
+      
+      try {
+        await updateCollectionsOrder(orderArray, user.username);
+      } catch (error) {
+        console.error('Failed to update collections order:', error);
+      }
+      
+      try {
+        const refreshedUser = await refreshUser(user.username);
+        setUser(refreshedUser);
+      } catch (error) {
+        console.error('Failed to refresh user:', error);
+      }
+      
+      hideDeleteDialog();
+      router.back();
+    } catch (error) {
+      console.error('Failed to delete collection:', error);
+      setSnackbarMessage('Failed to delete collection');
+      setSnackbarVisible(true);
+    } finally {
+      setIsDeletingCollection(false);
+    }
+  };
 
 useEffect(() => {
   if (collection) {
@@ -288,7 +447,34 @@ useEffect(() => {
   }
   
   setOrderedUserVerses(ordered);
-}, [userVerses, versesSortBy, collection?.verseOrder]);
+  
+  // Also create ordered items (verses + notes) for display
+  if (versesSortBy === 0 && collection?.verseOrder && collection.verseOrder.trim()) {
+    // Use verseOrder to order both verses and notes
+    const items = orderVersesAndNotes(uniqueUserVerses, collection.notes || [], collection.verseOrder);
+    setOrderedItems(items);
+    
+    // Debug: log if notes are being ordered correctly
+    if (collection.notes && collection.notes.length > 0) {
+      const noteCountInOrder = items.filter(item => item.type === 'note').length;
+      const noteCountInCollection = collection.notes.length;
+      if (noteCountInOrder !== noteCountInCollection) {
+        console.log('Note ordering issue:', {
+          notesInCollection: noteCountInCollection,
+          notesInOrder: noteCountInOrder,
+          verseOrder: collection.verseOrder,
+          noteIds: collection.notes.map(n => n.id)
+        });
+      }
+    }
+  } else {
+    // For other sort modes, just show verses (notes will be at the end)
+    const items: Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}> = [];
+    ordered.forEach(uv => items.push({type: 'verse', data: uv}));
+    (collection?.notes || []).forEach(note => items.push({type: 'note', data: note}));
+    setOrderedItems(items);
+  }
+}, [userVerses, versesSortBy, collection?.verseOrder, collection?.notes]);
 
 useLayoutEffect(() => {
   if (collection) {
@@ -474,6 +660,57 @@ const handleUserVerseSettingsSheetChange = useCallback((index: number) => {
   }
 }, [showSaveToCollectionSheet, showShareVerseSheet]);
 
+const openNoteSettingsSheet = (note: CollectionNote) => {
+  setSelectedNote(note);
+  setIsNoteSettingsSheetOpen(true);
+  noteSettingsSheetRef.current?.snapToIndex(0);
+};
+
+const closeNoteSettingsSheet = () => {
+  setIsNoteSettingsSheetOpen(false);
+  noteSettingsSheetRef.current?.close();
+};
+
+const handleNoteSettingsSheetChange = useCallback((index: number) => {
+  setIsNoteSettingsSheetOpen(index !== -1);
+  if (index === -1) {
+    setSelectedNote(null);
+  }
+}, []);
+
+const handleDeleteNote = useCallback(async () => {
+  if (!collection?.collectionId || !selectedNote?.id) {
+    closeNoteSettingsSheet();
+    return;
+  }
+  closeNoteSettingsSheet();
+  setUserVerseActionLoading(true);
+  try {
+    const remainingNotes = (collection.notes || []).filter(n => n.id !== selectedNote.id);
+    const currentOrder = collection.verseOrder || '';
+    const tokens = currentOrder.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    const filteredTokens = tokens.filter(t => t !== selectedNote.id);
+    const newOrder = filteredTokens.join(',');
+
+    const updatedCollection: Collection = {
+      ...collection,
+      notes: remainingNotes,
+      verseOrder: newOrder,
+    };
+
+    await updateCollectionDB(updatedCollection);
+    updateCollection(updatedCollection);
+    setSnackbarMessage('Note removed');
+    setSnackbarVisible(true);
+  } catch (err) {
+    console.error('Failed to delete note:', err);
+    setSnackbarMessage('Failed to remove note');
+    setSnackbarVisible(true);
+  } finally {
+    setUserVerseActionLoading(false);
+  }
+}, [collection, selectedNote, updateCollection]);
+
 const versesSettingsAnimatedStyle = useAnimatedStyle(() => ({
   transform: [{ translateY: versesSettingsTranslateY.value }],
 }));
@@ -555,14 +792,19 @@ const availableCollections = useMemo(() => {
     const owner = normalize(col.username);
     const author = normalize(col.authorUsername);
 
+    // Only show collections where the user is the owner (username matches)
+    // OR where authorUsername matches AND username is not set (user created it before authorUsername was added)
+    // Do NOT show collections where authorUsername != user.username (saved published collections)
     if (owner && owner === currentUser) {
       return true;
     }
 
-    if (!owner && author && author === currentUser) {
+    // Only show if author matches AND owner is not set (legacy collections) OR owner also matches
+    if (author === currentUser && (!owner || owner === currentUser)) {
       return true;
     }
 
+    // Favorites collection is always owned by the user
     if (col.favorites && currentUser.length > 0) {
       return true;
     }
@@ -574,6 +816,18 @@ const availableCollections = useMemo(() => {
 const handleSaveToCollection = useCallback(async () => {
   if (!selectedUserVerse || !pickedCollection?.collectionId) {
     return;
+  }
+
+  // Check verse limit per collection for free users
+  if (!user.isPaid) {
+    const targetCollection = collections.find(c => c.collectionId === pickedCollection.collectionId);
+    const currentVerseCount = targetCollection?.userVerses?.length ?? 0;
+    const maxVersesPerCollection = 10;
+    
+    if (currentVerseCount >= maxVersesPerCollection) {
+      router.push('/pro');
+      return;
+    }
   }
 
   setUserVerseActionLoading(true);
@@ -606,7 +860,13 @@ const handleSaveToCollection = useCallback(async () => {
 const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => {
   if (!selectedUserVerse || !title.trim()) return;
 
-  if (collections.length >= 40) {
+  // Check collection limit based on paid status
+  const maxCollections = user.isPaid ? 40 : 5;
+  if (collections.length >= maxCollections) {
+    if (!user.isPaid) {
+      router.push('/pro');
+      return;
+    }
     setSnackbarMessage('You can create up to 40 collections');
     setSnackbarVisible(true);
     return;
@@ -733,8 +993,6 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
             <View style={{ 
               width: '100%', 
               marginBottom: 24, 
-              padding: 16, 
-              backgroundColor: theme.colors.surface, 
               borderRadius: 12 
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
@@ -765,9 +1023,29 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
           )}
 
           <View>
-            {(orderedUserVerses || []).map((userVerse: UserVerse, userVerseIndex) => (
+            {(versesSortBy === 0 && collection?.verseOrder && collection.verseOrder.trim() 
+              ? orderedItems 
+              : [
+                  ...orderedUserVerses.map(uv => ({type: 'verse' as const, data: uv})),
+                  ...(collection?.notes || []).map(note => ({type: 'note' as const, data: note}))
+                ]
+            ).map((item, itemIndex) => {
+              if (item.type === 'note') {
+                const note = item.data;
+                return (
+                  <CollectionNoteItem
+                    key={note.id || `note-${itemIndex}`}
+                    note={note}
+                    isOwned={isOwnedCollection}
+                    onMenuPress={() => openNoteSettingsSheet(note)}
+                  />
+                );
+              }
+              
+              const userVerse = item.data;
+              return (
 
-                <View key={userVerse.readableReference || `userVerse-${userVerseIndex}`} style={{minWidth: '100%', marginBottom: 20}}>
+                <View key={userVerse.readableReference || `userVerse-${itemIndex}`} style={{minWidth: '100%', marginBottom: 20}}>
                     <View style={{minWidth: '100%', borderRadius: 3,}}>
 
                         <View>
@@ -864,9 +1142,8 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                     </View>
                     <Divider style={{marginHorizontal: -50, marginTop: 20}} />
                 </View>
-
-
-            ))}
+              );
+            })}
           </View>
           <View style={{height: 0}}></View>
         </ScrollView>
@@ -878,116 +1155,137 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 index={-1}
                 snapPoints={collectionSettingsSnapPoints}
                 enablePanDownToClose
+                enableOverDrag={false}
+                android_keyboardInputMode="adjustResize"
+                keyboardBehavior="interactive"
+                keyboardBlurBehavior="restore"
                 onChange={handleCollectionSettingsSheetChange}
                 backgroundStyle={{ backgroundColor: theme.colors.surface }}
                 handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
               >
               <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
                 <Divider />
-                {isOwnedCollection && (
-                <TouchableOpacity
-                  style={sheetItemStyle.settingsItem}
-                  onPress={() => {
-                    closeSettingsSheet();
-                    const setEditingCollection = useAppStore.getState().setEditingCollection;
-                    if (collection) {
-                      setEditingCollection(collection);
-                      router.push('../collections/editCollection');
-                    }
-                  }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
-                </TouchableOpacity>
-                )}
-                <Divider />
-                {isOwnedCollection && collection && collection.userVerses && collection.userVerses.length > 0 && (
-                <>
-                <TouchableOpacity
-                  style={sheetItemStyle.settingsItem}
-                  onPress={() => {
-                    closeSettingsSheet();
-                    if (collection?.collectionId) {
-                      router.push(`../collections/reorderExistingVerses?id=${collection.collectionId}`);
-                    }
-                  }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Reorder Passages</Text>
-                </TouchableOpacity>
-                <Divider />
-                </>
-                )}
-                <TouchableOpacity
-                  style={sheetItemStyle.settingsItem}
-                  onPress={async () => {
-                    closeSettingsSheet();
-                    await handleCreateCopy();
-                  }}
-                  disabled={isCreatingCopy}>
-                  {isCreatingCopy ? (
-                    <ActivityIndicator size="small" color={theme.colors.onBackground} />
-                  ) : (
-                    <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
-                  )}
-                </TouchableOpacity>
-                <Divider />
-                {isOwnedCollection && (
-                <TouchableOpacity
-                  style={sheetItemStyle.settingsItem}
-                  onPress={async () => {
-                    if (!collection) return;
-                    
-                    try {
-                      closeSettingsSheet();
-                      const newVisibility = collection.visibility === 'Public' ? 'Private' : 'Public';
-                      const updatedCollection = { ...collection, visibility: newVisibility };
-                      
-                      // Update in database
-                      await updateCollectionDB(updatedCollection);
-                      
-                      // Update in store
-                      updateCollection(updatedCollection);
-                    } catch (error) {
-                      console.error('Failed to toggle visibility:', error);
-                      alert('Failed to update collection visibility');
-                    }
-                  }}>
-                  <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
-                    {collection?.visibility === 'Public' ? 'Make Not Visible to Friends' : 'Make Visible to Friends'}
-                  </Text>
-                </TouchableOpacity>
-                )}
-                <Divider />
-                <TouchableOpacity
-                  style={sheetItemStyle.settingsItem}
-                  onPress={() => {
-                    closeSettingsSheet();
-                    setIsShareSheetVisible(true);
-                  }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                    <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
-                  </View>
-                </TouchableOpacity>
-                {(collection?.title !== 'Favorites' && isOwnedCollection) && (
+                {isOwnedCollection ? (
                   <>
-                    <Divider />
                     <TouchableOpacity
                       style={sheetItemStyle.settingsItem}
                       onPress={() => {
-                        if (!collection?.collectionId) return;
                         closeSettingsSheet();
-                        const setPublishingCollection = useAppStore.getState().setPublishingCollection;
-                        setPublishingCollection(collection);
-                        router.push('./publishCollection');
+                        const setEditingCollection = useAppStore.getState().setEditingCollection;
+                        if (collection) {
+                          setEditingCollection(collection);
+                          router.push('../collections/editCollection');
+                        }
                       }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                        <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
-                      </View>
+                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Edit</Text>
+                    </TouchableOpacity>
+                    <Divider />
+                    {collection && collection.userVerses && collection.userVerses.length > 0 && (
+                      <>
+                        <TouchableOpacity
+                          style={sheetItemStyle.settingsItem}
+                          onPress={() => {
+                            closeSettingsSheet();
+                            if (collection?.collectionId) {
+                              router.push(`../collections/reorderExistingVerses?id=${collection.collectionId}`);
+                            }
+                          }}>
+                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Reorder Passages</Text>
+                        </TouchableOpacity>
+                        <Divider />
+                      </>
+                    )}
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={async () => {
+                        closeSettingsSheet();
+                        await handleCreateCopy();
+                      }}
+                      disabled={isCreatingCopy}>
+                      {isCreatingCopy ? (
+                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                      ) : (
+                        <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Create Copy</Text>
+                      )}
+                    </TouchableOpacity>
+                    <Divider />
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={async () => {
+                        if (!collection) return;
+                        
+                        try {
+                          closeSettingsSheet();
+                          const newVisibility = collection.visibility === 'Public' ? 'Private' : 'Public';
+                          const updatedCollection = { ...collection, visibility: newVisibility };
+                          
+                          // Update in database
+                          await updateCollectionDB(updatedCollection);
+                          
+                          // Update in store
+                          updateCollection(updatedCollection);
+                        } catch (error) {
+                          console.error('Failed to toggle visibility:', error);
+                          alert('Failed to update collection visibility');
+                        }
+                      }}>
+                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>
+                        {collection?.visibility === 'Public' ? 'Make Not Visible to Friends' : 'Make Visible to Friends'}
+                      </Text>
                     </TouchableOpacity>
                     <Divider />
                     <TouchableOpacity
                       style={sheetItemStyle.settingsItem}
                       onPress={() => {
                         closeSettingsSheet();
+                        setIsShareSheetVisible(true);
                       }}>
-                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Share</Text>
+                      </View>
+                    </TouchableOpacity>
+                    {collection?.title !== 'Favorites' && (
+                      <>
+                        <Divider />
+                        <TouchableOpacity
+                          style={sheetItemStyle.settingsItem}
+                          onPress={() => {
+                            if (!collection?.collectionId) return;
+                            closeSettingsSheet();
+                            const setPublishingCollection = useAppStore.getState().setPublishingCollection;
+                            setPublishingCollection(collection);
+                            router.push('./publishCollection');
+                          }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Publish</Text>
+                          </View>
+                        </TouchableOpacity>
+                        <Divider />
+                        <TouchableOpacity
+                          style={sheetItemStyle.settingsItem}
+                          onPress={() => {
+                            if (!collection) return;
+                            closeSettingsSheet();
+                            setDeleteDialogVisible(true);
+                            setDeleteDialogCollection(collection);
+                          }}>
+                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Delete</Text>
+                        </TouchableOpacity>
+                        <Divider />
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={sheetItemStyle.settingsItem}
+                      onPress={() => {
+                        if (!collection) return;
+                        closeSettingsSheet();
+                        setDeleteDialogVisible(true);
+                        setDeleteDialogCollection(collection);
+                      }}>
+                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>Remove</Text>
                     </TouchableOpacity>
                     <Divider />
                   </>
@@ -1041,6 +1339,10 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 index={-1}
                 snapPoints={versesSettingsSnapPoints}
                 enablePanDownToClose
+                enableOverDrag={false}
+                android_keyboardInputMode="adjustResize"
+                keyboardBehavior="interactive"
+                keyboardBlurBehavior="restore"
                 onChange={handleVersesSettingsSheetChange}
                 backgroundStyle={{ backgroundColor: theme.colors.surface }}
                 handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -1070,6 +1372,48 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
             </BottomSheet>
             </Portal>
 
+            {/* Note Settings Bottom Sheet */}
+            <Portal>
+              <BottomSheet
+                ref={noteSettingsSheetRef}
+                index={-1}
+                snapPoints={noteSettingsSnapPoints}
+                enablePanDownToClose
+                enableOverDrag={false}
+                android_keyboardInputMode="adjustResize"
+                keyboardBehavior="interactive"
+                keyboardBlurBehavior="restore"
+                onChange={handleNoteSettingsSheetChange}
+                backgroundStyle={{ backgroundColor: theme.colors.surface }}
+                handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
+              >
+                <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
+                  {selectedNote && (
+                    <>
+                      <Text style={{...styles.text, fontSize: 18, fontWeight: '600', marginBottom: 10, marginTop: 10, textAlign: 'center'}}>
+                        Note
+                      </Text>
+                      <Divider />
+                      <TouchableOpacity
+                        style={{ height: 50, justifyContent: 'center', alignItems: 'center' }}
+                        onPress={handleDeleteNote}
+                        disabled={userVerseActionLoading}
+                      >
+                        {userVerseActionLoading ? (
+                          <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                        ) : (
+                          <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>
+                            Remove Note
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                      <Divider />
+                    </>
+                  )}
+                </BottomSheetView>
+              </BottomSheet>
+            </Portal>
+
             {/* User Verse Settings Bottom Sheet */}
             <Portal>
               <BottomSheet
@@ -1077,6 +1421,10 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 index={-1}
                 snapPoints={userVerseSettingsSnapPoints}
                 enablePanDownToClose
+                enableOverDrag={false}
+                android_keyboardInputMode="adjustResize"
+                keyboardBehavior="interactive"
+                keyboardBlurBehavior="restore"
                 onChange={handleUserVerseSettingsSheetChange}
                 backgroundStyle={{ backgroundColor: theme.colors.surface }}
                 handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -1234,6 +1582,53 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
               setSnackbarVisible(true);
             }}
           />
+
+          {/* Delete Dialog */}
+          <Portal>
+            <Dialog visible={deleteDialogVisible} onDismiss={hideDeleteDialog}>
+              <Dialog.Content>
+                <Text style={{...styles.tinyText}}>Are you sure you want to {isOwnedCollection ? 'delete' : 'remove'} the collection "{deleteDialogCollection?.title}"?</Text>
+              </Dialog.Content>
+              <Dialog.Actions>
+                <View style={{ flexDirection: 'row', width: '100%' }}>
+                  <View style={{ width: '50%', paddingRight: 8 }}>
+                    <TouchableOpacity
+                      onPress={hideDeleteDialog}
+                      style={{
+                        paddingVertical: 8,
+                        paddingHorizontal: 16,
+                        borderRadius: 8,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ width: '50%', paddingLeft: 8 }}>
+                    {isDeletingCollection ? (
+                      <View style={{ height: 30, justifyContent: 'center', alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color={theme.colors.error} />
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={deleteCollectionHandle}
+                        style={{
+                          paddingVertical: 8,
+                          paddingHorizontal: 16,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500', color: theme.colors.error }}>
+                          {isOwnedCollection ? 'Delete' : 'Remove'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              </Dialog.Actions>
+            </Dialog>
+          </Portal>
           
           {/* Snackbar */}
           <Snackbar

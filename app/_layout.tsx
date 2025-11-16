@@ -5,22 +5,22 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, TouchableOpacity, type TouchableOpacityProps, View } from 'react-native';
-import 'react-native-gesture-handler'; // must be at the top
+import { Image, Platform, TouchableOpacity, type TouchableOpacityProps, View } from 'react-native';
+import 'react-native-gesture-handler'; // MUST be at the very top - before any other imports
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, Portal } from 'react-native-paper';
-import { getAdminUsernames, getPopularSearches, getStreakLength, getUserCollections, loginUserWithToken, updateLastSeen } from './db';
+import { checkIfBanned, getActiveBan, getAdminUsernames, getPopularSearches, getStreakLength, getUserCollections, loginUserWithToken, updateLastSeen } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
-import { registerBackgroundNotificationTask, unregisterBackgroundNotificationTask } from './backgroundNotifications';
-import './backgroundNotificationTask';
+// REMOVED: import { registerBackgroundNotificationTask, unregisterBackgroundNotificationTask } from './backgroundNotifications';
 import { ensurePushTokenRegistered, unregisterStoredPushToken } from './pushTokenManager';
+import { updateAppBadge } from './utils/badgeManager';
 
 const TouchableOpacityWithDefaults = TouchableOpacity as typeof TouchableOpacity & {
   defaultProps?: Partial<TouchableOpacityProps>;
@@ -32,7 +32,6 @@ TouchableOpacityWithDefaults.defaultProps = {
 };
 
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
-
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignore error if splash screen was already hidden
@@ -97,16 +96,48 @@ export default function RootLayout() {
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
 
-  // Set up notification listeners
+  // Handle font loading errors gracefully
+  React.useEffect(() => {
+    if (error) {
+      console.error('Font loading error:', error);
+      // Continue app initialization even if fonts fail to load
+      // The app will use system fonts as fallback
+    }
+  }, [error]);
+
+  // Set up notification channel and listeners
   useEffect(() => {
+    // Create notification channel for Android (REQUIRED for Android 8.0+)
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#E6F4FE',
+      }).catch(error => {
+        console.error('Failed to create notification channel:', error);
+      });
+    }
+
     // Listen for notifications received while app is in foreground
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       console.log('Notification received:', notification);
+      // Optionally refresh notification count or data here
+      updateAppBadge().catch(error => {
+        console.error('Failed to update badge after notification:', error);
+      });
     });
 
     // Listen for user interactions with notifications
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notification response:', response);
+      console.log('Notification tapped:', response);
+      const data = response.notification.request.content.data;
+      
+      // Navigate based on notification data
+      if (data?.notificationId || data?.notificationType) {
+        // Navigate to notifications screen when user taps notification
+        router.push('/notifications');
+      }
     });
 
     return () => {
@@ -119,22 +150,14 @@ export default function RootLayout() {
     };
   }, []);
 
+  // Register for push notifications when user logs in
   useEffect(() => {
     void registerForPushNotificationsAsync();
   }, [user.username, user.pushNotificationsEnabled]);
 
-  useEffect(() => {
-    const shouldRegister =
-      Boolean(user.username && user.username !== 'Default User') &&
-      (user.pushNotificationsEnabled ?? true);
-
-    if (!shouldRegister) {
-      void unregisterBackgroundNotificationTask();
-      return;
-    }
-
-    void registerBackgroundNotificationTask();
-  }, [user.username, user.pushNotificationsEnabled]);
+  // REMOVED: Background notification polling task
+  // Push notifications are now handled directly by the server sending to Expo's push service
+  // No need for background polling anymore
 
   // Update last seen every minute
   useEffect(() => {
@@ -156,6 +179,20 @@ export default function RootLayout() {
     return () => clearInterval(updateLastSeenInterval);
   }, [user.username]);
 
+  // Update badge when user changes
+  useEffect(() => {
+    if (user.username && user.username !== 'Default User') {
+      updateAppBadge().catch(error => {
+        console.error('Failed to update badge:', error);
+      });
+    } else {
+      // Clear badge if user is not logged in
+      updateAppBadge().catch(error => {
+        console.error('Failed to clear badge:', error);
+      });
+    }
+  }, [user.username, user.badgeNotificationsEnabled, user.badgeOverdueEnabled]);
+
   async function registerForPushNotificationsAsync() {
     try {
       if (!user.username || user.username === 'Default User') {
@@ -173,8 +210,12 @@ export default function RootLayout() {
     }
   }
 
-  
-  SystemUI.setBackgroundColorAsync(theme.colors.background);
+  // Set system UI background color with error handling
+  React.useEffect(() => {
+    SystemUI.setBackgroundColorAsync(theme.colors.background).catch((err) => {
+      console.warn('Failed to set system UI background color:', err);
+    });
+  }, [theme.colors.background]);
 
   const startupVerses = [
     {
@@ -212,7 +253,9 @@ export default function RootLayout() {
   ]
 
   React.useEffect(() => {
-    if (!loaded) {
+    // Continue even if fonts failed to load (error state)
+    // This ensures the app doesn't hang if fonts are missing
+    if (!loaded && !error) {
       return;
     }
 
@@ -226,7 +269,13 @@ export default function RootLayout() {
         await Promise.race([
           (async () => {
             if (!errorLogginIn) {
-              const token = await SecureStore.getItemAsync('userToken');
+              let token: string | null = null;
+              try {
+                token = await SecureStore.getItemAsync('userToken');
+              } catch (secureStoreError) {
+                console.error('Failed to read from SecureStore:', secureStoreError);
+                // Continue without token - user will need to login again
+              }
     
               console.log('logging in with token:');
               console.log(token);
@@ -239,6 +288,31 @@ export default function RootLayout() {
                 if (user.username === 'Default User') {
                   try {
                     const fetchedUser = await loginUserWithToken(token);
+
+                    // Check if user is banned
+                    const isBanned = await checkIfBanned(fetchedUser.username);
+                    if (isBanned) {
+                      const activeBan = await getActiveBan(fetchedUser.username);
+                      try {
+                        await SecureStore.deleteItemAsync('userToken');
+                      } catch (e) {
+                        console.warn('Failed to delete token from SecureStore:', e);
+                      }
+                      try {
+                        await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
+                      } catch (e) {
+                        console.warn('Failed to remove recent searches:', e);
+                      }
+                      router.replace({
+                        pathname: '/(auth)/banned',
+                        params: {
+                          reason: activeBan?.reason || 'Your account has been banned.',
+                          banDate: activeBan?.banDate || new Date().toISOString(),
+                          banExpireDate: activeBan?.banExpireDate || null
+                        }
+                      });
+                      return;
+                    }
 
                     let adminUsernames: string[] = [];
                     try {
@@ -266,8 +340,16 @@ export default function RootLayout() {
                   } catch (loginError) {
                     console.error('Failed to login with token:', loginError);
                     // Clear recent searches and token when login fails
-                    await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
-                    await SecureStore.deleteItemAsync('userToken');
+                    try {
+                      await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
+                    } catch (e) {
+                      console.warn('Failed to remove recent searches:', e);
+                    }
+                    try {
+                      await SecureStore.deleteItemAsync('userToken');
+                    } catch (e) {
+                      console.warn('Failed to delete token from SecureStore:', e);
+                    }
                     throw loginError;
                   }
                 }
@@ -290,8 +372,14 @@ export default function RootLayout() {
         console.warn('Login error:', e);
         setErrorLoggingIn(true);
         // Clear recent searches when token login fails
-        await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
+        try {
+          await AsyncStorage.removeItem(RECENT_SEARCHES_KEY);
+        } catch (storageError) {
+          console.warn('Failed to clear recent searches:', storageError);
+        }
       } finally {
+        // Always set app as ready, even if login failed
+        // This ensures the app doesn't hang on splash screen
         setAppIsReady(true);
       }
     };

@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Text, TouchableOpacity, View } from 'react-native';
@@ -6,7 +7,7 @@ import { Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SaveVerseToCollectionSheet from './components/saveVerseToCollectionSheet';
 import { formatRelativeTime, isDateExpired, minutesSince } from './dateUtils';
-import { addUserVersesToNewCollection, checkRelationship, createCollectionDB, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, populateVersesForUserVerses, refreshUser, respondToFriendRequest, updateCollectionDB, updateCollectionsOrder } from './db';
+import { addUserVersesToNewCollection, checkRelationship, createCollectionDB, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserNotificationsPaged, getUserNotificationsTop, getUserProfile, getUserVersesByCollectionWithVerses, markAllNotificationsAsRead, populateVersesForUserVerses, refreshUser, respondToFriendRequest, updateCollectionDB, updateCollectionsOrder } from './db';
 import { Collection, Notification, UserVerse, Verse, useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -26,14 +27,15 @@ export default function NotificationsScreen() {
   const [acceptedRequests, setAcceptedRequests] = useState<Set<number>>(new Set());
   const [showSavePicker, setShowSavePicker] = useState(false);
   const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
-  const [verseFromNotification, setVerseFromNotification] = useState<Verse | null>(null);
+  const [userVerseFromNotification, setUserVerseFromNotification] = useState<UserVerse | null>(null);
   const collections = useAppStore((s) => s.collections);
   const setCollections = useAppStore((s) => s.setCollections);
   const incrementVerseSaveAdjustment = useAppStore((s) => s.incrementVerseSaveAdjustment);
   const [isSavingToCollection, setIsSavingToCollection] = useState(false);
   const [isCreatingNewCollection, setIsCreatingNewCollection] = useState(false);
   const setUser = useAppStore((s) => s.setUser);
-    const numNotifications = useAppStore((state) => state.numNotifications);
+  const numNotifications = useAppStore((state) => state.numNotifications);
+  const [senderProfilePictures, setSenderProfilePictures] = useState<Map<string, string>>(new Map());
 
   useFocusEffect(
     useCallback(() => {
@@ -63,6 +65,31 @@ export default function NotificationsScreen() {
       
       setAcceptedRequests(acceptedSet);
       setNotifications(data);
+      
+      // Fetch profile pictures for unique senders (excluding SYSTEM)
+      const uniqueSenders = new Set<string>();
+      data.forEach(n => {
+        if (!isSystemNotification(n) && n.senderUsername) {
+          uniqueSenders.add(n.senderUsername);
+        }
+      });
+      
+      // Fetch profile pictures for senders we don't have yet
+      const newPictures = new Map<string, string>(senderProfilePictures);
+      for (const senderUsername of uniqueSenders) {
+        if (!newPictures.has(senderUsername)) {
+          try {
+            const senderProfile = await getUserProfile(senderUsername);
+            if (senderProfile?.profilePictureUrl) {
+              newPictures.set(senderUsername, senderProfile.profilePictureUrl);
+            }
+          } catch (error) {
+            // Silently fail - just won't show profile picture
+            console.error(`Failed to fetch profile picture for ${senderUsername}:`, error);
+          }
+        }
+      }
+      setSenderProfilePictures(newPictures);
       
       // Update unread count in store
       const unreadCount = data.filter((n: Notification) => !n.isRead).length;
@@ -97,6 +124,30 @@ export default function NotificationsScreen() {
       setNotifications((prev) => [...prev, ...newItems]);
       setNextCursorId(page.nextCursorId ?? null);
       setHasMore(Boolean(page.nextCursorId != null));
+
+      // Fetch profile pictures for new unique senders
+      const uniqueSenders = new Set<string>();
+      newItems.forEach(n => {
+        if (!isSystemNotification(n) && n.senderUsername) {
+          uniqueSenders.add(n.senderUsername);
+        }
+      });
+      
+      const newPictures = new Map<string, string>(senderProfilePictures);
+      for (const senderUsername of uniqueSenders) {
+        if (!newPictures.has(senderUsername)) {
+          try {
+            const senderProfile = await getUserProfile(senderUsername);
+            if (senderProfile?.profilePictureUrl) {
+              newPictures.set(senderUsername, senderProfile.profilePictureUrl);
+            }
+          } catch (error) {
+            // Silently fail - just won't show profile picture
+            console.error(`Failed to fetch profile picture for ${senderUsername}:`, error);
+          }
+        }
+      }
+      setSenderProfilePictures(newPictures);
 
     } catch (error) {
       console.error('Failed to load more notifications:', error);
@@ -260,6 +311,8 @@ export default function NotificationsScreen() {
       );
     }
     
+    const senderPictureUrl = notification.senderUsername ? senderProfilePictures.get(notification.senderUsername) : null;
+    
     return (
       <View style={{
         width: 48,
@@ -268,9 +321,19 @@ export default function NotificationsScreen() {
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: theme.colors.onBackground
+        borderColor: theme.colors.onBackground,
+        overflow: 'hidden',
+        backgroundColor: theme.colors.surface
       }}>
-        <Ionicons name="person" size={24} color={theme.colors.onBackground} />
+        {senderPictureUrl ? (
+          <Image
+            source={{ uri: senderPictureUrl }}
+            style={{ width: 48, height: 48 }}
+            contentFit="cover"
+          />
+        ) : (
+          <Ionicons name="person" size={24} color={theme.colors.onBackground} />
+        )}
       </View>
     );
   };
@@ -281,8 +344,35 @@ export default function NotificationsScreen() {
     const isSharedCollection = item.notificationType === 'SHARED_COLLECTION';
     const isSharedVerse = item.notificationType === 'SHARED_VERSE';
     const expired = isSharedCollection && isExpired(item);
-    const verseRefMatch = isSharedVerse ? item.message.match(/VERSE_REF:([^|]+)/) : null;
-    const verseTextMatch = isSharedVerse ? item.message.match(/VERSE_TEXT:([^|]+)/) : null;
+    
+    // Parse shared verse notification
+    let verseReferences: string[] = [];
+    let verseData: Array<{ reference: string; text: string }> = [];
+    
+    if (isSharedVerse) {
+      // Parse VERSE_REFERENCES: readableReference|readableReference|...
+      const verseRefsMatch = item.message.match(/VERSE_REFERENCES:([^|]+(?:\|[^|]+)*?)(?:\|VERSE_DATA:|$)/);
+      if (verseRefsMatch) {
+        verseReferences = verseRefsMatch[1].split('|').filter(ref => ref.trim());
+      }
+      
+      // Parse VERSE_DATA: reference:text|reference:text|... (everything after VERSE_DATA: to end)
+      const verseDataMatch = item.message.match(/VERSE_DATA:(.+)$/);
+      if (verseDataMatch) {
+        const dataParts = verseDataMatch[1].split('|');
+        verseData = dataParts
+          .map(part => {
+            const colonIndex = part.indexOf(':');
+            if (colonIndex > 0) {
+              const ref = part.substring(0, colonIndex).trim();
+              const text = part.substring(colonIndex + 1).trim();
+              return { reference: ref, text: text };
+            }
+            return null;
+          })
+          .filter((v): v is { reference: string; text: string } => v !== null && v.reference !== '' && v.text !== '');
+      }
+    }
     
     return (
       <View
@@ -437,36 +527,69 @@ export default function NotificationsScreen() {
           {/* Shared Verse Content and Action */}
           {isSharedVerse && (
             <View style={{ marginTop: 12 }}>
-              {verseRefMatch && (
-                <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter bold', marginBottom: 0 }}>
-                  {verseRefMatch[1]}:
-                </Text>
+              {verseReferences.length > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  {verseReferences.map((ref, idx) => (
+                    <Text key={idx} style={{ 
+                      color: theme.colors.onBackground, 
+                      fontFamily: 'Inter bold', 
+                      marginBottom: 4,
+                      fontSize: 14
+                    }}>
+                      {ref}
+                    </Text>
+                  ))}
+                </View>
               )}
-              {verseTextMatch && (
-                <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter', marginBottom: 10 }}>
-                  {"\""+ verseTextMatch[1] + "\""}
-                </Text>
+              {verseData.length > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  {verseData.map((verse, idx) => (
+                    <View key={idx} style={{ marginBottom: 8 }}>
+                      <Text style={{ 
+                        color: theme.colors.onBackground, 
+                        fontFamily: 'Inter', 
+                        fontSize: 13,
+                        lineHeight: 18
+                      }}>
+                        {verse.text ? `"${verse.text}"` : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
               )}
-              <TouchableOpacity
-                activeOpacity={0.1}
-                onPress={() => {
-                  const ref = verseRefMatch ? verseRefMatch[1] : '';
-                  const text = verseTextMatch ? verseTextMatch[1] : '';
-                  setVerseFromNotification({ verse_reference: ref, text } as Verse);
-                  setPickedCollection(undefined);
-                  setShowSavePicker(true);
-                }}
-                style={{
-                  paddingVertical: 8,
-                  borderRadius: 8,
-                  backgroundColor: theme.colors.surface2,
-                  alignItems: 'center'
-                }}
-              >
-                <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter', fontWeight: '600' }}>
-                  Save to Collection
-                </Text>
-              </TouchableOpacity>
+              {verseData.length > 0 && (
+                <TouchableOpacity
+                  activeOpacity={0.1}
+                  onPress={() => {
+                    // Create a UserVerse with all verses from the shared passage
+                    const readableRef = verseReferences.length > 0 ? verseReferences[0] : verseData[0].reference;
+                    const allVerses: Verse[] = verseData.map(v => ({
+                      verse_reference: v.reference,
+                      text: v.text
+                    } as Verse));
+                    
+                    const userVerse: UserVerse = {
+                      username: user.username,
+                      readableReference: readableRef,
+                      verses: allVerses
+                    } as any;
+                    
+                    setUserVerseFromNotification(userVerse);
+                    setPickedCollection(undefined);
+                    setShowSavePicker(true);
+                  }}
+                  style={{
+                    paddingVertical: 8,
+                    borderRadius: 8,
+                    backgroundColor: theme.colors.surface2,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter', fontWeight: '600' }}>
+                    Save to Collection
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -475,7 +598,7 @@ export default function NotificationsScreen() {
   };
 
   const handleCreateNewCollection = async (title: string) => {
-    if (!verseFromNotification || !user?.username || isCreatingNewCollection) return;
+    if (!userVerseFromNotification || !user?.username || isCreatingNewCollection) return;
     if (collections.length >= 40) {
       setSnackbarMessage('You can create up to 40 collections.');
       setSnackbarVisible(true);
@@ -484,10 +607,9 @@ export default function NotificationsScreen() {
 
     setIsCreatingNewCollection(true);
     const userVerse: UserVerse = {
+      ...userVerseFromNotification,
       username: user.username,
-      readableReference: verseFromNotification.verse_reference,
-      verses: [verseFromNotification]
-    } as any;
+    };
 
     try {
       const finalTitle = title.trim() === '' ? 'New Collection' : (title.trim() === 'Favorites' ? 'Favorites-Other' : title.trim());
@@ -496,7 +618,7 @@ export default function NotificationsScreen() {
         authorUsername: user.username,
         username: user.username,
         visibility: 'private',
-        verseOrder: `${verseFromNotification.verse_reference},`,
+        verseOrder: `${userVerse.readableReference},`,
         userVerses: [userVerse],
         notes: [],
         favorites: false,
@@ -505,6 +627,21 @@ export default function NotificationsScreen() {
       await createCollectionDB(newCollection, user.username);
       const collectionId = await getMostRecentCollectionId(user.username);
       await addUserVersesToNewCollection([userVerse], collectionId);
+      
+      // Populate verses in memory and update collection
+      try {
+        const populatedUserVerses = await populateVersesForUserVerses([userVerse]);
+        if (populatedUserVerses.length > 0) {
+          const updatedCollection = {
+            ...newCollection,
+            collectionId,
+            userVerses: populatedUserVerses
+          };
+          await updateCollectionDB(updatedCollection);
+        }
+      } catch (populateError) {
+        console.warn('Failed to populate verses for new collection:', populateError);
+      }
       
       const updatedCollections = await getUserCollections(user.username);
       setCollections(updatedCollections);
@@ -518,11 +655,11 @@ export default function NotificationsScreen() {
       const refreshedUser = await refreshUser(user.username);
       setUser(refreshedUser);
 
-      if (verseFromNotification?.verse_reference) {
-        incrementVerseSaveAdjustment(verseFromNotification.verse_reference);
+      if (userVerse.readableReference) {
+        incrementVerseSaveAdjustment(userVerse.readableReference);
       }
       setShowSavePicker(false);
-      setVerseFromNotification(null);
+      setUserVerseFromNotification(null);
       setPickedCollection(undefined);
       setSnackbarMessage('Collection created and verse saved');
       setSnackbarVisible(true);
@@ -536,29 +673,44 @@ export default function NotificationsScreen() {
   };
 
   const handleConfirmSaveSharedVerse = async () => {
-    if (!pickedCollection || !verseFromNotification || !user?.username || isSavingToCollection) return;
+    if (!pickedCollection || !userVerseFromNotification || !user?.username || isSavingToCollection) return;
 
     setIsSavingToCollection(true);
     const userVerse: UserVerse = {
+      ...userVerseFromNotification,
       username: user.username,
-      readableReference: verseFromNotification.verse_reference,
-      verses: [verseFromNotification]
-    } as any;
+    };
     try {
       await addUserVersesToNewCollection([userVerse], pickedCollection.collectionId!);
+      
+      // Populate verses in memory
+      let populatedUserVerse = userVerse;
+      try {
+        const populatedUserVerses = await populateVersesForUserVerses([userVerse]);
+        if (populatedUserVerses.length > 0) {
+          populatedUserVerse = populatedUserVerses[0];
+        }
+      } catch (populateError) {
+        console.warn('Failed to populate verses for saved verse:', populateError);
+      }
+      
       const currentOrder = pickedCollection.verseOrder || '';
-      const newOrder = currentOrder ? `${currentOrder}${verseFromNotification.verse_reference},` : `${verseFromNotification.verse_reference},`;
-      const updatedCollection = { ...pickedCollection, userVerses: [...pickedCollection.userVerses, userVerse], verseOrder: newOrder } as Collection;
+      const newOrder = currentOrder ? `${currentOrder}${userVerse.readableReference},` : `${userVerse.readableReference},`;
+      const updatedCollection = { 
+        ...pickedCollection, 
+        userVerses: [...pickedCollection.userVerses, populatedUserVerse], 
+        verseOrder: newOrder 
+      } as Collection;
       await updateCollectionDB(updatedCollection);
       try {
         const updatedCollections = await getUserCollections(user.username);
         setCollections(updatedCollections);
       } catch {}
-      if (verseFromNotification?.verse_reference) {
-        incrementVerseSaveAdjustment(verseFromNotification.verse_reference);
+      if (userVerse.readableReference) {
+        incrementVerseSaveAdjustment(userVerse.readableReference);
       }
       setShowSavePicker(false);
-      setVerseFromNotification(null);
+      setUserVerseFromNotification(null);
       setPickedCollection(undefined);
       setSnackbarMessage('Verse saved to collection');
       setSnackbarVisible(true);
@@ -627,7 +779,7 @@ export default function NotificationsScreen() {
       {/* Save to collection picker */}
       <SaveVerseToCollectionSheet
         visible={showSavePicker}
-        verse={verseFromNotification}
+        verse={userVerseFromNotification?.verses?.[0] || null}
         collections={collections.filter(col => {
           // Filter to only show collections owned by the user
           const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();

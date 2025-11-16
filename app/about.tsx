@@ -1,14 +1,22 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Stack, useRouter } from 'expo-router';
-import React from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Modal, ScrollView, Text, TextInput as RNTextInput, TouchableOpacity, View } from 'react-native';
 import useStyles from './styles';
 import useAppTheme from './theme';
+import { TextInput } from 'react-native-paper';
+import { useAppStore } from './store';
+import { suggestVerseOfDay } from './db';
 
 export default function AboutScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
   const router = useRouter();
+  const user = useAppStore((s) => s.user);
+
+  const [showSuggestion, setShowSuggestion] = useState(false);
+  const [suggestionReference, setSuggestionReference] = useState('');
+  const [submittingSuggestion, setSubmittingSuggestion] = useState(false);
 
   return (
     <>
@@ -21,12 +29,7 @@ export default function AboutScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <View style={{ padding: 20 }}>
           <View style={{
-            backgroundColor: theme.colors.surface,
-            borderRadius: 16,
-            padding: 20,
             marginBottom: 20,
-            borderWidth: 1,
-            borderColor: theme.colors.surface2,
           }}>
             <Text style={{
               fontSize: 24,
@@ -54,6 +57,34 @@ export default function AboutScreen() {
               Version 1.0.0
             </Text>
           </View>
+          <View style={{ marginBottom: 24 }}>
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 12,
+              fontFamily: 'Inter',
+            }}>
+              Get Involved
+            </Text>
+
+              <Text style={{
+                fontSize: 14,
+                color: theme.colors.onSurfaceVariant,
+                fontFamily: 'Inter',
+                lineHeight: 22,
+              }}>
+                Have feedback or ideas? Let us know by sharing your thoughts inside the app via the report feature, or reach out to our team at support@versememorization.app.
+              </Text>
+
+              <View style={{ height: 12 }} />
+
+              <AboutLink
+                label="Suggest Verse of Day"
+                onPress={() => setShowSuggestion(true)}
+                icon="bulb-outline"
+              />
+            </View>
 
           <View style={{ marginBottom: 24 }}>
             <Text style={{
@@ -82,37 +113,94 @@ export default function AboutScreen() {
               icon="people-outline"
             />
           </View>
+          </View>
+      </ScrollView>
 
-          <View style={{ marginBottom: 24 }}>
+      {/* Suggest Verse of Day Modal */}
+      <Modal
+        visible={showSuggestion}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setSuggestionReference('');
+          setShowSuggestion(false);
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: theme.colors.surface,
+              borderRadius: 16,
+              padding: 24,
+              width: '90%',
+              maxWidth: 400,
+              borderWidth: 1,
+              borderColor: theme.colors.surface2,
+            }}
+          >
             <Text style={{
               fontSize: 18,
               fontWeight: '600',
               color: theme.colors.onBackground,
               marginBottom: 12,
-              fontFamily: 'Inter',
+              fontFamily: 'Inter'
             }}>
-              Get Involved
+              Suggest Verse of Day
             </Text>
-
-            <View style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 12,
-              padding: 16,
-              borderWidth: 1,
-              borderColor: theme.colors.surface2,
-            }}>
-              <Text style={{
-                fontSize: 14,
-                color: theme.colors.onSurfaceVariant,
-                fontFamily: 'Inter',
-                lineHeight: 22,
-              }}>
-                Have feedback or ideas? Let us know by sharing your thoughts inside the app via the report feature, or reach out to our team at support@versememorization.app.
-              </Text>
+            <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, marginBottom: 12, fontFamily: 'Inter' }}>
+              Enter a verse reference (e.g., "John 3:16" or "Psalm 23:1-6")
+            </Text>
+            <TextInput
+              mode="outlined"
+              placeholder="Verse reference"
+              value={suggestionReference}
+              onChangeText={setSuggestionReference}
+              style={{ backgroundColor: theme.colors.background }}
+              outlineStyle={{ borderColor: theme.colors.outline }}
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16, gap: 12 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSuggestionReference('');
+                  setShowSuggestion(false);
+                }}
+                activeOpacity={0.1}
+              >
+                <Text style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'Inter', fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!suggestionReference.trim()) return;
+                  try {
+                    setSubmittingSuggestion(true);
+                    await suggestVerseOfDay(user.username, suggestionReference.trim());
+                    setSuggestionReference('');
+                    setShowSuggestion(false);
+                  } finally {
+                    setSubmittingSuggestion(false);
+                  }
+                }}
+                disabled={submittingSuggestion || !suggestionReference.trim()}
+                style={{ opacity: submittingSuggestion || !suggestionReference.trim() ? 0.6 : 1 }}
+                activeOpacity={0.1}
+              >
+                {submittingSuggestion ? (
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                ) : (
+                  <Text style={{ color: theme.colors.primary, fontFamily: 'Inter', fontWeight: '600' }}>Submit</Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
-      </ScrollView>
+      </Modal>
     </>
   );
 }

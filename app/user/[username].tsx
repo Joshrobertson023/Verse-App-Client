@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -219,9 +220,18 @@ export default function UserProfileScreen() {
               justifyContent: 'center',
               alignItems: 'center',
               borderWidth: 2,
-              borderColor: theme.colors.onBackground
+              borderColor: theme.colors.onBackground,
+              overflow: 'hidden'
             }}>
-              <Ionicons name="person" size={40} color={theme.colors.onBackground} />
+              {profileUser.profilePictureUrl ? (
+                <Image
+                  source={{ uri: profileUser.profilePictureUrl }}
+                  style={{ width: 70, height: 70 }}
+                  contentFit="cover"
+                />
+              ) : (
+                <Ionicons name="person" size={40} color={theme.colors.onBackground} />
+              )}
             </View>
             {renderActiveStatusDot(profileUser.lastSeen)}
           </View>

@@ -1,20 +1,21 @@
   import Ionicons from '@expo/vector-icons/Ionicons';
+import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Dimensions, ScrollView, Text, TextInput as RNTextInput, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, Divider, Portal, TextInput } from 'react-native-paper';
-import BottomSheet, { BottomSheetView, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { Dimensions, TextInput as RNTextInput, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Divider, Portal } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
+import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, refreshUser, updateCollectionsOrder } from '../db';
+import { Collection, CollectionNote, useAppStore, UserVerse, Verse } from '../store';
+import useStyles from '../styles';
+import useAppTheme from '../theme';
+import { buildVerseOrderString } from '../utils/collectionUtils';
 
 // Simple ID generator for React Native (doesn't require crypto polyfill)
 const generateId = () => {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 };
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, refreshUser, updateCollectionsOrder } from '../db';
-import { useAppStore, UserVerse, Verse, Collection, CollectionNote } from '../store';
-import useStyles from '../styles';
-import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
 
@@ -54,17 +55,10 @@ export default function Index() {
     const settingsSheetRef = useRef<BottomSheet>(null);
     
     // Snap points for bottom sheets
-    const passageSnapPoints = useMemo(() => ['100%'], []);
-    const noteSnapPoints = useMemo(() => ['100%'], []);
+    const passageSnapPoints = useMemo(() => ['85%'], []);
+    const noteSnapPoints = useMemo(() => ['60%'], []);
     const settingsSnapPoints = useMemo(() => ['40%'], []);
 
-    const buildVerseOrderString = (verses: UserVerse[], notes: CollectionNote[]): string => {
-      const verseRefs = verses
-        .map((uv) => uv.readableReference?.trim())
-        .filter((ref): ref is string => Boolean(ref && ref.length > 0));
-      const noteIds = notes.map((n) => n.id);
-      return [...verseRefs, ...noteIds].join(',');
-    };
 
     const updateNewCollectionOrder = (userVerses: UserVerse[], notesToUpdate: CollectionNote[] = notes) => {
       const updatedVerseOrder = buildVerseOrderString(userVerses, notesToUpdate);
@@ -142,11 +136,17 @@ export default function Index() {
     });
 
       const handleCreateCollection = async () => {
-            if (newCollection.userVerses.length === 0) return;
-            if (collections.length >= 40) {
+            // Check collection limit based on paid status
+            const maxCollections = user.isPaid ? 40 : 5;
+            if (collections.length >= maxCollections) {
+              if (!user.isPaid) {
+                router.push('/pro');
+                return;
+              }
               setErrorMessage('You can create up to 40 collections.');
               return;
             }
+            
             if (newCollection.userVerses.length > 30) {
               setErrorMessage('Collections can contain up to 30 passages.');
               return;
@@ -155,13 +155,51 @@ export default function Index() {
             setCreatingCollection(true);
             setErrorMessage('');
 
+            // Respect the draft order from newCollection.verseOrder
+            // Order userVerses and notes according to verseOrder
+            const orderArray = (newCollection.verseOrder || '').split(',').filter(ref => ref.trim() !== '').map(ref => ref.trim());
+            const verseMap = new Map<string, UserVerse>();
+            const noteMap = new Map<string, CollectionNote>();
+            
+            newCollection.userVerses.forEach(uv => {
+              if (uv.readableReference) {
+                const key = uv.readableReference.trim().toLowerCase();
+                verseMap.set(key, uv);
+              }
+            });
+            
+            notes.forEach(note => {
+              noteMap.set(note.id, note);
+            });
+            
+            const orderedUserVerses: UserVerse[] = [];
+            const orderedNotes: CollectionNote[] = [];
+            
+            // Add items in the order specified by verseOrder
+            orderArray.forEach(ref => {
+              const verseKey = ref.toLowerCase();
+              if (verseMap.has(verseKey)) {
+                orderedUserVerses.push(verseMap.get(verseKey)!);
+                verseMap.delete(verseKey);
+              } else if (noteMap.has(ref)) {
+                orderedNotes.push(noteMap.get(ref)!);
+                noteMap.delete(ref);
+              }
+            });
+            
+            // Add any remaining items not in the order
+            verseMap.forEach(verse => orderedUserVerses.push(verse));
+            noteMap.forEach(note => orderedNotes.push(note));
+            
+            // Use the ordered arrays and existing verseOrder (which already has the correct order)
             const preparedCollection: Collection = {
               ...newCollection,
               authorUsername: newCollection.authorUsername ?? user.username,
               username: user.username,
               visibility: visibility,
-              verseOrder: buildVerseOrderString(newCollection.userVerses, notes),
-              notes: notes,
+              verseOrder: newCollection.verseOrder || buildVerseOrderString(orderedUserVerses, orderedNotes),
+              notes: orderedNotes,
+              userVerses: orderedUserVerses,
               title: (() => {
                 if (title.trim() === '') return 'New Collection';
                 if (title.trim() === 'Favorites') return 'Favorites-Other';
@@ -172,7 +210,7 @@ export default function Index() {
             try {
               await createCollectionDB(preparedCollection, user.username);
               const id = await getMostRecentCollectionId(user.username);
-              await addUserVersesToNewCollection(newCollection.userVerses, id);
+              await addUserVersesToNewCollection(orderedUserVerses, id);
               const collections = await getUserCollections(user.username);
               setCollections(collections);
 
@@ -200,22 +238,15 @@ export default function Index() {
       }
           
       const clickPlus = (verse: Verse) => {
-        // const newUserVerse: UserVerse = {
-        //   readableReference: verse.verse_reference,
-        //   username: user.username,
-        //   verses: [verse],
-        // }
-        // const existingVerse =newCollection.userVerses.find(v => v.readableReference === newUserVerse.readableReference);
-        // let updatedUserVerses: UserVerse[];
-
-        //  if (existingVerse) {
-        // //   updatedUserVerses = newCollection.userVerses.filter(v => v.readableReference !== newUserVerse.readableReference);
-        //   return;
-        //  }
-        //   updatedUserVerses = [...newCollection.userVerses, newUserVerse];
-
-        // setNewCollection({...newCollection, userVerses: updatedUserVerses});
-
+        // Check verse limit per collection for free users
+        if (!user.isPaid) {
+          const maxVersesPerCollection = 10;
+          if (newCollection.userVerses.length >= maxVersesPerCollection) {
+            router.push('/pro');
+            return;
+          }
+        }
+        
         const userVerse: UserVerse = {
             username: user.username,
             readableReference: verse.verse_reference,
@@ -224,8 +255,6 @@ export default function Index() {
         if (newCollection.userVerses.find(r => r.readableReference === userVerse.readableReference)) {
             return;
         }
-        console.log(userVerse.readableReference);
-        console.log(userVerse.verses.at(0)?.verse_reference);
         addUserVerseToCollection(userVerse);
         updateNewCollectionOrder([...newCollection.userVerses, userVerse], notes);
         
@@ -288,11 +317,12 @@ export default function Index() {
           width: '100%'
         }}
       >
-        <TextInput label="Collection Title" value={title} onChangeText={setTitle} style={styles.input} mode='outlined' />
+        <RNTextInput value={title} placeholder='Collection Title' placeholderTextColor={theme.colors.onBackground} onChangeText={setTitle} style={{...styles.input, ...styles.tinyText, borderColor: theme.colors.onBackground, borderWidth: 1, height: 50, backgroundColor: theme.colors.surface}} />
 
         <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 15}}>
           <Text style={{...styles.tinyText, marginRight: 10}}>Visibility: {visibility === 'Public' ? 'Visible to Friends' : 'Not Visible to Friends'}</Text>
-          <TouchableOpacity style={{...styles.button_outlined, width: 100, height: 30}} onPress={openSettingsSheet}>
+
+          <TouchableOpacity style={{...styles.button_outlined, width: 100, height: 30}} activeOpacity={0.8} onPress={openSettingsSheet}>
             <Text style={{...styles.buttonText_outlined, fontSize: 14}}>Change</Text>
           </TouchableOpacity>
         </View>
@@ -438,6 +468,10 @@ export default function Index() {
               index={-1}
               snapPoints={passageSnapPoints}
               enablePanDownToClose
+              enableOverDrag={false}
+              android_keyboardInputMode="adjustResize"
+              keyboardBehavior="interactive"
+              keyboardBlurBehavior="restore"
               onChange={handlePassageSheetChange}
               backgroundStyle={{ backgroundColor: theme.colors.surface }}
               handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -459,6 +493,10 @@ export default function Index() {
               index={-1}
               snapPoints={noteSnapPoints}
               enablePanDownToClose
+              enableOverDrag={false}
+              android_keyboardInputMode="adjustResize"
+              keyboardBehavior="interactive"
+              keyboardBlurBehavior="restore"
               onChange={handleNoteSheetChange}
               backgroundStyle={{ backgroundColor: theme.colors.surface }}
               handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -524,6 +562,10 @@ export default function Index() {
               index={-1}
               snapPoints={settingsSnapPoints}
               enablePanDownToClose
+              enableOverDrag={false}
+              android_keyboardInputMode="adjustResize"
+              keyboardBehavior="interactive"
+              keyboardBlurBehavior="restore"
               onChange={handleSettingsSheetChange}
               backgroundStyle={{ backgroundColor: theme.colors.surface }}
               handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}

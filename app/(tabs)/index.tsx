@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import BottomSheet, { BottomSheetView, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Dimensions, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Banner, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
-import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import Button from '../components/Button';
 import CollectionItem from '../components/collectionItem';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
@@ -16,6 +16,15 @@ import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
+
+// Generates a RFC4122-like GUID string
+function generateGUID() {
+  const s4 = () =>
+    Math.floor((1 + Math.random()) * 0x10000)
+      .toString(16)
+      .substring(1);
+  return `${s4()}${s4()}-${s4()}-${s4()}-${s4()}-${s4()}${s4()}${s4()}`;
+}
 
 function orderCompletion(collections: Collection[]): Collection[] {
   const collectionData: { collection: Collection; averageProgress: number }[] = [];
@@ -118,6 +127,8 @@ export default function Index() {
   const [isBannerLoading, setIsBannerLoading] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [reviewMessageDismissed, setReviewMessageDismissed] = useState(false);
+  const [searchDialogVisible, setSearchDialogVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const computeOwnership = (collection?: Collection) => {
     if (!collection) return false;
@@ -304,7 +315,14 @@ export default function Index() {
 
   const handleCreateNewVodCollection = async () => {
     if (!selectedVodVerse || !user?.username || isCreatingNewVodCollection || !newVodCollectionTitle.trim()) return;
-    if (collections.length >= 40) {
+    
+    // Check collection limit based on paid status
+    const maxCollections = user.isPaid ? 40 : 5;
+    if (collections.length >= maxCollections) {
+      if (!user.isPaid) {
+        router.push('/pro');
+        return;
+      }
       setSnackbarMessage('You can create up to 40 collections.');
       setSnackbarVisible(true);
       return;
@@ -430,9 +448,21 @@ export default function Index() {
       // Use the saved UserVerse
       setVersesToShare([savedUserVerse]);
     } else {
-      // Show message that verse needs to be saved first
-      setSnackbarMessage('Please save this verse to a collection first before sharing');
-      setSnackbarVisible(true);
+      // Create a UserVerse from the verse of day data even if not saved
+      const verses = vodTexts[readableReference];
+      if (!verses || verses.length === 0) {
+        setSnackbarMessage('Verse not loaded yet. Please wait...');
+        setSnackbarVisible(true);
+        return;
+      }
+      
+      const userVerse: UserVerse = {
+        username: user.username,
+        readableReference: readableReference,
+        verses: verses
+      };
+      
+      setVersesToShare([userVerse]);
     }
   };
 
@@ -523,11 +553,18 @@ export default function Index() {
   }
 
   const handleCreateCopy = async (collectionToCopy: Collection) => {
-    if (collections.length >= 40) {
+    // Check collection limit based on paid status
+    const maxCollections = user.isPaid ? 40 : 5;
+    if (collections.length >= maxCollections) {
+      if (!user.isPaid) {
+        router.push('/pro');
+        return;
+      }
       setSnackbarMessage('You can create up to 40 collections');
       setSnackbarVisible(true);
       return;
     }
+    
     if ((collectionToCopy.userVerses?.length ?? 0) > 30) {
       setSnackbarMessage('Collections can contain up to 30 passages');
       setSnackbarVisible(true);
@@ -602,11 +639,14 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
 
 
   // Bottom sheet snap points
-  const settingsSnapPoints = useMemo(() => ['50%'], []);
+  const settingsSnapPoints = useMemo(() => ['45%'], []);
   const collectionsSettingsSnapPoints = useMemo(() => ['45%'], []);
   const openCollectionsSettingsSheet = () => {
     setIsCollectionsSettingsSheetOpen(true);
-    collectionsSettingsSheetRef.current?.snapToIndex(0);
+    // Use setTimeout to ensure state is updated before expanding
+    setTimeout(() => {
+      collectionsSettingsSheetRef.current?.expand();
+    }, 0);
   };
 
   const closeCollectionsSettingsSheet = () => {
@@ -621,7 +661,10 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
 
   const openSettingsSheet = () => {
     setIsSettingsSheetOpen(true);
-    settingsSheetRef.current?.snapToIndex(0);
+    // Use setTimeout to ensure state is updated before expanding
+    setTimeout(() => {
+      settingsSheetRef.current?.expand();
+    }, 0);
   };
 
   const closeSettingsSheet = () => {
@@ -815,7 +858,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             style={{
               width: '100%',
               marginBottom: 20,
-              backgroundColor: theme.colors.primaryContainer
+              backgroundColor: theme.colors.surface
             }}
             actions={[
               {
@@ -827,8 +870,8 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               }
             ]}
           >
-            <Text style={{ ...styles.tinyText, color: theme.colors.onPrimaryContainer, fontFamily: 'Inter', marginRight: 12, height: '100%' }}>
-              {collectionReviewMessage}
+            <Text style={{ ...styles.tinyText, fontFamily: 'Inter', marginRight: 12, height: '100%' }}>
+              Collection submitted for review. You will be notified when it has been approved and is available on Explore.
             </Text>
           </Banner>
         ) : null}
@@ -899,11 +942,11 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 20 }}>
             <TouchableOpacity
               activeOpacity={0.1}
-              onPress={() => router.push('../collections/myPublished')}
+              onPress={() => setSearchDialogVisible(true)}
               accessibilityRole="button"
-              accessibilityLabel="Open my published collections"
+              accessibilityLabel="Search passages"
             >
-              <Ionicons name="globe" size={26} color={theme.colors.onBackground} />
+              <Ionicons name="search" size={26} color={theme.colors.onBackground} />
             </TouchableOpacity>
           </View>
             <Text style={{ ...styles.subheading, marginBottom: 0 }}>My Verses</Text>
@@ -913,12 +956,15 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         </View>
         <View style={styles.collectionsContainer}>
 
-          {orderedCollections.map((collection) => (
-            <>
-            <Divider style={{marginHorizontal: -50, marginTop: 10, marginBottom: -10}} />
-            <CollectionItem key={collection.collectionId} collection={collection} onMenuPress={handleMenuPress} />
-            </>
-          ))}
+          {orderedCollections.map((collection) => {
+            const itemKey = collection.collectionId ? `col-${collection.collectionId}` : `col-${generateGUID()}`;
+            return (
+              <React.Fragment key={itemKey}>
+                <Divider style={{marginHorizontal: -50, marginTop: 10, marginBottom: -10}} />
+                <CollectionItem collection={collection} onMenuPress={handleMenuPress} />
+              </React.Fragment>
+            );
+          })}
 
         </View>
         <View style={{height: 60}} />
@@ -955,6 +1001,10 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           index={isSettingsSheetOpen ? 0 : -1}
           snapPoints={settingsSnapPoints}
           enablePanDownToClose
+          enableOverDrag={false}
+          android_keyboardInputMode="adjustResize"
+          keyboardBehavior="interactive"
+          keyboardBlurBehavior="restore"
           onChange={handleSettingsSheetChange}
           backgroundStyle={{ backgroundColor: theme.colors.surface }}
           handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -1087,90 +1137,64 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           index={isCollectionsSettingsSheetOpen ? 0 : -1}
           snapPoints={collectionsSettingsSnapPoints}
           enablePanDownToClose
+          enableOverDrag={false}
+          android_keyboardInputMode="adjustResize"
+          keyboardBehavior="interactive"
+          keyboardBlurBehavior="restore"
           onChange={handleCollectionsSettingsSheetChange}
           backgroundStyle={{ backgroundColor: theme.colors.surface }}
           handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
         >
         <BottomSheetView style={{ flex: 1 }}>
-          <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Collections By:</Text>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={async () => {
-              const updatedUser = { ...user, collectionsSortBy: 0 };
-              setUser(updatedUser);
-              closeCollectionsSettingsSheet();
-              updateCollectionsOrder();
-              try {
-                await updateCollectionsSortBy(0, user.username);
-              } catch (error) {
-                console.error('Failed to update collections sort by:', error);
-              }
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 0 ? '700' : '500' }}>Use Custom Order</Text>
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={() => {
-              closeCollectionsSettingsSheet();
-              router.push('../collections/reorderCollections');
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Reorder Custom Order</Text>
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={async () => {
-              const updatedUser = { ...user, collectionsSortBy: 1 };
-              setUser(updatedUser);
-              closeCollectionsSettingsSheet();
-              updateCollectionsOrder();
-              try {
-                await updateCollectionsSortBy(1, user.username);
-              } catch (error) {
-                console.error('Failed to update collections sort by:', error);
-              }
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 1 ? '700' : '500' }}>Newest Modified</Text>
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={async () => {
-              const updatedUser = { ...user, collectionsSortBy: 2 };
-              setUser(updatedUser);
-              closeCollectionsSettingsSheet();
-              updateCollectionsOrder();
-              try {
-                await updateCollectionsSortBy(2, user.username);
-              } catch (error) {
-                console.error('Failed to update collections sort by:', error);
-              }
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 2 ? '700' : '500' }}>Percent Memorized</Text>
-          </TouchableOpacity>
-          <Divider />
-          <TouchableOpacity
-            style={sheetItemStyle.settingsItem}
-            activeOpacity={0.1}
-            onPress={async () => {
-              const updatedUser = { ...user, collectionsSortBy: 3 };
-              setUser(updatedUser);
-              closeCollectionsSettingsSheet();
-              updateCollectionsOrder();
-              try {
-                await updateCollectionsSortBy(3, user.username);
-              } catch (error) {
-                console.error('Failed to update collections sort by:', error);
-              }
-            }}>
-            <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 3 ? '700' : '500' }}>Most Overdue</Text>
-          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={{...styles.text, fontSize: 20, fontWeight: '600', marginBottom: 20, marginTop: 10, alignSelf: 'center'}}>Sort Collections By:</Text>
+            <Divider />
+            <TouchableOpacity
+              style={sheetItemStyle.settingsItem}
+              activeOpacity={0.1}
+              onPress={async () => {
+                const updatedUser = { ...user, collectionsSortBy: 0 };
+                setUser(updatedUser);
+                closeCollectionsSettingsSheet();
+                updateCollectionsOrder();
+                try {
+                  await updateCollectionsSortBy(0, user.username);
+                } catch (error) {
+                  console.error('Failed to update collections sort by:', error);
+                }
+              }}>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 0 ? '700' : '500' }}>Use Custom Order</Text>
+            </TouchableOpacity>
+            <Divider />
+            <TouchableOpacity
+              style={sheetItemStyle.settingsItem}
+              activeOpacity={0.1}
+              onPress={async () => {
+                const updatedUser = { ...user, collectionsSortBy: 1 };
+                setUser(updatedUser);
+                closeCollectionsSettingsSheet();
+                updateCollectionsOrder();
+                try {
+                  await updateCollectionsSortBy(1, user.username);
+                } catch (error) {
+                  console.error('Failed to update collections sort by:', error);
+                }
+              }}>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 1 ? '700' : '500' }}>Newest Modified</Text>
+            </TouchableOpacity>
+          </View>
+          <View>
+            <Divider style={{ marginTop: 20, marginBottom: 20 }} />
+            <TouchableOpacity
+              style={sheetItemStyle.settingsItem}
+              activeOpacity={0.1}
+              onPress={() => {
+                closeCollectionsSettingsSheet();
+                router.push('../collections/reorderCollections');
+              }}>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: '500' }}>Reorder Custom Order</Text>
+            </TouchableOpacity>
+          </View>
         </BottomSheetView>
       </BottomSheet>
       </Portal>
@@ -1298,68 +1322,72 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 
                 return (
                   <>
-                    {favorites.map((collection) => (
-                      <TouchableOpacity
-                        key={collection.collectionId}
-                        activeOpacity={0.1}
-                        style={{
-                          paddingVertical: 12,
-                          paddingHorizontal: 16,
-                          marginBottom: 8,
-                          backgroundColor: pickedVodCollection?.collectionId === collection.collectionId 
-                            ? theme.colors.primary 
-                            : 'transparent',
-                          borderRadius: 8,
-                          flexDirection: 'row',
-                          justifyContent: 'space-between',
-                          alignItems: 'center'
-                        }}
-                        onPress={() => handleVodCollectionSelect(collection)}
-                      >
-                        <Text style={{
-                          fontSize: 16,
-                          color: pickedVodCollection?.collectionId === collection.collectionId 
-                            ? '#fff' 
-                            : theme.colors.onBackground,
-                          fontFamily: 'Inter'
-                        }}>
-                          {collection.title}
-                        </Text>
-                        <Ionicons 
-                          name="star" 
-                          size={20} 
-                          color={pickedVodCollection?.collectionId === collection.collectionId 
-                            ? '#fff' 
-                            : theme.colors.onBackground} 
-                        />
-                      </TouchableOpacity>
-                    ))}
-                    {nonFavorites.map((collection) => (
-                      <TouchableOpacity
-                        key={collection.collectionId}
-                        activeOpacity={0.1}
-                        style={{
-                          paddingVertical: 12,
-                          paddingHorizontal: 16,
-                          marginBottom: 8,
-                          backgroundColor: pickedVodCollection?.collectionId === collection.collectionId 
-                            ? theme.colors.primary 
-                            : 'transparent',
-                          borderRadius: 8
-                        }}
-                        onPress={() => handleVodCollectionSelect(collection)}
-                      >
-                        <Text style={{
-                          fontSize: 16,
-                          color: pickedVodCollection?.collectionId === collection.collectionId 
-                            ? '#fff' 
-                            : theme.colors.onBackground,
-                          fontFamily: 'Inter'
-                        }}>
-                          {collection.title}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                    <View key="favorites-section">
+                      {favorites.map((collection, idx) => (
+                        <TouchableOpacity
+                          key={collection.collectionId ?? `fav-${collection.title}-${collection.authorUsername ?? ''}-${idx}`}
+                          activeOpacity={0.1}
+                          style={{
+                            paddingVertical: 12,
+                            paddingHorizontal: 16,
+                            marginBottom: 8,
+                            backgroundColor: pickedVodCollection?.collectionId === collection.collectionId 
+                              ? theme.colors.primary 
+                              : 'transparent',
+                            borderRadius: 8,
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }}
+                          onPress={() => handleVodCollectionSelect(collection)}
+                        >
+                          <Text style={{
+                            fontSize: 16,
+                            color: pickedVodCollection?.collectionId === collection.collectionId 
+                              ? '#fff' 
+                              : theme.colors.onBackground,
+                            fontFamily: 'Inter'
+                          }}>
+                            {collection.title}
+                          </Text>
+                          <Ionicons 
+                            name="star" 
+                            size={20} 
+                            color={pickedVodCollection?.collectionId === collection.collectionId 
+                              ? '#fff' 
+                              : theme.colors.onBackground} 
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View key="nonfavorites-section">
+                      {nonFavorites.map((collection, idx) => (
+                        <TouchableOpacity
+                          key={collection.collectionId ?? `nonfav-${collection.title}-${collection.authorUsername ?? ''}-${idx}`}
+                          activeOpacity={0.1}
+                          style={{
+                            paddingVertical: 12,
+                            paddingHorizontal: 16,
+                            marginBottom: 8,
+                            backgroundColor: pickedVodCollection?.collectionId === collection.collectionId 
+                              ? theme.colors.primary 
+                              : 'transparent',
+                            borderRadius: 8
+                          }}
+                          onPress={() => handleVodCollectionSelect(collection)}
+                        >
+                          <Text style={{
+                            fontSize: 16,
+                            color: pickedVodCollection?.collectionId === collection.collectionId 
+                              ? '#fff' 
+                              : theme.colors.onBackground,
+                            fontFamily: 'Inter'
+                          }}>
+                            {collection.title}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </>
                 );
               })()}
@@ -1450,6 +1478,79 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           </View>
         </Modal>
       </Portal>
+
+      {/* Search Dialog */}
+      <Dialog
+        visible={searchDialogVisible}
+        onDismiss={() => {
+          setSearchDialogVisible(false);
+          setSearchQuery('');
+        }}
+        style={{ backgroundColor: theme.colors.surface }}
+      >
+        <Dialog.Title style={{ color: theme.colors.onSurface }}>Search Passages</Dialog.Title>
+        <Dialog.Content>
+          <TextInput
+            placeholder="Search by reference"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={{
+              backgroundColor: theme.colors.background,
+              borderRadius: 8,
+              padding: 12,
+              color: theme.colors.onSurface,
+              fontSize: 16,
+              borderWidth: 1,
+              borderColor: theme.colors.outline,
+            }}
+            autoFocus
+            onSubmitEditing={() => {
+              if (searchQuery.trim()) {
+                setSearchDialogVisible(false);
+                router.push({
+                  pathname: '../collections/searchPassages',
+                  params: { query: searchQuery.trim() }
+                });
+                setSearchQuery('');
+              }
+            }}
+          />
+        </Dialog.Content>
+        <Dialog.Actions>
+          <TouchableOpacity
+            onPress={() => {
+              setSearchDialogVisible(false);
+              setSearchQuery('');
+            }}
+            style={{ padding: 8 }}
+          >
+            <Text style={{ color: theme.colors.primary, fontSize: 16 }}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              if (searchQuery.trim()) {
+                setSearchDialogVisible(false);
+                router.push({
+                  pathname: '../collections/searchPassages',
+                  params: { query: searchQuery.trim() }
+                });
+                setSearchQuery('');
+              }
+            }}
+            style={{ padding: 8, marginLeft: 16 }}
+            disabled={!searchQuery.trim()}
+          >
+            <Text style={{ 
+              color: searchQuery.trim() ? theme.colors.primary : theme.colors.onSurfaceVariant, 
+              fontSize: 16,
+              fontWeight: '600'
+            }}>
+              Search
+            </Text>
+          </TouchableOpacity>
+        </Dialog.Actions>
+      </Dialog>
       
       <Snackbar
         visible={snackbarVisible}

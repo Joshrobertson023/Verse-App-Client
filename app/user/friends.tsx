@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -162,9 +163,18 @@ export default function FriendsScreen() {
           alignItems: 'center',
           borderWidth: 2,
           borderColor: theme.colors.onBackground,
-          marginRight: 12
+          marginRight: 12,
+          overflow: 'hidden'
         }}>
-          <Ionicons name="person" size={24} color={theme.colors.onBackground} />
+          {friend.profilePictureUrl ? (
+            <Image
+              source={{ uri: friend.profilePictureUrl }}
+              style={{ width: 48, height: 48 }}
+              contentFit="cover"
+            />
+          ) : (
+            <Ionicons name="person" size={24} color={theme.colors.onBackground} />
+          )}
         </View>
         
         <View style={{ flex: 1 }}>

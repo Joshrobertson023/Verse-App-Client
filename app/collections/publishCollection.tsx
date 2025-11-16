@@ -137,9 +137,13 @@ export default function PublishCollection() {
 
     try {
       // Use the collection with populated userVerses from displayUserVerses
+      // Ensure notes are included and verseOrder respects the draft order
       const collectionToPublish = {
         ...publishingCollection,
-        userVerses: displayUserVerses.length > 0 ? displayUserVerses : publishingCollection.userVerses || []
+        userVerses: displayUserVerses.length > 0 ? displayUserVerses : publishingCollection.userVerses || [],
+        notes: publishingCollection.notes || [],
+        // verseOrder should already include notes from the draft, but ensure it's set
+        verseOrder: publishingCollection.verseOrder || ''
       };
       
       const message = await publishCollection(

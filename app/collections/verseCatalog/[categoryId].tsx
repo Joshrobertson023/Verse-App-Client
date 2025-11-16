@@ -6,6 +6,7 @@ import { getVersesInCategory, Category, getAllCategories } from '../../db';
 import { useAppStore, UserVerse, Verse } from '../../store';
 import useStyles from '../../styles';
 import useAppTheme from '../../theme';
+import { buildVerseOrderStringFromVerses } from '../../utils/collectionUtils';
 
 export default function CategoryVersesScreen() {
   const styles = useStyles();
@@ -89,13 +90,7 @@ export default function CategoryVersesScreen() {
       }
       // Add to editing collection
       const updatedUserVerses = [...(editingCollection.userVerses || []), userVerse];
-      const buildVerseOrderString = (verses: UserVerse[]): string => {
-        return verses
-          .map((uv) => uv.readableReference?.trim())
-          .filter((ref): ref is string => Boolean(ref && ref.length > 0))
-          .join(',');
-      };
-      const updatedVerseOrder = buildVerseOrderString(updatedUserVerses);
+      const updatedVerseOrder = buildVerseOrderStringFromVerses(updatedUserVerses);
       setEditingCollection({
         ...editingCollection,
         userVerses: updatedUserVerses,

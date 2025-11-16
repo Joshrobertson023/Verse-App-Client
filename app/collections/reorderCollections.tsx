@@ -47,6 +47,7 @@ export default function ReorderCollections() {
   
   const [reorderedData, setReorderedData] = useState<Collection[]>(sortedCollections);
   const [saveButtonEnabled, setSaveButtonEnabled] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
 
   const renderItem = useCallback(({ item, drag, isActive }: RenderItemParams<Collection>) => {
@@ -62,6 +63,7 @@ export default function ReorderCollections() {
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: isActive ? 0.3 : 0,
               shadowRadius: 4,
+              padding: 20
             },
           ]}
           onLongPress={drag}
@@ -91,6 +93,7 @@ export default function ReorderCollections() {
   }, []);
 
   const handleSave = async () => {
+    setIsSaving(true);
     const favorites = collections.filter(c => c.favorites || c.title === 'Favorites');
     const allReordered = [...favorites, ...reorderedData];
     
@@ -108,6 +111,8 @@ export default function ReorderCollections() {
       await updateCollectionsSortBy(0, user.username);
     } catch (error) {
       console.error('Failed to update collections order:', error);
+    } finally {
+      setIsSaving(false);
     }
 
     router.back();
@@ -179,15 +184,18 @@ export default function ReorderCollections() {
         {saveButtonEnabled === true ? (
             <TouchableOpacity 
               onPress={handleSave}
+              disabled={isSaving}
               style={{
                 flex: 1,
                 marginLeft: 10,
                 padding: 15,
-                backgroundColor: theme.colors.primary,
+                backgroundColor: isSaving ? theme.colors.surface : theme.colors.primary,
                 borderRadius: 10,
                 alignItems: 'center',
               }}>
-              <Text style={{...styles.tinyText, fontWeight: '600', color: theme.colors.onPrimary}}>Save</Text>
+              <Text style={{...styles.tinyText, fontWeight: '600', color: isSaving ? theme.colors.onSurface : theme.colors.onPrimary}}>
+                {isSaving ? 'Saving...' : 'Save'}
+              </Text>
             </TouchableOpacity>
           ) : (
           <View style={{

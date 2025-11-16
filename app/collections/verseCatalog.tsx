@@ -2,10 +2,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { getAllCategories, getVersesInCategory, Category } from '../db';
+import { Divider } from 'react-native-paper';
+import { Category, getAllCategories } from '../db';
 import { useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
+import { buildVerseOrderStringFromVerses } from '../utils/collectionUtils';
 
 export default function VerseCatalogScreen() {
   const styles = useStyles();
@@ -71,13 +73,7 @@ export default function VerseCatalogScreen() {
       }
       // Add to editing collection
       const updatedUserVerses = [...(editingCollection.userVerses || []), userVerse];
-      const buildVerseOrderString = (verses: UserVerse[]): string => {
-        return verses
-          .map((uv) => uv.readableReference?.trim())
-          .filter((ref): ref is string => Boolean(ref && ref.length > 0))
-          .join(',');
-      };
-      const updatedVerseOrder = buildVerseOrderString(updatedUserVerses);
+      const updatedVerseOrder = buildVerseOrderStringFromVerses(updatedUserVerses);
       setEditingCollection({
         ...editingCollection,
         userVerses: updatedUserVerses,
@@ -110,52 +106,42 @@ export default function VerseCatalogScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      {/* Category Chips */}
-      <View
-        style={{
-          paddingHorizontal: 20,
-          paddingVertical: 16,
-          backgroundColor: theme.colors.surface,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.outline,
-        }}
+      {/* Category List */}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 20 }}
       >
         {loadingCategories ? (
-          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <View style={{ alignItems: 'center', marginTop: 40 }}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+          </View>
         ) : (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            {categories.map((category) => (
+          categories.map((category, index) => (
+            <React.Fragment key={category.categoryId}>
               <TouchableOpacity
-                key={category.categoryId}
-                activeOpacity={0.8}
                 onPress={() => router.push({
                   pathname: './verseCatalog/[categoryId]',
                   params: { categoryId: category.categoryId.toString() }
                 })}
+                activeOpacity={0.1}
                 style={{
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 20,
-                  backgroundColor: theme.colors.surface2,
-                  borderWidth: 1,
-                  borderColor: theme.colors.outline,
+                  paddingVertical: 16,
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                 }}
               >
-                <Text
-                  style={{
-                    color: theme.colors.onSurface,
-                    fontFamily: 'Inter',
-                    fontSize: 14,
-                    fontWeight: '400',
-                  }}
-                >
+                <Text style={{ ...styles.tinyText, fontSize: 18, fontWeight: 100, marginBottom: 0 }}>
                   {category.name}
                 </Text>
+                <Ionicons name="arrow-forward" size={20} color={theme.colors.onBackground} style={{ opacity: 0.7 }} />
               </TouchableOpacity>
-            ))}
-          </View>
+              {index < categories.length - 1 && <Divider />}
+            </React.Fragment>
+          ))
         )}
-      </View>
+        <View style={{ height: 100 }} />
+      </ScrollView>
 
       {/* Verses List */}
       <ScrollView
@@ -163,11 +149,7 @@ export default function VerseCatalogScreen() {
         contentContainerStyle={{ padding: 20 }}
       >
         {selectedCategoryId === null ? (
-          <View style={{ alignItems: 'center', marginTop: 40 }}>
-            <Text style={{ ...styles.text, color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Select a category above to view verses
-            </Text>
-          </View>
+          null
         ) : loadingVerses ? (
           <View style={{ alignItems: 'center', marginTop: 40 }}>
             <ActivityIndicator size="large" color={theme.colors.primary} />

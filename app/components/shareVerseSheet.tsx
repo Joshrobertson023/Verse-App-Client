@@ -46,14 +46,28 @@ export default function ShareVerseSheet({ visible, userVerses, onClose, onShareS
     if (!userVerses || userVerses.length === 0 || !selectedFriend) return;
     setSharing(selectedFriend.username);
     try {
-      const userVerseIds = userVerses.map(uv => uv.id).filter((id): id is number => id !== undefined);
-      await shareVerse(user.username, selectedFriend.username, userVerseIds);
+      // Extract verse references (readableReference) - this works even if verses aren't saved to a collection
+      const verseReferences = userVerses
+        .map(uv => uv.readableReference)
+        .filter((ref): ref is string => ref !== undefined && ref !== null && ref.trim() !== '');
+      
+      if (verseReferences.length === 0) {
+        throw new Error('No verses found to share. Make sure to just share reference');
+      }
+      
+      await shareVerse(user.username, selectedFriend.username, verseReferences);
       setSelectedFriend(null);
       onClose();
       if (onShareSuccess) onShareSuccess(selectedFriend.username);
     } catch (error) {
       console.error('Failed to share verse:', error);
-      if (onShareError) onShareError();
+      const errorMessage = error instanceof Error ? error.message : 'Failed to share verse';
+      if (onShareError) {
+        onShareError();
+      } else {
+        // If no error handler, show alert
+        alert(errorMessage);
+      }
     } finally {
       setSharing(null);
     }

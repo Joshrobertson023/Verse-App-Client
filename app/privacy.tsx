@@ -1,6 +1,5 @@
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import useStyles from './styles';
 import useAppTheme from './theme';
 
@@ -12,33 +11,10 @@ export default function PrivacyPolicyScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <View style={{ backgroundColor: theme.colors.background }}>
-        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 }}>
-          <Text style={{
-            fontSize: 28,
-            fontWeight: '800',
-            color: theme.colors.onBackground,
-            fontFamily: 'Inter'
-          }}>
-            Privacy Policy
-          </Text>
-          <Text style={{
-            fontSize: 12,
-            color: theme.colors.onBackground,
-            opacity: 0.8,
-            marginTop: 6,
-            fontFamily: 'Inter'
-          }}>
-            Last updated: October 30, 2025
-          </Text>
-        </View>
-      </View>
 
       <View style={{ padding: 20 }}>
         <View style={{
-          backgroundColor: theme.colors.surface,
           borderRadius: 16,
-          padding: 16,
           shadowColor: '#000',
           shadowOpacity: 0.05,
           shadowRadius: 8,
@@ -63,6 +39,15 @@ export default function PrivacyPolicyScreen() {
             For questions about this policy, please contact us via email at: therealjoshrobertson@gmail.com.
           </Text>
         </View>
+          <Text style={{
+            fontSize: 12,
+            color: theme.colors.onBackground,
+            opacity: 0.8,
+            marginTop: 6,
+            fontFamily: 'Inter'
+          }}>
+            Last updated: October 30, 2025
+          </Text>
       </View>
       <View style={{ height: 60 }} />
     </ScrollView>

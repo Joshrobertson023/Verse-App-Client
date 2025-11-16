@@ -9,6 +9,7 @@ export interface ReaderSettings {
   letterSpacing: number;
   background: ReaderBackgroundKey;
   showMetadata: boolean;
+  showPublicNoteIcons: boolean;
 }
 
 export interface ReaderBackgroundTheme {
@@ -73,6 +74,7 @@ export const READER_PRESETS: Record<ReaderPresetKey, ReaderSettings> = {
     letterSpacing: 0,
     background: 'default',
     showMetadata: false,
+    showPublicNoteIcons: true,
   },
   normal: {
     fontFamily: 'Merriweather',
@@ -81,6 +83,7 @@ export const READER_PRESETS: Record<ReaderPresetKey, ReaderSettings> = {
     letterSpacing: 0,
     background: 'default',
     showMetadata: true,
+    showPublicNoteIcons: true,
   },
   large: {
     fontFamily: 'Lora',
@@ -89,6 +92,7 @@ export const READER_PRESETS: Record<ReaderPresetKey, ReaderSettings> = {
     letterSpacing: 0.1,
     background: 'default',
     showMetadata: true,
+    showPublicNoteIcons: true,
   },
   extraLarge: {
     fontFamily: 'Lora',
@@ -97,12 +101,14 @@ export const READER_PRESETS: Record<ReaderPresetKey, ReaderSettings> = {
     letterSpacing: 0.2,
     background: 'default',
     showMetadata: true,
+    showPublicNoteIcons: true,
   },
 };
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   ...READER_PRESETS.normal,
   showMetadata: true,
+  showPublicNoteIcons: true,
 };
 
 export const READER_SETTINGS_STORAGE_KEY = '@verseApp:readerSettings';

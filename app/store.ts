@@ -48,7 +48,11 @@ export interface User {
     notifyMemorizedVerse?: boolean;
     notifyPublishedCollection?: boolean;
     notifyCollectionSaved?: boolean;
+    notifyNoteLiked?: boolean;
+    badgeNotificationsEnabled?: boolean;
+    badgeOverdueEnabled?: boolean;
     isAdmin?: boolean;
+    isPaid?: boolean;
     streak?: Streak[];
     streakLength: number;
     versesMemorized: number;
@@ -58,6 +62,7 @@ export interface User {
     bibleVersion?: string;
     hasShownBibleHelp?: boolean;
     profilePictureUrl?: string;
+    banned?: boolean;
 }
 
 export interface UserVerse {

@@ -1,15 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import React, { useState, useEffect } from 'react';
-import { Modal, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
-import { TextInput } from 'react-native-paper';
 import { Picker } from '@react-native-picker/picker';
-import { deleteUser, submitBugReport, updateActivityNotifications, updatePushNotifications, updateSubscribedVerseOfDay, updateBibleVersion, updateUsername, updateEmail, updatePassword, updateUserProfile, refreshUser, updateNotifyMemorizedVerse, updateNotifyPublishedCollection, updateNotifyCollectionSaved } from './db';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Modal, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Divider, TextInput } from 'react-native-paper';
+import { deleteUser, refreshUser, submitBugReport, updateActivityNotifications, updateBadgeNotificationsEnabled, updateBadgeOverdueEnabled, updateBibleVersion, updateEmail, updateNotifyCollectionSaved, updateNotifyMemorizedVerse, updateNotifyNoteLiked, updateNotifyPublishedCollection, updatePassword, updatePushNotifications, updateSubscribedVerseOfDay, updateUsername, updateUserProfile } from './db';
+import { ensurePushTokenRegistered, unregisterStoredPushToken } from './pushTokenManager';
 import { ThemePreference, useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
-import { ensurePushTokenRegistered, unregisterStoredPushToken } from './pushTokenManager';
+import { updateAppBadge } from './utils/badgeManager';
 
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
 
@@ -27,6 +28,9 @@ export default function SettingsScreen() {
   const [notifyMemorizedVerse, setNotifyMemorizedVerse] = useState(user.notifyMemorizedVerse ?? true);
   const [notifyPublishedCollection, setNotifyPublishedCollection] = useState(user.notifyPublishedCollection ?? true);
   const [notifyCollectionSaved, setNotifyCollectionSaved] = useState(user.notifyCollectionSaved ?? true);
+  const [notifyNoteLiked, setNotifyNoteLiked] = useState(user.notifyNoteLiked ?? true);
+  const [badgeNotificationsEnabled, setBadgeNotificationsEnabled] = useState(user.badgeNotificationsEnabled ?? true);
+  const [badgeOverdueEnabled, setBadgeOverdueEnabled] = useState(user.badgeOverdueEnabled ?? true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUsernameConfirm, setShowUsernameConfirm] = useState(false);
   const [deleteUsernameInput, setDeleteUsernameInput] = useState('');
@@ -58,6 +62,9 @@ export default function SettingsScreen() {
     setNotifyMemorizedVerse(user.notifyMemorizedVerse ?? true);
     setNotifyPublishedCollection(user.notifyPublishedCollection ?? true);
     setNotifyCollectionSaved(user.notifyCollectionSaved ?? true);
+    setNotifyNoteLiked(user.notifyNoteLiked ?? true);
+    setBadgeNotificationsEnabled(user.badgeNotificationsEnabled ?? true);
+    setBadgeOverdueEnabled(user.badgeOverdueEnabled ?? true);
   }, [user]);
 
   const themeOptions: Array<{ key: ThemePreference; label: string; description: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -162,6 +169,55 @@ export default function SettingsScreen() {
       console.error('Failed to update notify collection saved:', error);
       alert('Failed to update notify collection saved setting');
       setNotifyCollectionSaved(!value);
+    }
+  };
+
+  const handleToggleNotifyNoteLiked = async (value: boolean) => {
+    setNotifyNoteLiked(value);
+    try {
+      await updateNotifyNoteLiked(user.username, value);
+      setUser({
+        ...user,
+        notifyNoteLiked: value
+      });
+    } catch (error) {
+      console.error('Failed to update notify note liked:', error);
+      alert('Failed to update notify note liked setting');
+      setNotifyNoteLiked(!value);
+    }
+  };
+
+  const handleToggleBadgeNotifications = async (value: boolean) => {
+    setBadgeNotificationsEnabled(value);
+    try {
+      await updateBadgeNotificationsEnabled(user.username, value);
+      setUser({
+        ...user,
+        badgeNotificationsEnabled: value
+      });
+      // Update badge immediately after changing setting
+      await updateAppBadge();
+    } catch (error) {
+      console.error('Failed to update badge notifications setting:', error);
+      alert('Failed to update badge notifications setting');
+      setBadgeNotificationsEnabled(!value);
+    }
+  };
+
+  const handleToggleBadgeOverdue = async (value: boolean) => {
+    setBadgeOverdueEnabled(value);
+    try {
+      await updateBadgeOverdueEnabled(user.username, value);
+      setUser({
+        ...user,
+        badgeOverdueEnabled: value
+      });
+      // Update badge immediately after changing setting
+      await updateAppBadge();
+    } catch (error) {
+      console.error('Failed to update badge overdue setting:', error);
+      alert('Failed to update badge overdue setting');
+      setBadgeOverdueEnabled(!value);
     }
   };
 
@@ -392,43 +448,53 @@ export default function SettingsScreen() {
             </View>
 
             <TouchableOpacity
-              style={{
-                ...styles.button_filled,
-                marginBottom: 12,
-                opacity: updatingProfile ? 0.6 : 1
-              }}
               onPress={handleSaveProfile}
               disabled={updatingProfile}
-            >
-              <Text style={styles.buttonText_filled}>
-                {updatingProfile ? 'Saving...' : 'Save Profile'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               style={styles.button_outlined}
+              activeOpacity={0.1}
+            >
+              <Text style={styles.buttonText_outlined}>Save Profile</Text>
+            </TouchableOpacity>
+            <View style={{height: 40}} />
+
+
+
+            
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 15,
+              fontFamily: 'Inter'
+            }}>
+              Change Info
+            </Text>
+            <TouchableOpacity
               onPress={() => setShowUsernameDialog(true)}
+              style={{...styles.button_outlined, borderRadius: 8}}
+              activeOpacity={0.1}
             >
               <Text style={styles.buttonText_outlined}>Change Username</Text>
             </TouchableOpacity>
-
+            <View style={{height: 10}} />
             <TouchableOpacity
-              style={styles.button_outlined}
               onPress={() => setShowEmailDialog(true)}
+              style={{...styles.button_outlined, borderRadius: 8}}
+              activeOpacity={0.1}
             >
               <Text style={styles.buttonText_outlined}>Change Email</Text>
             </TouchableOpacity>
-
+            <View style={{height: 10}} />
             <TouchableOpacity
-              style={styles.button_outlined}
               onPress={() => setShowPasswordDialog(true)}
+              style={{...styles.button_outlined, borderRadius: 8}}
+              activeOpacity={0.1}
             >
               <Text style={styles.buttonText_outlined}>Change Password</Text>
             </TouchableOpacity>
-          </View>
 
           {/* Notifications Section */}
-          <View style={{ marginBottom: 30 }}>
+          <View style={{ marginBottom: 30, marginTop: 30 }}>
             <Text style={{
               fontSize: 18,
               fontWeight: '600',
@@ -439,74 +505,72 @@ export default function SettingsScreen() {
               Notifications
             </Text>
 
-            <View style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 12,
-              padding: 15,
-              marginBottom: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '500',
-                  color: theme.colors.onBackground,
-                  marginBottom: 4,
-                  fontFamily: 'Inter'
-                }}>
-                  Verse of the Day
-                </Text>
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter'
-                }}>
-                  Receive daily verse notifications
-                </Text>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Verse of the Day
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Receive daily verse notifications
+                  </Text>
+                </View>
+                <Switch
+                  value={subscribedVerseOfDay}
+                  onValueChange={handleToggleVerseOfDay}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
               </View>
-              <Switch
-                value={subscribedVerseOfDay}
-                onValueChange={handleToggleVerseOfDay}
-                trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
-                thumbColor={subscribedVerseOfDay ? theme.colors.surface : theme.colors.onSurfaceVariant}
-              />
+              <Divider />
             </View>
 
-            <View style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 12,
-              padding: 15,
-              marginBottom: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '500',
-                  color: theme.colors.onBackground,
-                  marginBottom: 4,
-                  fontFamily: 'Inter'
-                }}>
-                  Push Notifications
-                </Text>
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter'
-                }}>
-                  Receive push notifications on device
-                </Text>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Push Notifications
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Receive push notifications on device
+                  </Text>
+                </View>
+                <Switch
+                  value={pushNotificationsEnabled}
+                  onValueChange={handleTogglePushNotifications}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
               </View>
-              <Switch
-                value={pushNotificationsEnabled}
-                onValueChange={handleTogglePushNotifications}
-                trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
-                thumbColor={pushNotificationsEnabled ? theme.colors.surface : theme.colors.onSurfaceVariant}
-              />
+              <Divider />
             </View>
           </View>
 
@@ -522,111 +586,224 @@ export default function SettingsScreen() {
               Activity Notifications
             </Text>
 
-            <View style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 12,
-              padding: 15,
-              marginBottom: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '500',
-                  color: theme.colors.onBackground,
-                  marginBottom: 4,
-                  fontFamily: 'Inter'
-                }}>
-                  Memorized a Verse
-                </Text>
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter'
-                }}>
-                  Notify friends when you memorize a verse
-                </Text>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Memorized a Verse
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Notify friends when you memorize a verse
+                  </Text>
+                </View>
+                <Switch
+                  value={notifyMemorizedVerse}
+                  onValueChange={handleToggleNotifyMemorizedVerse}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
               </View>
-              <Switch
-                value={notifyMemorizedVerse}
-                onValueChange={handleToggleNotifyMemorizedVerse}
-                trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
-                thumbColor={notifyMemorizedVerse ? theme.colors.surface : theme.colors.onSurfaceVariant}
-              />
+              <Divider />
             </View>
 
-            <View style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 12,
-              padding: 15,
-              marginBottom: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '500',
-                  color: theme.colors.onBackground,
-                  marginBottom: 4,
-                  fontFamily: 'Inter'
-                }}>
-                  Published Collection
-                </Text>
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter'
-                }}>
-                  Notify friends when you publish a collection
-                </Text>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Published Collection
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Notify friends when you publish a collection
+                  </Text>
+                </View>
+                <Switch
+                  value={notifyPublishedCollection}
+                  onValueChange={handleToggleNotifyPublishedCollection}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
               </View>
-              <Switch
-                value={notifyPublishedCollection}
-                onValueChange={handleToggleNotifyPublishedCollection}
-                trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
-                thumbColor={notifyPublishedCollection ? theme.colors.surface : theme.colors.onSurfaceVariant}
-              />
+              <Divider />
             </View>
 
-            <View style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 12,
-              padding: 15,
-              marginBottom: 10,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '500',
-                  color: theme.colors.onBackground,
-                  marginBottom: 4,
-                  fontFamily: 'Inter'
-                }}>
-                  Collection Saved
-                </Text>
-                <Text style={{
-                  fontSize: 14,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter'
-                }}>
-                  Get notified when someone saves your published collection
-                </Text>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Collection Saved
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Get notified when someone saves your published collection
+                  </Text>
+                </View>
+                <Switch
+                  value={notifyCollectionSaved}
+                  onValueChange={handleToggleNotifyCollectionSaved}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
               </View>
-              <Switch
-                value={notifyCollectionSaved}
-                onValueChange={handleToggleNotifyCollectionSaved}
-                trackColor={{ false: theme.colors.onSurfaceVariant, true: theme.colors.primary }}
-                thumbColor={notifyCollectionSaved ? theme.colors.surface : theme.colors.onSurfaceVariant}
-              />
+              <Divider />
+            </View>
+
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Note Likes
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Get notified when someone likes your note
+                  </Text>
+                </View>
+                <Switch
+                  value={notifyNoteLiked}
+                  onValueChange={handleToggleNotifyNoteLiked}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
+              </View>
+              <Divider />
             </View>
           </View>
+
+          {/* Badge Settings Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 15,
+              fontFamily: 'Inter'
+            }}>
+              App Icon Badge
+            </Text>
+
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Show Notifications
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Show unread notifications count on app icon
+                  </Text>
+                </View>
+                <Switch
+                  value={badgeNotificationsEnabled}
+                  onValueChange={handleToggleBadgeNotifications}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
+              </View>
+              <Divider />
+            </View>
+
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Show Overdue Verses
+                  </Text>
+                  <Text style={{
+                    fontSize: 13,
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter'
+                  }}>
+                    Show overdue verses count on app icon
+                  </Text>
+                </View>
+                <Switch
+                  value={badgeOverdueEnabled}
+                  onValueChange={handleToggleBadgeOverdue}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
+              </View>
+              <Divider />
+            </View>
+          </View>
+        </View>
 
           {/* Appearance Section */}
           <View style={{ marginBottom: 30 }}>
@@ -655,7 +832,7 @@ export default function SettingsScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     borderWidth: 1,
-                    borderColor: isSelected ? theme.colors.primary : theme.colors.surface2,
+                    borderColor: isSelected ? theme.colors.onBackground : theme.colors.surface2,
                     gap: 12,
                   }}
                 >
@@ -694,19 +871,21 @@ export default function SettingsScreen() {
               VerseMemorization Pro
             </Text>
 
-            <View style={{
-              backgroundColor: theme.colors.primaryContainer || theme.colors.surface,
-              borderRadius: 16,
-              padding: 20,
-              marginBottom: 12,
-              borderWidth: 1,
-              borderColor: theme.colors.primary || theme.colors.surface2,
-            }}>
+            <View
+              style={{
+                backgroundColor: theme.colors.surface,
+                borderRadius: 16,
+                padding: 20,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: theme.colors.outline,
+              }}
+            >
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                 <Ionicons 
                   name="star" 
                   size={24} 
-                  color={theme.colors.primary}
+                  color={theme.colors.onBackground}
                   style={{ marginRight: 12 }}
                 />
                 <Text style={{
@@ -729,22 +908,25 @@ export default function SettingsScreen() {
               </Text>
               <TouchableOpacity
                 style={{
-                  backgroundColor: theme.colors.primary,
+                  backgroundColor: theme.colors.background,
                   borderRadius: 12,
                   paddingVertical: 14,
                   paddingHorizontal: 24,
+                  borderWidth: 0.5,
+                  borderColor: theme.colors.surface,
                   alignItems: 'center',
                   flexDirection: 'row',
                   justifyContent: 'center',
                   gap: 8,
                 }}
                 onPress={() => router.push('/pro')}
+                activeOpacity={0.8}
               >
-                <Ionicons name="star" size={20} color={theme.colors.onPrimary || '#fff'} />
+                <Ionicons name="star" size={20} color={theme.colors.onPrimary} />
                 <Text style={{
                   fontSize: 16,
                   fontWeight: '600',
-                  color: theme.colors.onPrimary || '#fff',
+                  color: theme.colors.onPrimary,
                   fontFamily: 'Inter'
                 }}>
                   Upgrade to Pro

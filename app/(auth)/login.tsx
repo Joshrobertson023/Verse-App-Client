@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { TextInput } from 'react-native-paper';
+import { Alert, Keyboard, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { HelperText, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Button from '../components/Button';
-import checkUsernameAvailable, { getStreakLength, getUserCollections, getUserPasswordHash, loginUser } from '../db';
+import checkUsernameAvailable, { checkIfBanned, getActiveBan, getStreakLength, getUserCollections, getUserPasswordHash, loginUser } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -24,11 +24,17 @@ export default function LoginScreen() {
   const setUser = useAppStore((state) => state.setUser);
   const setCollections = useAppStore((state) => state.setCollections);
   const [showPassword, setShowPassword] = useState(false);
+  const [usernameEmpty, setUsernameEmpty] = useState(false);
+const [passwordEmpty, setPasswordEmpty] = useState(false);
 
 const handleTextChange = (field: string, text: string) => {    
     setLoginInfo({ ...loginInfo, [field]: text });
     
-    if (errorMessage.includes('enter all fields')) setErrorMessage('');
+    if (errorMessage.includes('enter all fields')) {
+        setErrorMessage('');
+        setUsernameEmpty(false);
+        setPasswordEmpty(false);
+    }
 };
 
 const nextClick = async () => {
@@ -41,6 +47,10 @@ const nextClick = async () => {
 
         if (!username || !password) {
             setErrorMessage('Please enter all fields');
+            if (!password)
+                setPasswordEmpty(true);
+            if (!username)
+                setUsernameEmpty(true);
             setLoading(false);
             return;
         }
@@ -60,15 +70,43 @@ const nextClick = async () => {
 
         const usernameAvailable = await checkUsernameAvailable(username); 
         if (usernameAvailable) {
-            setErrorMessage('Username does not exist');
+            Alert.alert(
+              'Error logging in ',
+              'Username does not exist.',
+              [
+                { text: 'OK', onPress: () => console.log('OK Pressed') }
+              ]
+            );
             setLoading(false);
             return;
         }
 
         const hashedPassword = await getUserPasswordHash(username);
         if (hashedPassword !== password.trim()) {
-            setErrorMessage('Incorrect password');
+            Alert.alert(
+              'Error logging in ',
+              'Password is incorrect.',
+              [
+                { text: 'OK', onPress: () => console.log('OK Pressed') }
+              ]
+            );
             setLoading(false);
+            return;
+        }
+
+        // Check if user is banned before logging in
+        const isBanned = await checkIfBanned(username);
+        if (isBanned) {
+            const activeBan = await getActiveBan(username);
+            setLoading(false);
+            router.push({
+                pathname: '/(auth)/banned',
+                params: {
+                    reason: activeBan?.reason || 'Your account has been banned.',
+                    banDate: activeBan?.banDate || new Date().toISOString(),
+                    banExpireDate: activeBan?.banExpireDate || null
+                }
+            });
             return;
         }
 
@@ -101,50 +139,48 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            >
-                <ScrollView 
-                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-                    keyboardShouldPersistTaps="handled"
-                >
-                    <View style={{...styles.centered, marginBottom: 150}}>
-                <Text style={{...styles.text, marginBottom: 20}}>Login to Your Account:</Text>
-                <TextInput keyboardType="default"
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            label="Username" mode="outlined" style={styles.input} value={username}
-                            onChangeText={(text) => handleTextChange('username', text)} />
-                <TextInput keyboardType="default"
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            autoComplete="password"
-                            textContentType="password"
-                            secureTextEntry={!showPassword}
-                            label="Password" mode="outlined" style={styles.input} value={password} 
-                            right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} style={{marginTop: 25}} onPress={() => setShowPassword((prev) => !prev)} />}
-                            onChangeText={(text) => handleTextChange('password', text)} />
-                {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
-                <Button 
-                  title="Login" 
-                  onPress={() => {nextClick()}} 
-                  variant="filled"
-                  loading={loading}
-                  style={{ marginTop: 12 }}
-                />
-                <View style={{ marginTop: 16, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
-                    <TouchableOpacity onPress={() => router.push('/(auth)/forgotUsername')}>
-                        <Text style={{ ...styles.tinyText, color: theme.colors.primary, marginBottom: 10 }}>Forgot Username</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => router.push('/(auth)/forgotPassword')}>
-                        <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Forgot Password</Text>
-                    </TouchableOpacity>
-                </View>
+            <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+                <View style={{...styles.centered, marginBottom: 150, width: '100%', paddingHorizontal: 20 }}>
+                    <Text style={{...styles.text, marginBottom: 20}}>Login to Your Account:</Text>
+                    <TextInput keyboardType="default"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                error={usernameEmpty}
+                                label="Username" mode="outlined" style={styles.input} value={username}
+                                onChangeText={(text) => handleTextChange('username', text)} />
+                    <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={usernameEmpty}>
+                        Enter your username
+                    </HelperText>
+                    <TextInput keyboardType="default"
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                autoComplete="password"
+                                textContentType="password"
+                                error={passwordEmpty}
+                                secureTextEntry={!showPassword}
+                                label="Password" mode="outlined" style={{...styles.input}} value={password} 
+                                right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} style={{marginTop: 5}} onPress={() => setShowPassword((prev) => !prev)} />}
+                                onChangeText={(text) => handleTextChange('password', text)} />
+                    <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={passwordEmpty}>
+                        Enter your password
+                    </HelperText>
+                    <Button 
+                      title="Login" 
+                      onPress={() => {nextClick()}} 
+                      variant="filled"
+                      loading={loading}
+                      style={{ marginTop: 12, width: '100%' }}
+                    />
+                    <View style={{ marginTop: 20, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                        <TouchableOpacity onPress={() => router.push('/(auth)/forgotUsername')}>
+                            <Text style={{ ...styles.tinyText, color: theme.colors.primary, marginBottom: 14 }}>Forgot Username</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => router.push('/(auth)/forgotPassword')}>
+                            <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Forgot Password</Text>
+                        </TouchableOpacity>
                     </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
+                </View>
+                </TouchableWithoutFeedback>
         </SafeAreaView>
     )
 }

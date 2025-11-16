@@ -86,11 +86,7 @@ export default function ExploreCollectionCard({ collection, onSaved, fullWidth =
         return;
       }
 
-      if (collections.length >= 40) {
-        setSnackbarMessage('You can create up to 40 collections');
-        setSnackbarVisible(true);
-        return;
-      }
+      // Allow unlimited saves of published collections (no pro gating on count)
 
       const normalizeReference = (reference: string | undefined | null) =>
         reference?.trim().replace(/\s+/g, ' ');
@@ -263,39 +259,104 @@ export default function ExploreCollectionCard({ collection, onSaved, fullWidth =
         padding: 14,
         marginHorizontal: fullWidth ? 0 : 8,
         backgroundColor: theme.colors.surface,
+        height: 140, // enforce consistent height
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text numberOfLines={1} style={{ ...styles.text, fontWeight: 700, marginRight: 12 }}>{collection.title}</Text>
-        <TouchableOpacity
-          onPress={handleSave}
-          disabled={isSaving}
-          style={{
-            paddingHorizontal: 20,
-            paddingVertical: 4,
-            marginTop: -12,
-            borderRadius: 8,
-            backgroundColor: theme.colors.surface2,
-            opacity: isSaving ? 0.6 : 1,
-          }}
-        >
-          {isSaving ? (
-            <ActivityIndicator size="small" color={theme.colors.onSurface} />
-          ) : (
-            <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0 }}>Save</Text>
-          )}
-        </TouchableOpacity>
+        <Text numberOfLines={1} style={{ ...styles.text, fontWeight: 700, marginRight: 12 }}>
+          {collection.title && collection.title.length >= 17 
+            ? `${collection.title.substring(0, 14)}...` 
+            : collection.title}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="people" size={14} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
+            <Text style={{ ...styles.tinyText, fontSize: 14, marginBottom: 0 }}>{savedCount}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={handleSave}
+            disabled={isSaving}
+            style={{
+              paddingHorizontal: 20,
+              paddingVertical: 4,
+              marginTop: -12,
+              borderRadius: 8,
+              backgroundColor: theme.colors.surface2,
+              opacity: isSaving ? 0.6 : 1,
+            }}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color={theme.colors.onSurface} />
+            ) : (
+              <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0 }}>Save</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: -4 }}>
-        <Ionicons name="people" size={14} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
-        <Text style={{...styles.tinyText, fontSize: 14}}>{savedCount} {(savedCount === 1 ? 'Save' : 'Saves')}</Text>
-      </View>
+      {/* Description snippet under title (first few words with ellipsis) */}
+      {typeof collection.description === 'string' && collection.description.trim().length > 0 && (
+        <Text
+          numberOfLines={2}
+          style={{
+            ...styles.text,
+            fontFamily: 'Noto Serif',
+            fontSize: 16,
+            fontStyle: 'italic',
+            marginTop: 6,
+          }}
+        >
+          {collection.description.trim()}
+        </Text>
+      )}
+
+      <View style={{ height: 4 }} />
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
         <Text style={styles.tinyText}>{collection.userVerses?.length ?? 0} {(collection.userVerses?.length ?? 0) === 1 ? 'passage' : 'passages'}</Text>
         <Text style={styles.tinyText}>@{collection.author}</Text>
       </View>
+
+      {/* Category tags at bottom */}
+      {(() => {
+        const allNames: string[] =
+          (Array.isArray((collection as any).categories) &&
+            (collection as any).categories.map((c: any) => typeof c === 'string' ? c : (c?.name ?? '')).filter((n: string) => n)) ||
+          (Array.isArray((collection as any).categoryNames) && (collection as any).categoryNames) ||
+          [];
+        const maxChips = 3;
+        const catNames = allNames.slice(0, maxChips);
+        if (catNames.length === 0) return null;
+        return (
+          <View style={{ marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {catNames.map((name, idx) => (
+              <View
+                key={`${name}-${idx}`}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 999,
+                  backgroundColor: theme.colors.surface2,
+                }}
+              >
+                <Text style={{ ...styles.tinyText, marginBottom: 0 }}>{name}</Text>
+              </View>
+            ))}
+            {allNames.length > maxChips && (
+              <View
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 999,
+                  backgroundColor: theme.colors.surface2,
+                }}
+              >
+                <Text style={{ ...styles.tinyText, marginBottom: 0 }}>{`+${allNames.length - maxChips}`}</Text>
+              </View>
+            )}
+          </View>
+        );
+      })()}
       <Snackbar
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}

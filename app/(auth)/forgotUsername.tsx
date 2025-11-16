@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, TextInput } from 'react-native-paper';
+import { Alert, Keyboard, ScrollView, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, HelperText, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { requestUsernameReminder } from '../db';
 import useStyles from '../styles';
@@ -13,19 +13,23 @@ export default function ForgotUsernameScreen() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [firstNameEmpty, setFirstNameEmpty] = useState(false);
+  const [lastNameEmpty, setLastNameEmpty] = useState(false);
+  const [emailEmpty, setEmailEmpty] = useState(false);
 
   const handleSubmit = async () => {
     try {
       Keyboard.dismiss();
       setLoading(true);
-      setErrorMessage('');
       setSuccessMessage('');
 
       if (!firstName.trim() || !lastName.trim() || !email.trim()) {
-        setErrorMessage('Please complete all fields.');
+        setFirstNameEmpty(!firstName.trim());
+        setLastNameEmpty(!lastName.trim());
+        setEmailEmpty(!email.trim());
+        Alert.alert('Missing information', 'Please complete all fields.', [{ text: 'OK' }]);
         setLoading(false);
         return;
       }
@@ -35,7 +39,7 @@ export default function ForgotUsernameScreen() {
       setSuccessMessage('An email with your username(s) has been sent.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send reminder.';
-      setErrorMessage(message);
+      Alert.alert('Unable to send reminder', message, [{ text: 'OK' }]);
     } finally {
       setLoading(false);
     }
@@ -43,46 +47,52 @@ export default function ForgotUsernameScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
         <ScrollView 
           contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ ...styles.centered, marginBottom: 150 }}>
+          <View style={{ ...styles.centered, marginBottom: 150, paddingHorizontal: 20 }}>
         <Text style={{ ...styles.text, marginBottom: 20 }}>Forgot Username</Text>
         <TextInput
           label="First Name"
           mode="outlined"
           style={styles.input}
+          error={firstNameEmpty}
           value={firstName}
           onChangeText={(text) => setFirstName(text)}
           autoCapitalize="words"
           autoCorrect={false}
         />
+        <HelperText style={{ textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25 }} type="error" visible={firstNameEmpty}>
+          Enter your first name
+        </HelperText>
         <TextInput
           label="Last Name"
           mode="outlined"
           style={styles.input}
+          error={lastNameEmpty}
           value={lastName}
           onChangeText={(text) => setLastName(text)}
           autoCapitalize="words"
           autoCorrect={false}
         />
+        <HelperText style={{ textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25 }} type="error" visible={lastNameEmpty}>
+          Enter your last name
+        </HelperText>
         <TextInput
           label="Email"
           mode="outlined"
           keyboardType="email-address"
           style={styles.input}
+          error={emailEmpty}
           value={email}
           onChangeText={(text) => setEmail(text)}
           autoCapitalize="none"
         />
-
-        {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
+        <HelperText style={{ textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25 }} type="error" visible={emailEmpty}>
+          Enter your email
+        </HelperText>
         {successMessage ? (
           <Text
             style={{
@@ -107,7 +117,7 @@ export default function ForgotUsernameScreen() {
         </TouchableOpacity>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 }

@@ -1,8 +1,8 @@
 import { Link, router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, TextInput } from 'react-native-paper';
+import { Alert, Keyboard, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, HelperText, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createCollectionDB, createUser, getUserCollections, loginUser, updateCollectionsOrder } from '../db';
 import { Collection, useAppStore, User } from '../store';
@@ -22,6 +22,9 @@ export default function CreatePasswordScreen() {
   const setUser = useAppStore((state) => state.setUser);
   const user = useAppStore((state) => state.user);
   const setCollections = useAppStore((state) => state.setCollections);
+  const [passwordEmpty, setPasswordEmpty] = useState(false);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const [passwordTooShort, setPasswordTooShort] = useState(false);
 
 const nextClick = async () => {
     try {
@@ -30,19 +33,20 @@ const nextClick = async () => {
         setLoading(true);
 
         if (!password || !confirmPassword) {
-            setErrorMessage('Please enter all fields');
+            setPasswordEmpty(!password);
+            setConfirmEmpty(!confirmPassword);
             setLoading(false);
             return;
         }
 
         if (password !== confirmPassword) {
-            setErrorMessage('Passwords do not match');
+            Alert.alert('Mismatch', 'Passwords do not match.', [{ text: 'OK' }]);
             setLoading(false);
             return;
         }
 
         if (password.length < 11) {
-            setErrorMessage('Password must be at least 11 characters long');
+            setPasswordTooShort(true);
             setLoading(false);
             return;
         }
@@ -89,7 +93,7 @@ const nextClick = async () => {
         router.push('/');
     } catch (error) {
         console.error(error);
-        alert('An error occurred while creating your account. Please try again. | ' + error);
+        Alert.alert('Create account failed', 'An error occurred while creating your account. Please try again.', [{ text: 'OK' }]);
         setLoading(false);
         return;
     }
@@ -98,16 +102,8 @@ const nextClick = async () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <KeyboardAvoidingView 
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{ flex: 1 }}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-            >
-                <ScrollView 
-                    contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-                    keyboardShouldPersistTaps="handled"
-                >
-                    <View style={{...styles.centered, marginBottom: 150}}>
+                    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+                    <View style={{...styles.centered, marginBottom: 150, paddingHorizontal: 20}}>
                 <Text style={{...styles.text, marginBottom: 20}}>Create a Password:</Text>
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
@@ -115,19 +111,39 @@ const nextClick = async () => {
                             autoComplete="password"
                             textContentType="password"
                             secureTextEntry={!showPassword}
+                            error={passwordEmpty}
                             label="Password" mode="outlined" style={styles.input} value={password}
                             right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword((prev) => !prev)} />}
-                            onChangeText={(text) => setPassword(text)} />
+                            onChangeText={(text) => {
+                                setPassword(text);
+                                if (text) setPasswordEmpty(false);
+                                // Live validation for length
+                                const trimmed = text;
+                                if (trimmed.length > 0 && trimmed.length < 11) {
+                                  setPasswordTooShort(true);
+                                } else {
+                                  setPasswordTooShort(false);
+                                }
+                            }} />
+                <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={passwordEmpty}>
+                    Enter your password
+                </HelperText>
+                <HelperText style={{textAlign: 'left', width: '100%', marginTop: -5, marginBottom: -5, height: 25}} type="error" visible={passwordTooShort}>
+                    Password must be at least 11 characters long.
+                </HelperText>
                 <TextInput keyboardType="default"
                             autoCapitalize="none"
                             autoCorrect={false}
                             autoComplete="password"
                             textContentType="password"
                             secureTextEntry={!showConfirmPassword}
+                            error={confirmEmpty}
                             label="Confirm Password" mode="outlined" style={styles.input} value={confirmPassword} 
                             right={<TextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword((prev) => !prev)} />}
                             onChangeText={(text) => setConfirmPassword(text)} />
-                {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
+                <HelperText style={{textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25}} type="error" visible={confirmEmpty}>
+                    Confirm your password
+                </HelperText>
                 <TouchableOpacity style={{...styles.button_filled, marginTop: 12}} onPress={() => {nextClick()}}>
                     {loading ? (
                         <Text style={styles.buttonText_filled}>
@@ -150,8 +166,7 @@ const nextClick = async () => {
                   .
                 </Text>
                     </View>
-                </ScrollView>
-            </KeyboardAvoidingView>
+                    </TouchableWithoutFeedback>
         </SafeAreaView>
     )
 }

@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, TextInput } from 'react-native-paper';
+import { Alert, Keyboard, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, HelperText, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { requestPasswordResetOtp } from '../db';
 import useStyles from '../styles';
@@ -13,19 +13,25 @@ export default function ForgotPasswordScreen() {
 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [usernameEmpty, setUsernameEmpty] = useState(false);
+  const [emailEmpty, setEmailEmpty] = useState(false);
 
   const handleSubmit = async () => {
     try {
       Keyboard.dismiss();
       setLoading(true);
-      setErrorMessage('');
       setSuccessMessage('');
 
       if (!username.trim() || !email.trim()) {
-        setErrorMessage('Please complete all fields.');
+        setUsernameEmpty(!username.trim());
+        setEmailEmpty(!email.trim());
+        Alert.alert(
+          'Missing information',
+          'Please complete all fields.',
+          [{ text: 'OK' }]
+        );
         setLoading(false);
         return;
       }
@@ -41,7 +47,7 @@ export default function ForgotPasswordScreen() {
       }, 750);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to send reset code.';
-      setErrorMessage(message);
+      Alert.alert('Unable to send code', message, [{ text: 'OK' }]);
     } finally {
       setLoading(false);
     }
@@ -49,37 +55,36 @@ export default function ForgotPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <ScrollView 
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={{ ...styles.centered, marginBottom: 150 }}>
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <View style={{ ...styles.centered, marginBottom: 150, paddingHorizontal: 20 }}>
         <Text style={{ ...styles.text, marginBottom: 20 }}>Forgot Password</Text>
         <TextInput
           label="Username"
           mode="outlined"
           style={styles.input}
+          error={usernameEmpty}
           value={username}
           onChangeText={(text) => setUsername(text)}
           autoCapitalize="none"
           autoCorrect={false}
         />
+        <HelperText style={{ textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25 }} type="error" visible={usernameEmpty}>
+          Enter your username
+        </HelperText>
         <TextInput
           label="Email"
           mode="outlined"
           keyboardType="email-address"
           style={styles.input}
+          error={emailEmpty}
           value={email}
           onChangeText={(text) => setEmail(text)}
           autoCapitalize="none"
         />
+        <HelperText style={{ textAlign: 'left', width: '100%', marginTop: -15, marginBottom: -5, height: 25 }} type="error" visible={emailEmpty}>
+          Enter your email
+        </HelperText>
 
-        {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
         {successMessage ? (
           <Text
             style={{
@@ -102,9 +107,8 @@ export default function ForgotPasswordScreen() {
             <Text style={styles.buttonText_filled}>Send Code</Text>
           )}
         </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 }

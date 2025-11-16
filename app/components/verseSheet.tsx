@@ -1,10 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import BottomSheet, { BottomSheetView, BottomSheetScrollView } from '@gorhom/bottom-sheet';
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Portal, Snackbar, Checkbox } from 'react-native-paper';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getUserCollections, refreshUser, updateCollectionDB, updateCollectionsOrder, addHighlight, removeHighlight, checkHighlight, createNote, getPublicNotesByVerseReference, VerseNote } from '../db';
-import { Collection, UserVerse, Verse, useAppStore } from '../store';
+import BottomSheet, { BottomSheetScrollView, BottomSheetView } from '@gorhom/bottom-sheet';
+import { router } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Dimensions, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
+import { Checkbox, Portal, Snackbar } from 'react-native-paper';
+import { formatDate } from '../dateUtils';
+import { addHighlight, addUserVersesToNewCollection, checkHighlight, createCollectionDB, createNote, getMostRecentCollectionId, getNotesByVerseReference, getPublicNotesByVerseReference, getUserCollections, likeNote, refreshUser, removeHighlight, unlikeNote, updateCollectionDB, updateCollectionsOrder, VerseNote } from '../db';
+import { Collection, useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 import ShareVerseSheet from './shareVerseSheet';
@@ -40,7 +43,12 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
     const [isHighlighted, setIsHighlighted] = useState(false);
     const [isTogglingHighlight, setIsTogglingHighlight] = useState(false);
     const [notes, setNotes] = useState<VerseNote[]>([]);
+    const [privateNotes, setPrivateNotes] = useState<VerseNote[]>([]);
     const [loadingNotes, setLoadingNotes] = useState(false);
+    const [loadingPrivateNotes, setLoadingPrivateNotes] = useState(false);
+    // Notes for each individual verse when multiple verses are selected
+    const [verseNotes, setVerseNotes] = useState<Map<string, { public: VerseNote[], private: VerseNote[] }>>(new Map());
+    const [loadingVerseNotes, setLoadingVerseNotes] = useState<Set<string>>(new Set());
     const [showAddNoteModal, setShowAddNoteModal] = useState(false);
     const [noteText, setNoteText] = useState('');
     const [isPublicNote, setIsPublicNote] = useState(false);
@@ -65,12 +73,14 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
         }
     }, [visible, readableReference, user?.username, verses]);
 
-    // Load public notes when sheet opens
+    // Load public and private notes when sheet opens
     useEffect(() => {
         if (visible && readableReference) {
             loadNotes();
+            loadPrivateNotes();
         } else {
             setNotes([]);
+            setPrivateNotes([]);
         }
     }, [visible, readableReference]);
 
@@ -78,12 +88,27 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
         if (!readableReference) return;
         setLoadingNotes(true);
         try {
-            const publicNotes = await getPublicNotesByVerseReference(readableReference);
+            const publicNotes = await getPublicNotesByVerseReference(readableReference, user?.username);
             setNotes(publicNotes);
         } catch (error) {
             console.error('Error loading notes:', error);
         } finally {
             setLoadingNotes(false);
+        }
+    };
+
+    const loadPrivateNotes = async () => {
+        if (!readableReference || !user?.username || !bookName || !chapter) return;
+        setLoadingPrivateNotes(true);
+        try {
+            // Get private notes for the current verse reference
+            const userNotes = await getNotesByVerseReference(readableReference, user.username);
+            const privateUserNotes = userNotes.filter((note: VerseNote) => !note.isPublic);
+            setPrivateNotes(privateUserNotes);
+        } catch (error) {
+            console.error('Error loading private notes:', error);
+        } finally {
+            setLoadingPrivateNotes(false);
         }
     };
 
@@ -100,21 +125,119 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
         try {
             // Pass readableReference as both verseReference and originalReference
             // The server will parse it and create notes for all individual verses
-            await createNote(readableReference, user.username, noteText.trim(), isPublicNote, readableReference);
+            const createdNote = await createNote(readableReference, user.username, noteText.trim(), isPublicNote, readableReference);
             setShowAddNoteModal(false);
             setNoteText('');
             setIsPublicNote(false);
-            setSnackbarMessage(isPublicNote ? 'Note created! It will be visible to others once approved.' : 'Note created!');
-            setSnackbarVisible(true);
-            // Reload notes if public
-            if (isPublicNote) {
-                await loadNotes();
+            
+            // Add note to memory immediately and reload
+            const noteWithApproved = { ...createdNote, approved: true };
+            
+            if (verses.length > 1) {
+                // Multiple verses mode - add note to memory for each verse, then reload
+                for (const verse of verses) {
+                    const verseRef = verse.verse_reference;
+                    if (verseRef) {
+                        // Add note to memory immediately
+                        setVerseNotes(prev => {
+                            const newMap = new Map(prev);
+                            const existing = newMap.get(verseRef) || { public: [], private: [] };
+                            if (isPublicNote) {
+                                newMap.set(verseRef, {
+                                    public: [...existing.public, noteWithApproved],
+                                    private: existing.private
+                                });
+                            } else {
+                                newMap.set(verseRef, {
+                                    public: existing.public,
+                                    private: [...existing.private, noteWithApproved]
+                                });
+                            }
+                            return newMap;
+                        });
+                        // Reload to get any other updates, but preserve our newly created note
+                        const reloadedData = await Promise.all([
+                            getPublicNotesByVerseReference(verseRef, user?.username),
+                            getNotesByVerseReference(verseRef, user.username)
+                        ]);
+                        const [reloadedPublic, allReloaded] = reloadedData;
+                        const reloadedPrivate = allReloaded.filter((note: VerseNote) => !note.isPublic);
+                        
+                        setVerseNotes(prev => {
+                            const newMap = new Map(prev);
+                            
+                            // Merge reloaded notes with our created note
+                            const mergedPublic = [...reloadedPublic];
+                            const hasCreatedInPublic = mergedPublic.some(n => n.id === createdNote.id);
+                            if (!hasCreatedInPublic && isPublicNote) {
+                                mergedPublic.push(noteWithApproved);
+                            }
+                            
+                            const mergedPrivate = [...reloadedPrivate];
+                            const hasCreatedInPrivate = mergedPrivate.some(n => n.id === createdNote.id);
+                            if (!hasCreatedInPrivate && !isPublicNote) {
+                                mergedPrivate.push(noteWithApproved);
+                            }
+                            
+                            newMap.set(verseRef, {
+                                public: mergedPublic,
+                                private: mergedPrivate
+                            });
+                            return newMap;
+                        });
+                    }
+                }
+            } else {
+                // Single verse mode - add to memory immediately with approved status
+                if (isPublicNote) {
+                    setNotes(prev => {
+                        // Check if note already exists (from reload), if not add it
+                        const exists = prev.some(n => n.id === createdNote.id);
+                        if (exists) {
+                            // Update existing note
+                            return prev.map(n => n.id === createdNote.id ? noteWithApproved : n);
+                        }
+                        return [...prev, noteWithApproved];
+                    });
+                } else {
+                    setPrivateNotes(prev => {
+                        const exists = prev.some(n => n.id === createdNote.id);
+                        if (exists) {
+                            return prev.map(n => n.id === createdNote.id ? noteWithApproved : n);
+                        }
+                        return [...prev, noteWithApproved];
+                    });
+                }
+                // Reload to get any other updates, but merge with existing notes
+                const reloadedPublicNotes = await getPublicNotesByVerseReference(readableReference, user?.username);
+                const reloadedPrivateNotes = user?.username && bookName && chapter
+                    ? (await getNotesByVerseReference(readableReference, user.username)).filter((note: VerseNote) => !note.isPublic)
+                    : [];
+                
+                // Merge reloaded notes with the note we just created
+                setNotes(prev => {
+                    const merged = [...reloadedPublicNotes];
+                    // Add our created note if it's not in the reloaded list
+                    const hasCreatedNote = merged.some(n => n.id === createdNote.id);
+                    if (!hasCreatedNote && isPublicNote) {
+                        merged.push(noteWithApproved);
+                    }
+                    return merged;
+                });
+                
+                if (user?.username && bookName && chapter) {
+                    setPrivateNotes(prev => {
+                        const merged = [...reloadedPrivateNotes];
+                        const hasCreatedNote = merged.some(n => n.id === createdNote.id);
+                        if (!hasCreatedNote && !isPublicNote) {
+                            merged.push(noteWithApproved);
+                        }
+                        return merged;
+                    });
+                }
             }
         } catch (error) {
             console.error('Error creating note:', error);
-            const errorMessage = error instanceof Error ? error.message : 'Failed to create note';
-            setSnackbarMessage(`Error creating note: ${errorMessage}`);
-            setSnackbarVisible(true);
         } finally {
             setIsCreatingNote(false);
         }
@@ -132,7 +255,18 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
     }, [onClose]);
 
     const handleManualDismiss = useCallback(() => {
-        sheetRef.current?.close();
+        try {
+            // Dismiss keyboard before closing to prevent crashes
+            const { Keyboard } = require('react-native');
+            Keyboard.dismiss();
+            // Small delay to ensure keyboard is dismissed
+            setTimeout(() => {
+                sheetRef.current?.close();
+            }, 100);
+        } catch (error) {
+            console.error('Error dismissing sheet:', error);
+            sheetRef.current?.close();
+        }
     }, []);
 
     useEffect(() => {
@@ -150,6 +284,127 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
             setShowAddNoteModal(false);
         }
     }, [visible]);
+
+    // Load notes for each verse when multiple verses are selected
+    const loadNotesForVerse = useCallback(async (verseRef: string) => {
+        if (!user?.username || loadingVerseNotes.has(verseRef)) return;
+        
+        setLoadingVerseNotes(prev => new Set(prev).add(verseRef));
+        try {
+            const [publicNotes, allNotes] = await Promise.all([
+                getPublicNotesByVerseReference(verseRef, user.username),
+                getNotesByVerseReference(verseRef, user.username)
+            ]);
+            const privateUserNotes = allNotes.filter((note: VerseNote) => !note.isPublic);
+            
+            setVerseNotes(prev => {
+                const newMap = new Map(prev);
+                newMap.set(verseRef, { public: publicNotes, private: privateUserNotes });
+                return newMap;
+            });
+        } catch (error) {
+            console.error(`Error loading notes for ${verseRef}:`, error);
+        } finally {
+            setLoadingVerseNotes(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(verseRef);
+                return newSet;
+            });
+        }
+    }, [user?.username, loadingVerseNotes]);
+
+    // Load notes for all verses when sheet opens with multiple verses
+    useEffect(() => {
+        if (visible && verses.length > 1 && user?.username) {
+            verses.forEach(verse => {
+                const verseRef = verse.verse_reference;
+                if (verseRef && !verseNotes.has(verseRef)) {
+                    loadNotesForVerse(verseRef);
+                }
+            });
+        }
+    }, [visible, verses, user?.username, verseNotes, loadNotesForVerse]);
+
+    // Helper function to check if a verse reference contains multiple verses (e.g., "Genesis 1:1-2")
+    const isMultiVerseReference = (ref: string): boolean => {
+        if (!ref) return false;
+        // Check if reference contains a dash followed by a number (e.g., "1:1-2" or "1:1-3:5")
+        return /:\d+-\d+/.test(ref) || /-\d+/.test(ref);
+    };
+
+    // Combine all private notes from all verses and sort by date
+    const allPrivateNotes = useMemo(() => {
+        if (verses.length <= 1) {
+            return privateNotes;
+        }
+        const combined: VerseNote[] = [];
+        const seenNoteIds = new Set<number>();
+        verses.forEach(verse => {
+            const verseRef = verse.verse_reference;
+            if (verseRef) {
+                const notesForVerse = verseNotes.get(verseRef);
+                if (notesForVerse?.private) {
+                    notesForVerse.private.forEach(note => {
+                        // Deduplicate by note ID - each note should only appear once
+                        if (note.id && !seenNoteIds.has(note.id)) {
+                            seenNoteIds.add(note.id);
+                            combined.push(note);
+                        }
+                    });
+                }
+            }
+        });
+        // Sort by date created (most recent first)
+        return combined.sort((a, b) => {
+            const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+            const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+            return dateB - dateA;
+        });
+    }, [verses, verseNotes, privateNotes]);
+
+    // Combine all public notes from all verses and sort by date
+    const allPublicNotes = useMemo(() => {
+        if (verses.length <= 1) {
+            return notes;
+        }
+        const combined: VerseNote[] = [];
+        const seenNoteIds = new Set<number>();
+        verses.forEach(verse => {
+            const verseRef = verse.verse_reference;
+            if (verseRef) {
+                const notesForVerse = verseNotes.get(verseRef);
+                if (notesForVerse?.public) {
+                    notesForVerse.public.forEach(note => {
+                        // Deduplicate by note ID - each note should only appear once
+                        if (note.id && !seenNoteIds.has(note.id)) {
+                            seenNoteIds.add(note.id);
+                            combined.push(note);
+                        }
+                    });
+                }
+            }
+        });
+        // Sort by date created (most recent first)
+        return combined.sort((a, b) => {
+            const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+            const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+            return dateB - dateA;
+        });
+    }, [verses, verseNotes, notes]);
+
+    // Check if any verse notes are still loading
+    const isLoadingAnyVerseNotes = useMemo(() => {
+        if (verses.length <= 1) return false;
+        return verses.some(verse => {
+            const verseRef = verse.verse_reference;
+            return verseRef && loadingVerseNotes.has(verseRef);
+        });
+    }, [verses, loadingVerseNotes]);
+
+    // Calculate note card width for snap scrolling
+    const noteCardWidth = useMemo(() => {
+        return Dimensions.get('window').width * 0.75;
+    }, []);
 
     const handleSaveVerse = () => {
         if (!userVerse || verses.length === 0) return;
@@ -175,7 +430,14 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
 
     const handleCreateNewCollection = async () => {
         if (!userVerse || !user?.username || isCreatingNewCollection || !newCollectionTitle.trim()) return;
-        if (collections.length >= 40) {
+        
+        // Check collection limit based on paid status
+        const maxCollections = user.isPaid ? 40 : 5;
+        if (collections.length >= maxCollections) {
+            if (!user.isPaid) {
+                router.push('/pro');
+                return;
+            }
             setSnackbarMessage('You can create up to 40 collections.');
             setSnackbarVisible(true);
             return;
@@ -235,6 +497,17 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
         if (!pickedCollection || !userVerse || !user.username || isAddingToCollection) return;
 
         const readableRef = readableReference;
+        
+        // Check verse limit per collection for free users
+        if (!user.isPaid) {
+            const currentVerseCount = pickedCollection.userVerses?.length ?? 0;
+            const maxVersesPerCollection = 10;
+            
+            if (currentVerseCount >= maxVersesPerCollection) {
+                router.push('/pro');
+                return;
+            }
+        }
         
         // Check if verse already exists in collection
         const alreadyExists = pickedCollection.userVerses.some(
@@ -300,21 +573,16 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
             if (isHighlighted) {
                 await removeHighlight(user.username, readableReference);
                 setIsHighlighted(false);
-                setSnackbarMessage('Highlight removed');
             } else {
                 await addHighlight(user.username, readableReference);
                 setIsHighlighted(true);
-                setSnackbarMessage('Verse highlighted');
             }
-            setSnackbarVisible(true);
             // Notify parent to refresh highlights
             if (onHighlightChange) {
                 onHighlightChange();
             }
         } catch (error) {
             console.error('Error toggling highlight:', error);
-            setSnackbarMessage('Failed to update highlight');
-            setSnackbarVisible(true);
         } finally {
             setIsTogglingHighlight(false);
         }
@@ -344,6 +612,10 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                     index={visible ? 0 : -1}
                     snapPoints={snapPoints}
                     enablePanDownToClose
+                    enableOverDrag={false}
+                    android_keyboardInputMode="adjustResize"
+                    keyboardBehavior="interactive"
+                    keyboardBlurBehavior="restore"
                     onChange={handleSheetChange}
                     backgroundStyle={{ backgroundColor: theme.colors.background }}
                     handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
@@ -392,7 +664,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
 
                             {verses.length > 1 ? (
                                 // Show individual stats for each verse when multiple verses are selected - Table format
-                                <View style={{ marginBottom: 30 }}>
+                                <View style={{ marginTop: 0, marginBottom: 0 }}>
                                     {/* Table Header */}
                                     <View style={{ 
                                         flexDirection: 'row', 
@@ -450,7 +722,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                         
                                         return (
                                             <View 
-                                                key={verseRef || index} 
+                                                key={verseRef || index}
                                                 style={{ 
                                                     flexDirection: 'row', 
                                                     alignItems: 'center',
@@ -511,7 +783,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                 </View>
                             ) : (
                                 // Show aggregate stats for single verse (existing behavior)
-                                <View style={{ marginBottom: 30 }}>
+                                <View style={{ marginTop: 0, marginBottom: 0 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
                                         <Ionicons name="people" size={18} color={theme.colors.onBackground} />
                                         <Text style={{ color: theme.colors.onBackground, fontSize: 14, marginLeft: 10 }}>
@@ -528,7 +800,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                 </View>
                             )}
 
-                            <View style={{ flexDirection: 'row', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+                            <View style={{ flexDirection: 'row', gap: 16, marginTop: 40, marginBottom: 20, flexWrap: 'wrap' }}>
                                 <TouchableOpacity onPress={handleSaveVerse} activeOpacity={0.1} style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <Ionicons name="bookmark-outline" size={18} color={theme.colors.onBackground} />
                                     <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Save</Text>
@@ -572,51 +844,373 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                 )}
                             </View>
 
+                            {user?.username && (
                             <View style={{ marginTop: 20, marginBottom: 20 }}>
-                                <Text
-                                    style={{
-                                        fontFamily: 'Noto Serif bold',
-                                        fontSize: 20,
-                                        color: theme.colors.onBackground,
-                                        marginBottom: 12,
-                                    }}
-                                >
-                                    Notes
-                                </Text>
-                                {loadingNotes ? (
-                                    <ActivityIndicator size="small" color={theme.colors.onBackground} />
-                                ) : notes.length === 0 ? (
-                                    <Text style={{ color: theme.colors.onBackground, fontSize: 14, fontStyle: 'italic' }}>
-                                        No public notes yet. Be the first to add one!
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                    <Text
+                                        style={{
+                                            fontFamily: 'Noto Serif bold',
+                                            fontSize: 20,
+                                            color: theme.colors.onBackground,
+                                        }}
+                                    >
+                                        Private Notes
                                     </Text>
-                                ) : (
-                                    <View>
-                                        {notes.map((note) => (
-                                            <View
-                                                key={note.id}
-                                                style={{
-                                                    backgroundColor: theme.colors.surface,
-                                                    padding: 12,
-                                                    borderRadius: 8,
-                                                    marginBottom: 8,
-                                                }}
-                                            >
-                                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                                                    <Text style={{ color: theme.colors.onBackground, fontSize: 12, fontWeight: '600' }}>
-                                                        {note.username}
-                                                    </Text>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            onClose();
+                                            router.push({
+                                                pathname: '/notes/chapter/[bookName]/[chapter]',
+                                                params: { bookName: encodeURIComponent(bookName), chapter: chapter.toString(), type: 'private' }
+                                            } as any);
+                                        }}
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 6,
+                                        }}
+                                    >
+                                        <Text style={{
+                                            color: theme.colors.onBackground,
+                                            fontSize: 14,
+                                            fontWeight: '600',
+                                            fontFamily: 'Inter'
+                                        }}>
+                                            See All
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                                {verses.length > 1 ? (
+                                    // Multiple verses - combine all notes into one horizontal scroll section
+                                    isLoadingAnyVerseNotes ? (
+                                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                                    ) : allPrivateNotes.length === 0 ? (
+                                        <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, fontStyle: 'italic' }}>
+                                            No private notes
+                                        </Text>
+                                    ) : (
+                                        <ScrollView 
+                                            horizontal 
+                                            showsHorizontalScrollIndicator={false}
+                                            contentContainerStyle={{ paddingRight: 20 }}
+                                            snapToInterval={noteCardWidth + 13}
+                                            snapToAlignment="start"
+                                            decelerationRate="fast"
+                                            pagingEnabled={false}
+                                        >
+                                            {allPrivateNotes.map((note, noteIndex) => {
+                                                const noteIsMultiVerse = isMultiVerseReference(note.verseReference || '');
+                                                return (
+                                                <View key={note.id} style={{ flexDirection: 'row' }}>
+                                                    <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                        {/* Show verse reference when multiple verses are selected, but hide if note is for multiple verses */}
+                                                        {!noteIsMultiVerse && (
+                                                            <Text style={{ 
+                                                                color: theme.colors.onBackground, 
+                                                                fontSize: 12, 
+                                                                fontWeight: '600', 
+                                                                marginBottom: 4,
+                                                                fontFamily: 'Inter'
+                                                            }}>
+                                                                {note.verseReference}
+                                                            </Text>
+                                                        )}
+                                                        {note.originalReference && note.originalReference !== note.verseReference && (
+                                                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
+                                                                {note.originalReference}
+                                                            </Text>
+                                                        )}
+                                                        <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
+                                                            {note.text}
+                                                        </Text>
+                                                        {note.createdDate && (
+                                                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, marginTop: 6 }}>
+                                                                {formatDate(note.createdDate)}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                    {noteIndex < allPrivateNotes.length - 1 && (
+                                                        <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
+                                                    )}
                                                 </View>
-                                                {note.originalReference && note.originalReference !== note.verseReference && (
-                                                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
-                                                        {note.originalReference}
-                                                    </Text>
-                                                )}
-                                                <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
-                                                    {note.text}
-                                                </Text>
-                                            </View>
-                                        ))}
-                                    </View>
+                                            );
+                                            })}
+                                        </ScrollView>
+                                    )
+                                ) : (
+                                    // Single verse - existing behavior
+                                    loadingPrivateNotes ? (
+                                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                                    ) : privateNotes.length === 0 ? (
+                                        <Text style={{ color: theme.colors.onBackground, fontSize: 14, fontStyle: 'italic' }}>
+                                            No private notes yet. Add one above!
+                                        </Text>
+                                    ) : (
+                                        <ScrollView 
+                                            horizontal 
+                                            showsHorizontalScrollIndicator={false}
+                                            contentContainerStyle={{ paddingRight: 20 }}
+                                            snapToInterval={noteCardWidth + 13}
+                                            snapToAlignment="start"
+                                            decelerationRate="fast"
+                                            pagingEnabled={false}
+                                        >
+                                            {privateNotes.map((note, index) => (
+                                                <View key={note.id} style={{ flexDirection: 'row' }}>
+                                                    <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                        {note.originalReference && note.originalReference !== note.verseReference && (
+                                                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
+                                                                {note.originalReference}
+                                                            </Text>
+                                                        )}
+                                                        <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
+                                                            {note.text}
+                                                        </Text>
+                                                        {note.createdDate && (
+                                                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, marginTop: 6 }}>
+                                                                {formatDate(note.createdDate)}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                    {index < privateNotes.length - 1 && (
+                                                        <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
+                                                    )}
+                                                </View>
+                                            ))}
+                                        </ScrollView>
+                                    )
+                                )}
+                            </View>
+                            )}
+
+                            <View style={{ marginTop: 20, marginBottom: 20 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                                    <Text
+                                        style={{
+                                            fontFamily: 'Noto Serif bold',
+                                            fontSize: 20,
+                                            color: theme.colors.onBackground,
+                                        }}
+                                    >
+                                        Public Notes
+                                    </Text>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            onClose();
+                                            router.push({
+                                                pathname: '/notes/chapter/[bookName]/[chapter]',
+                                                params: { bookName: encodeURIComponent(bookName), chapter: chapter.toString(), type: 'public' }
+                                            } as any);
+                                        }}
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 6,
+                                        }}
+                                    >
+                                        <Text style={{
+                                            color: theme.colors.onBackground,
+                                            fontSize: 14,
+                                            fontWeight: '600',
+                                            fontFamily: 'Inter'
+                                        }}>
+                                            See All
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                                {verses.length > 1 ? (
+                                    // Multiple verses - combine all notes into one horizontal scroll section
+                                    isLoadingAnyVerseNotes ? (
+                                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                                    ) : allPublicNotes.length === 0 ? (
+                                        <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, fontStyle: 'italic' }}>
+                                            No public notes
+                                        </Text>
+                                    ) : (
+                                        <ScrollView 
+                                            horizontal 
+                                            showsHorizontalScrollIndicator={false}
+                                            contentContainerStyle={{ paddingRight: 20 }}
+                                            snapToInterval={noteCardWidth + 13}
+                                            snapToAlignment="start"
+                                            decelerationRate="fast"
+                                            pagingEnabled={false}
+                                        >
+                                            {allPublicNotes.map((note, noteIndex) => {
+                                                const noteIsMultiVerse = isMultiVerseReference(note.verseReference || '');
+                                                const handleLikeToggle = async () => {
+                                                    if (!user?.username) return;
+                                                    try {
+                                                        const result = note.userLiked
+                                                            ? await unlikeNote(note.id, user.username)
+                                                            : await likeNote(note.id, user.username);
+                                                        
+                                                        // Update the note in the verseNotes map
+                                                        setVerseNotes(prev => {
+                                                            const newMap = new Map(prev);
+                                                            // Find which verse this note belongs to
+                                                            verses.forEach(verse => {
+                                                                const verseRef = verse.verse_reference;
+                                                                if (verseRef) {
+                                                                    const current = newMap.get(verseRef);
+                                                                    if (current?.public.some(n => n.id === note.id)) {
+                                                                        const updatedPublic = current.public.map(n => 
+                                                                            n.id === note.id 
+                                                                                ? { ...n, likeCount: result.likeCount, userLiked: result.liked }
+                                                                                : n
+                                                                        );
+                                                                        newMap.set(verseRef, { ...current, public: updatedPublic });
+                                                                    }
+                                                                }
+                                                            });
+                                                            return newMap;
+                                                        });
+                                                    } catch (error) {
+                                                        console.error('Error toggling like:', error);
+                                                    }
+                                                };
+
+                                                return (
+                                                    <View key={note.id} style={{ flexDirection: 'row' }}>
+                                                        <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                            {/* Show verse reference when multiple verses are selected, but hide if note is for multiple verses */}
+                                                            {!noteIsMultiVerse && (
+                                                                <Text style={{ 
+                                                                    color: theme.colors.onBackground, 
+                                                                    fontSize: 12, 
+                                                                    fontWeight: '600', 
+                                                                    marginBottom: 4,
+                                                                    fontFamily: 'Inter'
+                                                                }}>
+                                                                    {note.verseReference}
+                                                                </Text>
+                                                            )}
+                                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                                <Text style={{ color: theme.colors.onBackground, fontSize: 12, fontWeight: '600' }}>
+                                                                    {note.username}
+                                                                </Text>
+                                                                <TouchableOpacity
+                                                                    onPress={handleLikeToggle}
+                                                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                                                    disabled={!user?.username}
+                                                                >
+                                                                    <Ionicons 
+                                                                        name={note.userLiked ? "heart" : "heart-outline"} 
+                                                                        size={18} 
+                                                                        color={note.userLiked ? theme.colors.error : theme.colors.onSurfaceVariant} 
+                                                                    />
+                                                                    {note.likeCount !== undefined && note.likeCount > 0 && (
+                                                                        <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}>
+                                                                            {note.likeCount}
+                                                                        </Text>
+                                                                    )}
+                                                                </TouchableOpacity>
+                                                            </View>
+                                                            {note.createdDate && (
+                                                                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, marginBottom: 4 }}>
+                                                                    {formatDate(note.createdDate)}
+                                                                </Text>
+                                                            )}
+                                                            {note.originalReference && note.originalReference !== note.verseReference && (
+                                                                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
+                                                                    {note.originalReference}
+                                                                </Text>
+                                                            )}
+                                                            <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
+                                                                {note.text}
+                                                            </Text>
+                                                        </View>
+                                                        {noteIndex < allPublicNotes.length - 1 && (
+                                                            <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
+                                                        )}
+                                                    </View>
+                                                );
+                                            })}
+                                        </ScrollView>
+                                    )
+                                ) : (
+                                    // Single verse - existing behavior
+                                    loadingNotes ? (
+                                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                                    ) : notes.length === 0 ? (
+                                        <Text style={{ color: theme.colors.onBackground, fontSize: 14, fontStyle: 'italic' }}>
+                                            No public notes yet. Be the first to add one!
+                                        </Text>
+                                    ) : (
+                                        <ScrollView 
+                                            horizontal 
+                                            showsHorizontalScrollIndicator={false}
+                                            contentContainerStyle={{ paddingRight: 20 }}
+                                            snapToInterval={noteCardWidth + 13}
+                                            snapToAlignment="start"
+                                            decelerationRate="fast"
+                                            pagingEnabled={false}
+                                        >
+                                            {notes.map((note, index) => {
+                                                const handleLikeToggle = async () => {
+                                                    if (!user?.username) return;
+                                                    try {
+                                                        const result = note.userLiked
+                                                            ? await unlikeNote(note.id, user.username)
+                                                            : await likeNote(note.id, user.username);
+                                                        
+                                                        // Update the note in the list
+                                                        setNotes(prevNotes => 
+                                                            prevNotes.map(n => 
+                                                                n.id === note.id 
+                                                                    ? { ...n, likeCount: result.likeCount, userLiked: result.liked }
+                                                                    : n
+                                                            )
+                                                        );
+                                                    } catch (error) {
+                                                        console.error('Error toggling like:', error);
+                                                    }
+                                                };
+
+                                                return (
+                                                    <View key={note.id} style={{ flexDirection: 'row' }}>
+                                                        <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                                <Text style={{ color: theme.colors.onBackground, fontSize: 12, fontWeight: '600' }}>
+                                                                    {note.username}
+                                                                </Text>
+                                                                <TouchableOpacity
+                                                                    onPress={handleLikeToggle}
+                                                                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                                                    disabled={!user?.username}
+                                                                >
+                                                                    <Ionicons 
+                                                                        name={note.userLiked ? "heart" : "heart-outline"} 
+                                                                        size={18} 
+                                                                        color={note.userLiked ? theme.colors.error : theme.colors.onSurfaceVariant} 
+                                                                    />
+                                                                    {note.likeCount !== undefined && note.likeCount > 0 && (
+                                                                        <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}>
+                                                                            {note.likeCount}
+                                                                        </Text>
+                                                                    )}
+                                                                </TouchableOpacity>
+                                                            </View>
+                                                            {note.createdDate && (
+                                                                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, marginBottom: 4 }}>
+                                                                    {formatDate(note.createdDate)}
+                                                                </Text>
+                                                            )}
+                                                            {note.originalReference && note.originalReference !== note.verseReference && (
+                                                                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
+                                                                    {note.originalReference}
+                                                                </Text>
+                                                            )}
+                                                            <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
+                                                                {note.text}
+                                                            </Text>
+                                                        </View>
+                                                        {index < notes.length - 1 && (
+                                                            <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
+                                                        )}
+                                                    </View>
+                                                );
+                                            })}
+                                        </ScrollView>
+                                    )
                                 )}
                             </View>
                     </BottomSheetScrollView>
@@ -928,7 +1522,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                 fontSize: 14,
                                 marginLeft: 8,
                             }}>
-                                Make this note public (visible to all users)
+                                Make this note visible to all users
                             </Text>
                         </TouchableOpacity>
 
@@ -936,9 +1530,8 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                             color: theme.colors.onSurfaceVariant,
                             fontSize: 11,
                             marginBottom: 16,
-                            fontStyle: 'italic',
                         }}>
-                            (notes are encrypted before they are stored)
+                            Notes are encrypted before they are stored
                         </Text>
 
                         <View style={{

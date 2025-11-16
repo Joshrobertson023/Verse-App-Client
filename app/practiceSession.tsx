@@ -1,19 +1,19 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Slider from '@react-native-community/slider';
 import { ActivityIndicator, Snackbar } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withTiming } from 'react-native-reanimated';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Button from './components/Button';
-
-const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
-import { getAllUserVerses, getUserActivity, getUserCollections, memorizeUserVerse, memorizeVerseOfDay, refreshUser, recordPractice, getStreakLength } from './db';
+import { getAllUserVerses, getStreakLength, getUserActivity, getUserCollections, memorizeUserVerse, memorizeVerseOfDay, recordPractice, refreshUser } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
+
+const AnimatedTextInput = Animated.createAnimatedComponent(TextInput);
 
 const MIN_STAGES = 3;
 const MAX_STAGES = 6;
@@ -21,11 +21,12 @@ const DEFAULT_STAGES = 4;
 const HIDE_PERCENTAGE_PER_STAGE = 0.35;
 const MIN_STAGE_HEIGHT = 200;
 
-const PRACTICE_SETTINGS_KEYS = {
-  RESTART_STAGE_ON_WRONG: '@verseApp:practice:restartStageOnWrong',
-  LEARN_VERSE_REFERENCE: '@verseApp:practice:learnVerseReference',
-  TOTAL_STAGES: '@verseApp:practice:totalStages',
-};
+const getPracticeSettingsKeys = (username: string) => ({
+  RESTART_STAGE_ON_WRONG: `@verseApp:practice:${username}:restartStageOnWrong`,
+  LEARN_VERSE_REFERENCE: `@verseApp:practice:${username}:learnVerseReference`,
+  TOTAL_STAGES: `@verseApp:practice:${username}:totalStages`,
+  PRACTICE_MODE: `@verseApp:practice:${username}:practiceMode`,
+});
 
 interface Word {
   id: number;
@@ -74,49 +75,107 @@ export default function PracticeSessionScreen() {
   const [restartStageOnWrong, setRestartStageOnWrong] = useState(true);
   const [learnVerseReference, setLearnVerseReference] = useState(true);
   const [totalStages, setTotalStages] = useState(DEFAULT_STAGES);
+  const [practiceMode, setPracticeMode] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [stageHiddenIndices, setStageHiddenIndices] = useState<{ referenceIndices: Set<number>; verseIndices: Set<number> } | null>(null);
   
   // Animation values for error feedback
   const shakeAnimation = useSharedValue(0);
   const errorColorAnimation = useSharedValue(0);
 
-  // Load settings from AsyncStorage on mount
+  // Load settings from AsyncStorage when user changes
   useEffect(() => {
     const loadSettings = async () => {
+      if (!user?.username) {
+        // Reset to defaults if no user
+        setRestartStageOnWrong(true);
+        setLearnVerseReference(true);
+        setTotalStages(DEFAULT_STAGES);
+        setPracticeMode(false);
+        setSettingsLoaded(true);
+        return;
+      }
+
       try {
-        const [restartStage, learnReference, stages] = await Promise.all([
-          AsyncStorage.getItem(PRACTICE_SETTINGS_KEYS.RESTART_STAGE_ON_WRONG),
-          AsyncStorage.getItem(PRACTICE_SETTINGS_KEYS.LEARN_VERSE_REFERENCE),
-          AsyncStorage.getItem(PRACTICE_SETTINGS_KEYS.TOTAL_STAGES),
+        const settingsKeys = getPracticeSettingsKeys(user.username);
+        const [restartStage, learnReference, stages, practiceModeValue] = await Promise.all([
+          AsyncStorage.getItem(settingsKeys.RESTART_STAGE_ON_WRONG),
+          AsyncStorage.getItem(settingsKeys.LEARN_VERSE_REFERENCE),
+          AsyncStorage.getItem(settingsKeys.TOTAL_STAGES),
+          AsyncStorage.getItem(settingsKeys.PRACTICE_MODE),
         ]);
 
-        if (restartStage !== null) {
-          setRestartStageOnWrong(restartStage === 'true');
-        }
-        if (learnReference !== null) {
-          setLearnVerseReference(learnReference === 'true');
-        }
-        if (stages !== null) {
-          const parsedStages = parseInt(stages, 10);
-          if (!isNaN(parsedStages) && parsedStages >= MIN_STAGES && parsedStages <= MAX_STAGES) {
-            setTotalStages(parsedStages);
+        // Set defaults for free accounts
+        const isFreeAccount = !user.isPaid;
+        
+        if (isFreeAccount) {
+          // Free account defaults: restart stage on error: on, include verse reference: on, practice mode: off, number of stages: 4
+          // Always enforce these defaults for free accounts
+          setRestartStageOnWrong(true);
+          setLearnVerseReference(true);
+          setTotalStages(DEFAULT_STAGES);
+          setPracticeMode(false); // Always disable practice mode for free accounts
+          
+          // Save defaults to storage (overwrite any previous settings)
+          await Promise.all([
+            AsyncStorage.setItem(settingsKeys.RESTART_STAGE_ON_WRONG, 'true'),
+            AsyncStorage.setItem(settingsKeys.LEARN_VERSE_REFERENCE, 'true'),
+            AsyncStorage.setItem(settingsKeys.TOTAL_STAGES, DEFAULT_STAGES.toString()),
+            AsyncStorage.setItem(settingsKeys.PRACTICE_MODE, 'false'),
+          ]);
+        } else {
+          // Paid account: load saved settings or use defaults
+          if (restartStage !== null) {
+            setRestartStageOnWrong(restartStage === 'true');
+          } else {
+            setRestartStageOnWrong(true);
+          }
+          
+          if (learnReference !== null) {
+            setLearnVerseReference(learnReference === 'true');
+          } else {
+            setLearnVerseReference(true);
+          }
+          
+          if (stages !== null) {
+            const parsedStages = parseInt(stages, 10);
+            if (!isNaN(parsedStages) && parsedStages >= MIN_STAGES && parsedStages <= MAX_STAGES) {
+              setTotalStages(parsedStages);
+            } else {
+              setTotalStages(DEFAULT_STAGES);
+            }
+          } else {
+            setTotalStages(DEFAULT_STAGES);
+          }
+          
+          if (practiceModeValue !== null) {
+            setPracticeMode(practiceModeValue === 'true');
+          } else {
+            setPracticeMode(false);
           }
         }
       } catch (error) {
         console.error('Failed to load practice settings:', error);
+        // Set defaults on error
+        setRestartStageOnWrong(true);
+        setLearnVerseReference(true);
+        setTotalStages(DEFAULT_STAGES);
+        setPracticeMode(false);
       } finally {
         setSettingsLoaded(true);
       }
     };
 
     loadSettings();
-  }, []);
+  }, [user?.username, user?.isPaid]);
 
   // Save restartStageOnWrong to AsyncStorage
   const handleSetRestartStageOnWrong = async (value: boolean) => {
+    if (!user?.username) return;
     setRestartStageOnWrong(value);
     try {
-      await AsyncStorage.setItem(PRACTICE_SETTINGS_KEYS.RESTART_STAGE_ON_WRONG, value.toString());
+      const settingsKeys = getPracticeSettingsKeys(user.username);
+      await AsyncStorage.setItem(settingsKeys.RESTART_STAGE_ON_WRONG, value.toString());
     } catch (error) {
       console.error('Failed to save restartStageOnWrong setting:', error);
     }
@@ -124,16 +183,24 @@ export default function PracticeSessionScreen() {
 
   // Save learnVerseReference to AsyncStorage
   const handleSetLearnVerseReference = async (value: boolean) => {
+    if (!user?.username) return;
     setLearnVerseReference(value);
     try {
-      await AsyncStorage.setItem(PRACTICE_SETTINGS_KEYS.LEARN_VERSE_REFERENCE, value.toString());
+      const settingsKeys = getPracticeSettingsKeys(user.username);
+      await AsyncStorage.setItem(settingsKeys.LEARN_VERSE_REFERENCE, value.toString());
       // Reset the practice session when this setting changes
       const reference = editingUserVerse?.readableReference || '';
       const referenceWords = value ? parseReference(reference) : [];
       const verseTextWords = parseVerseText(editingUserVerse?.verses || []);
       const all = [...referenceWords, ...verseTextWords];
       setAllWords(all);
-      setDisplayWords(hideWordsForStage(all, currentStage));
+      const result = hideWordsForStage(all, currentStage);
+      setDisplayWords(result.words || []);
+      if (result.hiddenIndices) {
+        setStageHiddenIndices(result.hiddenIndices);
+      } else {
+        setStageHiddenIndices(null);
+      }
       setCurrentWordIndex(0);
       setUserInput('');
       setTypedWords([]);
@@ -142,11 +209,47 @@ export default function PracticeSessionScreen() {
     }
   };
 
+  // Save practiceMode to AsyncStorage
+  const handleSetPracticeMode = async (value: boolean) => {
+    if (!user?.username) return;
+    // Don't allow free accounts to enable practice mode
+    if (!user.isPaid && value) {
+      return;
+    }
+    setPracticeMode(value);
+    
+    // When turning off practice mode, reset to stage 1
+    if (!value) {
+      setCurrentStage(1);
+      setCurrentWordIndex(0);
+      setUserInput('');
+      setTypedWords([]);
+      setStageHistory([]);
+      // Reset display words for stage 1
+      const result = hideWordsForStage(allWords, 1);
+      setDisplayWords(result.words || []);
+      if (result.hiddenIndices) {
+        setStageHiddenIndices(result.hiddenIndices);
+      } else {
+        setStageHiddenIndices(null);
+      }
+    }
+    
+    try {
+      const settingsKeys = getPracticeSettingsKeys(user.username);
+      await AsyncStorage.setItem(settingsKeys.PRACTICE_MODE, value.toString());
+    } catch (error) {
+      console.error('Failed to save practiceMode setting:', error);
+    }
+  };
+
   // Save totalStages to AsyncStorage
   const handleSetTotalStages = async (value: number) => {
+    if (!user?.username) return;
     setTotalStages(value);
     try {
-      await AsyncStorage.setItem(PRACTICE_SETTINGS_KEYS.TOTAL_STAGES, value.toString());
+      const settingsKeys = getPracticeSettingsKeys(user.username);
+      await AsyncStorage.setItem(settingsKeys.TOTAL_STAGES, value.toString());
       // If current stage exceeds new total, reset to stage 1
       if (currentStage > value) {
         setCurrentStage(1);
@@ -155,10 +258,22 @@ export default function PracticeSessionScreen() {
         setCurrentWordIndex(0);
         setUserInput('');
         setTypedWords([]);
-        setDisplayWords(hideWordsForStage(allWords, 1));
+        const result = hideWordsForStage(allWords, 1);
+        setDisplayWords(result.words || []);
+        if (result.hiddenIndices) {
+          setStageHiddenIndices(result.hiddenIndices);
+        } else {
+          setStageHiddenIndices(null);
+        }
       } else {
         // Update display words for current stage with new total
-        setDisplayWords(hideWordsForStage(allWords, currentStage));
+        const result = hideWordsForStage(allWords, currentStage);
+        setDisplayWords(result.words || []);
+        if (result.hiddenIndices) {
+          setStageHiddenIndices(result.hiddenIndices);
+        } else {
+          setStageHiddenIndices(null);
+        }
       }
     } catch (error) {
       console.error('Failed to save totalStages setting:', error);
@@ -306,14 +421,38 @@ export default function PracticeSessionScreen() {
   };
 
   // Hide words
-  const hideWordsForStage = (words: Word[], stage: number): Word[] => {
+  const hideWordsForStage = (
+    words: Word[], 
+    stage: number, 
+    useStoredIndices: boolean = false
+  ): { words: Word[]; hiddenIndices?: { referenceIndices: Set<number>; verseIndices: Set<number> } } => {
     if (stage === 1) {
-      return words.map(w => ({ ...w, isVisible: true }));
+      return { words: words.map(w => ({ ...w, isVisible: true })) };
     }
 
     // Final stage hides all hints
     if (stage === totalStages) {
-      return words.map(w => ({ ...w, isVisible: false }));
+      return { words: words.map(w => ({ ...w, isVisible: false })) };
+    }
+
+    const verseTextStartIndex = words.findIndex(w => w.id >= 1000);
+    if (verseTextStartIndex === -1) 
+      return { words };
+    
+    const verseWords = words.slice(verseTextStartIndex);
+    const referenceWords = words.slice(0, verseTextStartIndex);
+
+    // If we have stored indices and should use them, use them
+    if (useStoredIndices && stageHiddenIndices) {
+      const updatedVerseWords = verseWords.map((word, index) => ({
+        ...word,
+        isVisible: !stageHiddenIndices.verseIndices.has(index),
+      }));
+      const updatedReferenceWords = referenceWords.map((word, index) => ({
+        ...word,
+        isVisible: !stageHiddenIndices.referenceIndices.has(index),
+      }));
+      return { words: [...updatedReferenceWords, ...updatedVerseWords] };
     }
 
     // Calculate hide percentage based on stage number and total stages
@@ -339,12 +478,7 @@ export default function PracticeSessionScreen() {
       const normalIncrement = 2 * stage2Increment;
       totalHidePercent = stage2Increment + ((stage - 2) * normalIncrement);
     }
-    const verseTextStartIndex = words.findIndex(w => w.id >= 1000);
-    if (verseTextStartIndex === -1) 
-      return words;
     
-    const verseWords = words.slice(verseTextStartIndex);
-    const referenceWords = words.slice(0, verseTextStartIndex);
     const totalWords = words.length;
     const totalWordsToHide = Math.floor(totalWords * totalHidePercent);
 
@@ -383,7 +517,10 @@ export default function PracticeSessionScreen() {
       isVisible: !referenceIndicesToHide.has(index),
     }));
     
-    return [...updatedReferenceWords, ...updatedVerseWords];
+    return { 
+      words: [...updatedReferenceWords, ...updatedVerseWords],
+      hiddenIndices: { referenceIndices: referenceIndicesToHide, verseIndices: verseIndicesToHide }
+    };
   };
 
   // Runs when first open practice session
@@ -405,7 +542,13 @@ export default function PracticeSessionScreen() {
     const all = [...referenceWords, ...verseTextWords];
     
     setAllWords(all);
-    setDisplayWords(hideWordsForStage(all, 1));
+    const result = hideWordsForStage(all, 1);
+    setDisplayWords(result.words || []);
+    if (result.hiddenIndices) {
+      setStageHiddenIndices(result.hiddenIndices);
+    } else {
+      setStageHiddenIndices(null);
+    }
     setCurrentStage(1);
     setHighestCompletedStage(1);
     setStageHistory([]);
@@ -416,7 +559,18 @@ export default function PracticeSessionScreen() {
 
   // Runs when stage changes
   useEffect(() => {
-    setDisplayWords(hideWordsForStage(allWords, currentStage));
+    if (allWords.length === 0) {
+      setDisplayWords([]);
+      return;
+    }
+    const result = hideWordsForStage(allWords, currentStage);
+    setDisplayWords(result.words || []);
+    // Store the hidden indices for this stage so we can reuse them on reset
+    if (result.hiddenIndices) {
+      setStageHiddenIndices(result.hiddenIndices);
+    } else {
+      setStageHiddenIndices(null);
+    }
     setCurrentWordIndex(0);
     setUserInput('');
     setTypedWords([]);
@@ -529,19 +683,50 @@ export default function PracticeSessionScreen() {
     setUserInput('');
 
     if (nextIndex >= allWords.length) {
-      if (currentStage < totalStages) {
+      if (practiceMode) {
+        // In practice mode, don't auto-advance stages - user must manually change stages
+        // Reset input state so user can continue practicing the same stage or manually advance
         setTimeout(() => {
-          const nextStage = currentStage + 1;
-          setStageHistory(prev => [...prev, currentStage]);
-          setCurrentStage(nextStage);
-          if (nextStage > highestCompletedStage) {
-            setHighestCompletedStage(nextStage);
+          setCurrentWordIndex(0);
+          setUserInput('');
+          setTypedWords([]);
+          // Reset display words for current stage (same hints)
+          const result = hideWordsForStage(allWords, currentStage, true);
+          setDisplayWords(result.words || []);
+          if (result.hiddenIndices) {
+            setStageHiddenIndices(result.hiddenIndices);
+          } else {
+            setStageHiddenIndices(null);
           }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }, 500);
       } else {
-        setTimeout(() => handleCompleted(), 500);
-        if (currentStage === totalStages && currentStage > highestCompletedStage) {
-          setHighestCompletedStage(totalStages);
+        // Normal mode - auto-advance stages
+        if (currentStage < totalStages) {
+          setTimeout(() => {
+            const nextStage = currentStage + 1;
+            setStageHistory(prev => [...prev, currentStage]);
+            setCurrentStage(nextStage);
+            setCurrentWordIndex(0);
+            setUserInput('');
+            setTypedWords([]);
+            // Reset display words for the next stage
+            const result = hideWordsForStage(allWords, nextStage);
+            setDisplayWords(result.words || []);
+            if (result.hiddenIndices) {
+              setStageHiddenIndices(result.hiddenIndices);
+            } else {
+              setStageHiddenIndices(null);
+            }
+            if (nextStage > highestCompletedStage) {
+              setHighestCompletedStage(nextStage);
+            }
+          }, 500);
+        } else {
+          setTimeout(() => handleCompleted(), 500);
+          if (currentStage === totalStages && currentStage > highestCompletedStage) {
+            setHighestCompletedStage(totalStages);
+          }
         }
       }
     }
@@ -557,8 +742,9 @@ export default function PracticeSessionScreen() {
       setCurrentWordIndex(0);
       setTypedWords([]);
       setUserInput('');
-      // Reset display words for current stage
-      setDisplayWords(hideWordsForStage(allWords, currentStage));
+      // Reset display words for current stage using stored hidden indices (same hints)
+      const result = hideWordsForStage(allWords, currentStage, true);
+      setDisplayWords(result.words || []);
     }
     
     // Red color appears immediately, then shake happens, then red disappears
@@ -663,7 +849,37 @@ export default function PracticeSessionScreen() {
       setCurrentWordIndex(0);
       setUserInput('');
       setTypedWords([]);
-      setHighestCompletedStage(previousStage);
+      if (!practiceMode) {
+        setHighestCompletedStage(previousStage);
+      }
+      // Reset display words for the previous stage
+      const result = hideWordsForStage(allWords, previousStage);
+      setDisplayWords(result.words || []);
+      if (result.hiddenIndices) {
+        setStageHiddenIndices(result.hiddenIndices);
+      } else {
+        setStageHiddenIndices(null);
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const handleGoNext = () => {
+    if (currentStage < totalStages) {
+      const nextStage = currentStage + 1;
+      setStageHistory(prev => [...prev, currentStage]);
+      setCurrentStage(nextStage);
+      setCurrentWordIndex(0);
+      setUserInput('');
+      setTypedWords([]);
+      // Reset display words for the next stage
+      const result = hideWordsForStage(allWords, nextStage);
+      setDisplayWords(result.words || []);
+      if (result.hiddenIndices) {
+        setStageHiddenIndices(result.hiddenIndices);
+      } else {
+        setStageHiddenIndices(null);
+      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
@@ -793,7 +1009,29 @@ export default function PracticeSessionScreen() {
           ),
         }}
       />
-      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      <View style={{ 
+        flex: 1, 
+        backgroundColor: theme.colors.background,
+        borderWidth: practiceMode ? 3 : 0,
+        borderColor: practiceMode ? theme.colors.surface2 : 'transparent',
+      }}>
+        {practiceMode && (
+          <View style={{
+            backgroundColor: theme.colors.surface2,
+            paddingVertical: 8,
+            paddingHorizontal: 16,
+            alignItems: 'center',
+          }}>
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '600',
+              color: theme.colors.onSurface,
+              fontFamily: 'Inter',
+            }}>
+              Practice
+            </Text>
+          </View>
+        )}
         <ScrollView 
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
@@ -806,28 +1044,48 @@ export default function PracticeSessionScreen() {
             theme={theme}
           />
 
-          {/* Previous stage button */}
-          <TouchableOpacity
-            onPress={handleGoBack}
-            disabled={currentStage <= 1}
-            style={{
-              alignSelf: 'flex-start',
-              marginTop: 8,
-              marginBottom: 12,
-              paddingVertical: 8,
-              paddingHorizontal: 0,
-            }}
-            activeOpacity={0.7}
-          >
-            <Text style={{
-              fontSize: 14,
-              color: currentStage <= 1 ? theme.colors.onSurfaceVariant : theme.colors.primary,
-              opacity: currentStage <= 1 ? 0.5 : 1,
-              marginTop: -20
-            }}>
-              Previous stage
-            </Text>
-          </TouchableOpacity>
+          {/* Stage navigation buttons */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
+            <TouchableOpacity
+              onPress={handleGoBack}
+              disabled={currentStage <= 1}
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 0,
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{
+                fontSize: 14,
+                color: currentStage <= 1 ? theme.colors.onSurfaceVariant : theme.colors.primary,
+                opacity: currentStage <= 1 ? 0.5 : 1,
+                marginTop: -20
+              }}>
+                Previous stage
+              </Text>
+            </TouchableOpacity>
+            
+            {practiceMode && (
+              <TouchableOpacity
+                onPress={handleGoNext}
+                disabled={currentStage >= totalStages}
+                style={{
+                  paddingVertical: 8,
+                  paddingHorizontal: 0,
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={{
+                  fontSize: 14,
+                  color: currentStage >= totalStages ? theme.colors.onSurfaceVariant : theme.colors.primary,
+                  opacity: currentStage >= totalStages ? 0.5 : 1,
+                  marginTop: -20
+                }}>
+                  Next stage
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
           
           <Animated.View 
             style={[
@@ -856,7 +1114,7 @@ export default function PracticeSessionScreen() {
                 },
                 animatedHintTextStyle
               ]}>
-                {displayWords.map((w, index) => {
+                {(displayWords || []).map((w, index) => {
                   const space = w.showSpace && index > 0 ? ' ' : '';
                   const shouldHide = !w.isVisible;
                   return (
@@ -983,12 +1241,34 @@ export default function PracticeSessionScreen() {
                 fontSize: 20,
                 fontWeight: '600',
                 color: theme.colors.onBackground,
-                marginBottom: 24,
+                marginBottom: user.isPaid ? 24 : 8,
                 fontFamily: 'Inter',
               }}
             >
               Practice Settings
             </Text>
+
+            {!user.isPaid && (
+              <TouchableOpacity
+                onPress={() => {
+                  setShowSettings(false);
+                  router.push('/pro');
+                }}
+                style={{ marginBottom: 16 }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: theme.colors.primary,
+                    fontFamily: 'Inter',
+                    textDecorationLine: 'underline',
+                  }}
+                >
+                  Upgrade to Pro to access these settings
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* Restart Stage on Wrong Input Setting */}
             <View
@@ -996,7 +1276,8 @@ export default function PracticeSessionScreen() {
                 flexDirection: 'row',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: 24,
+                marginBottom: -4,
+                opacity: user.isPaid ? 1 : 0.5,
               }}
             >
               <View style={{ flex: 1, marginRight: 16 }}>
@@ -1009,21 +1290,13 @@ export default function PracticeSessionScreen() {
                     marginBottom: 4,
                   }}
                 >
-                  Restart stage when wrong input
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter',
-                  }}
-                >
-                  When enabled, the stage restarts from the beginning when you make an error
+                  Restart stage on error
                 </Text>
               </View>
               <Switch
                 value={restartStageOnWrong}
                 onValueChange={handleSetRestartStageOnWrong}
+                disabled={!user.isPaid}
                 trackColor={{
                   false: theme.colors.surface2,
                   true: theme.colors.primary,
@@ -1038,7 +1311,8 @@ export default function PracticeSessionScreen() {
                 flexDirection: 'row',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: 24,
+                marginBottom: 4,
+                opacity: user.isPaid ? 1 : 0.5,
               }}
             >
               <View style={{ flex: 1, marginRight: 16 }}>
@@ -1051,21 +1325,47 @@ export default function PracticeSessionScreen() {
                     marginBottom: 4,
                   }}
                 >
-                  Learn verse reference
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter',
-                  }}
-                >
-                  When enabled, you'll practice typing the verse reference (e.g., "John 3:16") along with the verse text
+                  Include verse reference
                 </Text>
               </View>
               <Switch
                 value={learnVerseReference}
                 onValueChange={handleSetLearnVerseReference}
+                disabled={!user.isPaid}
+                trackColor={{
+                  false: theme.colors.surface2,
+                  true: theme.colors.primary,
+                }}
+                thumbColor={theme.colors.background}
+              />
+            </View>
+
+            {/* Practice Mode Setting */}
+            <View
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 4,
+                opacity: user.isPaid ? 1 : 0.5,
+              }}
+            >
+              <View style={{ flex: 1, marginRight: 16 }}>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    fontFamily: 'Inter',
+                  }}
+                >
+                  Free practice
+                </Text>
+              </View>
+              <Switch
+                value={practiceMode}
+                onValueChange={handleSetPracticeMode}
+                disabled={!user.isPaid}
                 trackColor={{
                   false: theme.colors.surface2,
                   true: theme.colors.primary,
@@ -1078,6 +1378,7 @@ export default function PracticeSessionScreen() {
             <View
               style={{
                 marginBottom: 16,
+                opacity: user.isPaid ? 1 : 0.5,
               }}
             >
               <View style={{ marginBottom: 12 }}>
@@ -1091,15 +1392,6 @@ export default function PracticeSessionScreen() {
                   }}
                 >
                   Number of stages: {totalStages}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter',
-                  }}
-                >
-                  Adjust the number of practice stages ({MIN_STAGES}-{MAX_STAGES}). Stage 2 is always 50% easier, and the final stage hides all hints.
                 </Text>
               </View>
               <View
@@ -1122,7 +1414,7 @@ export default function PracticeSessionScreen() {
                     flex: 1,
                   }}
                 >
-                  Changing this will restart you on the first stage
+                  Changing this will put you back on the first stage
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -1142,6 +1434,7 @@ export default function PracticeSessionScreen() {
                   maximumValue={MAX_STAGES}
                   step={1}
                   value={totalStages}
+                  disabled={!user.isPaid}
                   onValueChange={(value: number) => {
                     const newTotalStages = Math.round(value);
                     handleSetTotalStages(newTotalStages);

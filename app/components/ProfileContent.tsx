@@ -1,17 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Image } from 'expo-image';
-import { Tooltip } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAllUserVerses, getUserActivity, updateActivityNotifications, updateUserProfile, uploadProfilePicture, deleteProfilePicture, refreshUser, suggestVerseOfDay } from '../db';
+import { deleteProfilePicture, getAllUserVerses, getUserActivity, refreshUser, suggestVerseOfDay, updateActivityNotifications, updateUserProfile, uploadProfilePicture } from '../db';
 import { Activity, loggedOutUser, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
+import { cacheProfilePicture, clearCachedProfilePicture } from '../utils/profilePictureCache';
 
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
 
@@ -30,7 +30,6 @@ export default function ProfileContent() {
   const [showDescriptionEdit, setShowDescriptionEdit] = useState(false);
   const [tempDescription, setTempDescription] = useState(user.description || '');
   const [uploadingPicture, setUploadingPicture] = useState(false);
-  const [showActivityHelp, setShowActivityHelp] = useState(false);
   const [showSuggestionDialog, setShowSuggestionDialog] = useState(false);
   const [suggestionReference, setSuggestionReference] = useState('');
   const [submittingSuggestion, setSubmittingSuggestion] = useState(false);
@@ -46,7 +45,7 @@ export default function ProfileContent() {
       const diffWeeks = Math.floor(diffDays / 7);
       const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
       const timeAgo =
-        diffWeeks > 0 ? `${diffWeeks}w` : diffDays > 0 ? `${diffDays}d` : diffHours > 0 ? `${diffHours}h` : 'Just now';
+        diffWeeks > 0 ? `${diffWeeks}w` : diffDays > 0 ? `${diffDays}d` : diffHours > 0 ? `${diffHours}h` : 'today';
       return {
         ...activity,
         timeAgo,
@@ -182,15 +181,22 @@ export default function ProfileContent() {
       }
 
       // Show action sheet
+      const alertOptions: any[] = [
+        { text: 'Camera', onPress: () => pickImageFromCamera() },
+        { text: 'Photo Library', onPress: () => pickImageFromLibrary() },
+      ];
+      
+      // Always show remove option if there's a profile picture
+      if (user.profilePictureUrl) {
+        alertOptions.push({ text: 'Remove Picture', onPress: () => handleRemovePicture(), style: 'destructive' });
+      }
+      
+      alertOptions.push({ text: 'Cancel', style: 'cancel' });
+      
       Alert.alert(
         'Profile Picture',
         'Choose an option',
-        [
-          { text: 'Camera', onPress: () => pickImageFromCamera() },
-          { text: 'Photo Library', onPress: () => pickImageFromLibrary() },
-          { text: user.profilePictureUrl ? 'Remove Picture' : undefined, onPress: () => handleRemovePicture(), style: 'destructive' },
-          { text: 'Cancel', style: 'cancel' },
-        ],
+        alertOptions,
         { cancelable: true }
       );
     } catch (error) {
@@ -244,8 +250,30 @@ export default function ProfileContent() {
     setUploadingPicture(true);
     try {
       const profilePictureUrl = await uploadProfilePicture(user.username, imageUri);
+      console.log('[Profile] Uploaded profile picture URL:', profilePictureUrl);
+      
+      // Refresh user to get the latest data from server
       const refreshedUser = await refreshUser(user.username);
-      setUser(refreshedUser);
+      console.log('[Profile] Refreshed user profile picture URL:', refreshedUser.profilePictureUrl);
+      
+      // Cache the profile picture locally
+      if (refreshedUser.profilePictureUrl) {
+        await cacheProfilePicture(user.username, refreshedUser.profilePictureUrl, false);
+      }
+      
+      // Use the URL from the refreshed user (which should match what we uploaded)
+      // Add cache-busting parameter to force image refresh
+      const cacheBustedUrl = refreshedUser.profilePictureUrl 
+        ? `${refreshedUser.profilePictureUrl}${refreshedUser.profilePictureUrl.includes('?') ? '&' : '?'}t=${Date.now()}`
+        : refreshedUser.profilePictureUrl;
+      
+      const updatedUser = {
+        ...refreshedUser,
+        profilePictureUrl: cacheBustedUrl
+      };
+      
+      console.log('[Profile] Setting user with profile picture URL:', updatedUser.profilePictureUrl);
+      setUser(updatedUser);
       Alert.alert('Success', 'Profile picture updated successfully');
     } catch (error) {
       console.error('Error uploading profile picture:', error);
@@ -268,7 +296,10 @@ export default function ProfileContent() {
             setUploadingPicture(true);
             try {
               await deleteProfilePicture(user.username);
+              // Clear cached profile picture
+              await clearCachedProfilePicture(user.username);
               const refreshedUser = await refreshUser(user.username);
+              console.log('[Profile] After delete, refreshed user profile picture URL:', refreshedUser.profilePictureUrl);
               setUser(refreshedUser);
               Alert.alert('Success', 'Profile picture removed successfully');
             } catch (error) {
@@ -312,6 +343,8 @@ export default function ProfileContent() {
                   source={{ uri: user.profilePictureUrl }}
                   style={{ width: 70, height: 70 }}
                   contentFit="cover"
+                  key={user.profilePictureUrl}
+                  recyclingKey={user.profilePictureUrl}
                 />
               ) : (
                 <Ionicons name="person" size={40} color={theme.colors.onBackground} />
@@ -491,11 +524,13 @@ export default function ProfileContent() {
           label="Streak Calendar"
           onPress={() => router.push('/user/streak')}
         />
-        <ProfileDrawerLink
-          icon="trophy-outline"
-          label="Global Leaderboard"
-          onPress={() => router.push('/user/leaderboard')}
-        />
+        <View style={{ marginTop: 10 }}>
+          <ProfileDrawerLink
+            icon="analytics-outline"
+            label="Global Leaderboard"
+            onPress={() => router.push('/user/leaderboard')}
+          />
+        </View>
         <View style={{height: 10}} />
         <ProfileDrawerLink
           icon="people-outline"
@@ -550,7 +585,13 @@ export default function ProfileContent() {
                   <Text style={{ ...styles.tinyText, fontFamily: 'Inter bold' }}>My Activity</Text>
                   <Pressable 
                     hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                    onPress={() => setShowActivityHelp(true)}
+                    onPress={() => {
+                      Alert.alert(
+                        'My Activity',
+                        'Your friends get notified about your activity. You can turn this off in settings.',
+                        [{ text: 'OK' }]
+                      );
+                    }}
                   >
                     <Ionicons 
                       name="help-circle-outline" 
@@ -559,62 +600,6 @@ export default function ProfileContent() {
                       style={{ marginLeft: 4 }}
                     />
                   </Pressable>
-                  <Modal
-                    visible={showActivityHelp}
-                    transparent={true}
-                    animationType="fade"
-                    onRequestClose={() => setShowActivityHelp(false)}
-                  >
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}
-                      activeOpacity={1}
-                      onPress={() => setShowActivityHelp(false)}
-                    >
-                      <TouchableOpacity
-                        activeOpacity={1}
-                        onPress={(e) => e.stopPropagation()}
-                        style={{
-                          backgroundColor: theme.colors.surface,
-                          padding: 20,
-                          borderRadius: 12,
-                          marginHorizontal: 40,
-                          maxWidth: '80%',
-                        }}
-                      >
-                        <Text style={{
-                          ...styles.text,
-                          color: theme.colors.onSurface,
-                          textAlign: 'center',
-                        }}>
-                          This is what was sent to your friends
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => setShowActivityHelp(false)}
-                          style={{
-                            marginTop: 16,
-                            paddingVertical: 8,
-                            paddingHorizontal: 16,
-                            backgroundColor: theme.colors.primary,
-                            borderRadius: 8,
-                            alignSelf: 'center',
-                          }}
-                        >
-                          <Text style={{
-                            color: theme.colors.onPrimary,
-                            fontFamily: 'Inter',
-                            fontSize: 14,
-                          }}>
-                            OK
-                          </Text>
-                        </TouchableOpacity>
-                      </TouchableOpacity>
-                    </TouchableOpacity>
-                  </Modal>
                 </View>
                 <TouchableOpacity 
                   activeOpacity={0.1}
@@ -723,18 +708,24 @@ export default function ProfileContent() {
             onPress={() => router.push('/about')}
           />
 
-          <ProfileDrawerLink
-            icon="star"
-            label="Upgrade to Pro"
-            onPress={() => router.push('/pro')}
-            iconColor={theme.colors.primary}
-          />
+          {user.isPaid ? (
+            <ProfileDrawerLink
+              icon="card-outline"
+              label="Manage Subscription"
+              onPress={() => router.push('/manageSubscription')}
+              iconColor={theme.colors.primary}
+            />
+          ) : (
+            // <ProfileDrawerLink
+            //   icon="star"
+            //   label="Subscribe To Premium"
+            //   onPress={() => router.push('/pro')}
+            //   iconColor={theme.colors.primary}
+            // />
+            null
+          )}
 
-          <ProfileDrawerLink
-            icon="bulb-outline"
-            label="Suggest Verse of Day"
-            onPress={() => setShowSuggestionDialog(true)}
-          />
+          
 
           {user.isAdmin && (
             <ProfileDrawerLink

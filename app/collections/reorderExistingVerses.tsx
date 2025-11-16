@@ -71,6 +71,7 @@ export default function ReorderExistingVerses() {
     : editingCollection;
   
   const [reorderedData, setReorderedData] = useState<ReorderableItem[]>([]);
+  const [saveButtonEnabled, setSaveButtonEnabled] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -170,44 +171,42 @@ export default function ReorderExistingVerses() {
 
   const handleDragEnd = useCallback(({ data }: { data: ReorderableItem[] }) => {
     console.log('handleDragEnd - updating reorderedData with', data.length, 'items for existing collection');
+    setSaveButtonEnabled(true);
     setReorderedData(data);
   }, []);
 
   const handleSave = async () => {
     if (!collection?.collectionId) {
       console.error('No collection ID to update');
-      setIsSaving(false);
       return;
     }
 
     if (reorderedData.length === 0) {
       console.error('No items to save');
-      setIsSaving(false);
       return;
     }
-
-    setIsSaving(true);
     
+    setIsSaving(true);
     console.log('Saving existing collection - reorderedData length:', reorderedData.length);
     
-    // Separate verses and notes from reordered data
+    // Create ordered lists and verseOrder directly from the mixed reorderedData,
+    // preserving the exact user-defined order for both verses and notes.
     const reorderedVerses: UserVerse[] = [];
     const reorderedNotes: CollectionNote[] = [];
-    
-    reorderedData.forEach((item) => {
+    const orderTokens: string[] = [];
+
+    for (const item of reorderedData) {
       if (item.type === 'verse') {
         reorderedVerses.push(item.data);
+        const ref = item.data.readableReference?.trim();
+        if (ref) orderTokens.push(ref);
       } else {
         reorderedNotes.push(item.data);
+        if (item.data.id) orderTokens.push(item.data.id);
       }
-    });
-    
-    // Create verseOrder string from reordered data (combines verse refs and note IDs)
-    const verseRefs = reorderedVerses
-      .map((uv) => uv.readableReference?.trim())
-      .filter((ref): ref is string => Boolean(ref && ref.length > 0));
-    const noteIds = reorderedNotes.map((n) => n.id);
-    const verseOrder = [...verseRefs, ...noteIds].join(',');
+    }
+
+    const verseOrder = orderTokens.join(',');
     
     console.log('Saving existing collection - verseOrder:', verseOrder);
     console.log('Saving existing collection - verses:', reorderedVerses.map(uv => uv.readableReference));
@@ -241,17 +240,40 @@ export default function ReorderExistingVerses() {
       console.log('Fetched collection userVerses:', updatedCol?.userVerses.map(uv => uv.readableReference));
       
       if (updatedCol) {
-        // Update store with server-ordered collection
-        updateCollection(updatedCol);
-        if (editingCollection?.collectionId === updatedCol.collectionId) {
-          setEditingCollection(updatedCol);
+        // Preserve verse text from the reordered data
+        const verseTextMap = new Map<string, UserVerse>();
+        reorderedVerses.forEach(uv => {
+          if (uv.readableReference && uv.verses && uv.verses.length > 0) {
+            const key = uv.readableReference.trim().toLowerCase();
+            verseTextMap.set(key, uv);
+          }
+        });
+        
+        // Merge verse text into updated collection
+        const mergedUserVerses = (updatedCol.userVerses || []).map(uv => {
+          const key = uv.readableReference?.trim().toLowerCase();
+          const verseWithText = key ? verseTextMap.get(key) : null;
+          return verseWithText || uv;
+        });
+        
+        const finalCollection = {
+          ...updatedCol,
+          userVerses: mergedUserVerses,
+          notes: reorderedNotes,
+          verseOrder: verseOrder
+        };
+        
+        // Update store with merged collection (preserving verse text)
+        updateCollection(finalCollection);
+        if (editingCollection?.collectionId === finalCollection.collectionId) {
+          setEditingCollection(finalCollection);
         }
       }
       
-      setIsSaving(false);
       router.back();
     } catch (error) {
       console.error('Failed to save existing collection:', error);
+    } finally {
       setIsSaving(false);
     }
   };
@@ -305,29 +327,28 @@ export default function ReorderExistingVerses() {
           ? item.data.readableReference || item.data.verses[0]?.verse_reference || `verse-${Math.random()}`
           : item.data.id}
         onDragEnd={handleDragEnd}
-        contentContainerStyle={{paddingBottom: 100, paddingHorizontal: 20}}
+        contentContainerStyle={{paddingBottom: 200, paddingHorizontal: 20}}
+        onDragBegin={() => setSaveButtonEnabled(false)}
       />
 
-      {/* Shadow for Cancel button - positioned behind */}
       <View style={{
         position: 'absolute',
-        bottom: 60,
+        bottom: 70,
         left: 20,
         width: '47%',
-        height: 56,
+        height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
         boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
         zIndex: 5,
       }}></View>
 
-      {/* Shadow for Save button - positioned behind */}
       <View style={{
         position: 'absolute',
-        bottom: 60,
+        bottom: 70,
         right: 20,
         width: '47%',
-        height: 56,
+        height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
         boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
@@ -337,7 +358,7 @@ export default function ReorderExistingVerses() {
       <View style={{
         flexDirection: 'row',
         position: 'absolute',
-        bottom: 60,
+        bottom: 70,
         left: 0,
         right: 0,
         justifyContent: 'space-around',
@@ -357,22 +378,34 @@ export default function ReorderExistingVerses() {
         >
           <Text style={{...styles.tinyText, fontWeight: '600', color: colors.error}}>Cancel</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          onPress={handleSave}
-          disabled={isSaving}
-          style={{
-            flex: 1,
-            marginLeft: 10,
-            padding: 15,
-            backgroundColor: isSaving ? theme.colors.surface : theme.colors.primary,
-            borderRadius: 10,
-            alignItems: 'center',
-          }}
-        >
-          <Text style={{...styles.tinyText, fontWeight: '600', color: isSaving ? theme.colors.onSurface : theme.colors.onPrimary}}>
-            {isSaving ? 'Saving...' : 'Save'}
-          </Text>
-        </TouchableOpacity>
+        {saveButtonEnabled === true ? (
+            <TouchableOpacity 
+              onPress={handleSave}
+              disabled={isSaving}
+              style={{
+                flex: 1,
+                marginLeft: 10,
+                padding: 15,
+                backgroundColor: isSaving ? theme.colors.surface : theme.colors.primary,
+                borderRadius: 10,
+                alignItems: 'center',
+              }}>
+              <Text style={{...styles.tinyText, fontWeight: '600', color: isSaving ? theme.colors.onSurface : theme.colors.onPrimary}}>
+                {isSaving ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+          <View style={{
+              flex: 1,
+              marginLeft: 10,
+              padding: 15,
+              backgroundColor: theme.colors.surface,
+              borderRadius: 10,
+              alignItems: 'center',
+          }}>
+            <Text style={{...styles.tinyText, fontWeight: '600', color: theme.colors.surface2}}>Save</Text>
+          </View>
+        )}
       </View>
     </View>
   )

@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Keyboard, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { ActivityIndicator, TextInput } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { resetPasswordWithOtp, verifyPasswordResetOtp } from '../db';
@@ -31,8 +31,7 @@ export default function ResetPasswordScreen() {
       setMessage('');
 
       if (!username.trim() || !otp.trim()) {
-        setIsError(true);
-        setMessage('Please enter the verification code.');
+        Alert.alert('Missing information', 'Please enter the verification code.', [{ text: 'OK' }]);
         return;
       }
 
@@ -40,8 +39,11 @@ export default function ResetPasswordScreen() {
 
       const result = await verifyPasswordResetOtp(username.trim(), otp.trim());
       if (!result.valid) {
-        setIsError(true);
-        setMessage(result.reason === 'expired' ? 'This code has expired. Please request a new one.' : 'The code you entered is incorrect.');
+        Alert.alert(
+          'Invalid code',
+          result.reason === 'expired' ? 'This code has expired. Please request a new one.' : 'The code you entered is incorrect.',
+          [{ text: 'OK' }]
+        );
         setOtpStatus('unverified');
         return;
       }
@@ -50,8 +52,7 @@ export default function ResetPasswordScreen() {
       setMessage('Code verified. Please enter your new password.');
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : 'Failed to verify code.';
-      setIsError(true);
-      setMessage(errMessage);
+      Alert.alert('Verification failed', errMessage, [{ text: 'OK' }]);
       setOtpStatus('unverified');
     }
   };
@@ -63,26 +64,22 @@ export default function ResetPasswordScreen() {
       setMessage('');
 
       if (otpStatus !== 'verified') {
-        setIsError(true);
-        setMessage('Please verify your code first.');
+        Alert.alert('Verify code', 'Please verify your code first.', [{ text: 'OK' }]);
         return;
       }
 
       if (!newPassword.trim() || !confirmPassword.trim()) {
-        setIsError(true);
-        setMessage('Please fill out both password fields.');
+        Alert.alert('Missing information', 'Please fill out both password fields.', [{ text: 'OK' }]);
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        setIsError(true);
-        setMessage('Passwords do not match.');
+        Alert.alert('Mismatch', 'Passwords do not match.', [{ text: 'OK' }]);
         return;
       }
 
       if (newPassword.length < 11) {
-        setIsError(true);
-        setMessage('Password must be at least 11 characters long.');
+        Alert.alert('Password too short', 'Password must be at least 11 characters long.', [{ text: 'OK' }]);
         return;
       }
 
@@ -98,8 +95,7 @@ export default function ResetPasswordScreen() {
       }, 1000);
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : 'Failed to reset password.';
-      setIsError(true);
-      setMessage(errMessage);
+      Alert.alert('Reset failed', errMessage, [{ text: 'OK' }]);
     } finally {
       setSubmitting(false);
     }
@@ -107,16 +103,8 @@ export default function ResetPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <ScrollView 
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={{ ...styles.centered, marginBottom: 150 }}>
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <View style={{ ...styles.centered, marginBottom: 150, paddingHorizontal: 20 }}>
         <Text style={{ ...styles.text, marginBottom: 20 }}>Reset Password</Text>
 
         <TextInput
@@ -209,9 +197,8 @@ export default function ResetPasswordScreen() {
         <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace('/(auth)/login')}>
           <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>Back to Login</Text>
         </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
   );
 }

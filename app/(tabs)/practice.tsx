@@ -1,11 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { router, useFocusEffect } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { Animated, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Searchbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { VerseItemSkeleton } from '../components/skeleton';
-import { getOverdueVerses, getRecentPractice, getUnpopulatedMemorizedUserVerses, getUserVersesInProgress, getUserVersesNotStarted, getUserVersesPopulated, getVerseSearchResult } from '../db';
+import { getOverdueVerses, getUnpopulatedMemorizedUserVerses, getUserVersesInProgress, getUserVersesNotStarted, getUserVersesPopulated, getVerseSearchResult } from '../db';
 import { Collection, UserVerse, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -15,6 +16,7 @@ const baseUrl = 'http://10.169.51.121:5160';
 export default function PracticeScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
+  const navigation = useNavigation();
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
@@ -24,49 +26,111 @@ export default function PracticeScreen() {
   const [versesNotStarted, setVersesNotStarted] = useState<UserVerse[]>([]);
   const [versesOverdue, setVersesOverdue] = useState<UserVerse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [recentPractice, setRecentPractice] = useState<UserVerse[]>([]);
-  const [recentPracticeLoaded, setRecentPracticeLoaded] = useState(false);
-  
-  // Accordion state for memorized, not started, and overdue sections
-  const memorizedExpanded = useSharedValue(true);
-  const notStartedExpanded = useSharedValue(true);
-  const overdueExpanded = useSharedValue(true);
-  const memorizedHeight = useSharedValue(0);
-  const notStartedHeight = useSharedValue(0);
-  const overdueHeight = useSharedValue(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [scrollY] = useState(new Animated.Value(0));
+
+  // Set up native iOS search bar in header
+  useLayoutEffect(() => {
+    if (Platform.OS === 'ios') {
+      navigation.setOptions({
+        headerSearchBarOptions: {
+          placeholder: 'Search passages...',
+          onChangeText: (event: any) => {
+            const text = event.nativeEvent.text || '';
+            setSearchQuery(text);
+          },
+          onSearchButtonPress: (event: any) => {
+            const text = event.nativeEvent.text || '';
+            setSearchQuery(text);
+          },
+          onCancelButtonPress: () => {
+            setSearchQuery('');
+          },
+        },
+      });
+    }
+  }, [navigation]);
 
   const fetchUserVerses = useCallback(async () => {
     try {
       setLoading(true);
+      console.log('[Practice] Fetching user verses for:', user.username);
+      
       if (!user.username) {
+        console.log('[Practice] No username, clearing all verses');
         setVersesInProgress([]);
+        setVersesMemorized([]);
+        setVersesNotStarted([]);
+        setVersesOverdue([]);
         setLoading(false);
         return;
       }
-      const validCollectionIds = new Set(
-        collections
-          .map((collection) => collection.collectionId)
-          .filter((id): id is number => id !== undefined && id !== null)
-      );
-      const filterByCollection = (items: UserVerse[]) =>
-        items.filter(
-          (item) =>
-            item.collectionId !== undefined &&
-            item.collectionId !== null &&
-            validCollectionIds.has(item.collectionId)
-        );
+
+      console.log('[Practice] Collections count:', collections.length);
+      
+      // Fetch all verses without filtering first
+      console.log('[Practice] Fetching from database...');
       const [memorized, inProgress, notStarted, overdue] = await Promise.all([
         getUnpopulatedMemorizedUserVerses(user.username),
         getUserVersesInProgress(user.username),
         getUserVersesNotStarted(user.username),
         getOverdueVerses(user.username)
       ]);
-      setVersesMemorized(filterByCollection(memorized));
-      setVersesInProgress(filterByCollection(inProgress));
-      setVersesNotStarted(filterByCollection(notStarted));
-      setVersesOverdue(filterByCollection(overdue));
+
+      console.log('[Practice] Raw data from database:');
+      console.log('  - Memorized:', memorized.length);
+      console.log('  - In Progress:', inProgress.length);
+      console.log('  - Not Started:', notStarted.length);
+      console.log('  - Overdue:', overdue.length);
+
+      // Apply filtering only if collections exist
+      const validCollectionIds = new Set(
+        collections
+          .map((collection) => collection.collectionId)
+          .filter((id): id is number => id !== undefined && id !== null)
+      );
+
+      console.log('[Practice] Valid collection IDs:', Array.from(validCollectionIds));
+
+      let filteredMemorized = memorized;
+      let filteredInProgress = inProgress;
+      let filteredNotStarted = notStarted;
+      let filteredOverdue = overdue;
+
+      // Only filter if collections exist
+      if (validCollectionIds.size > 0) {
+        // Show all verses - either they have no collectionId (standalone) or they belong to one of the user's collections
+        const filterByCollection = (items: UserVerse[]) =>
+          items.filter(
+            (item) =>
+              // Include verses without a collectionId (standalone verses)
+              (item.collectionId === undefined || item.collectionId === null) ||
+              // Or verses that belong to one of the user's collections
+              (item.collectionId !== undefined && item.collectionId !== null && validCollectionIds.has(item.collectionId))
+          );
+        
+        filteredMemorized = filterByCollection(memorized);
+        filteredInProgress = filterByCollection(inProgress);
+        filteredNotStarted = filterByCollection(notStarted);
+        filteredOverdue = filterByCollection(overdue);
+
+        console.log('[Practice] After filtering:');
+        console.log('  - Memorized:', filteredMemorized.length);
+        console.log('  - In Progress:', filteredInProgress.length);
+        console.log('  - Not Started:', filteredNotStarted.length);
+        console.log('  - Overdue:', filteredOverdue.length);
+      }
+
+      setVersesMemorized(filteredMemorized);
+      setVersesInProgress(filteredInProgress);
+      setVersesNotStarted(filteredNotStarted);
+      setVersesOverdue(filteredOverdue);
     } catch (error) {
-      console.error('Failed to fetch user verses:', error);
+      console.error('[Practice] Failed to fetch user verses:', error);
+      setVersesInProgress([]);
+      setVersesMemorized([]);
+      setVersesNotStarted([]);
+      setVersesOverdue([]);
     } finally {
       setLoading(false);
     }
@@ -83,21 +147,7 @@ export default function PracticeScreen() {
           setShouldReloadPracticeList(false);
         });
       }
-      
-      // Load Recent Practice
-      if (user.username && user.username !== 'Default User') {
-        (async () => {
-          try {
-            const recent = await getRecentPractice(user.username);
-            setRecentPractice(recent || []);
-            setRecentPracticeLoaded(true);
-          } catch (e) {
-            console.error('Failed to load recent practice', e);
-            setRecentPracticeLoaded(true);
-          }
-        })();
-      }
-    }, [fetchUserVerses, shouldReloadPracticeList, user.username, useAppStore.getState().setShouldReloadPracticeList])
+    }, [fetchUserVerses, shouldReloadPracticeList, setShouldReloadPracticeList])
   );
 
   const handlePractice = async (userVerse: UserVerse) => {
@@ -147,6 +197,42 @@ export default function PracticeScreen() {
     }
   };
 
+  // Filter each section individually based on search query
+  const filterVerses = useCallback((verses: UserVerse[], query: string) => {
+    if (!query.trim()) {
+      return verses;
+    }
+
+    const searchQuery = query.trim().toLowerCase();
+    return verses.filter(verse => {
+      // Search in readable reference
+      const refMatch = verse.readableReference?.toLowerCase().includes(searchQuery);
+      
+      // Search in verse text
+      const textMatch = verse.verses?.some(v => 
+        v.text?.toLowerCase().includes(searchQuery)
+      );
+
+      return refMatch || textMatch;
+    });
+  }, []);
+
+  const filteredOverdue = useMemo(() => 
+    filterVerses(versesOverdue, searchQuery), 
+    [versesOverdue, searchQuery, filterVerses]
+  );
+  const filteredInProgress = useMemo(() => 
+    filterVerses(versesInProgress, searchQuery), 
+    [versesInProgress, searchQuery, filterVerses]
+  );
+  const filteredNotStarted = useMemo(() => 
+    filterVerses(versesNotStarted, searchQuery), 
+    [versesNotStarted, searchQuery, filterVerses]
+  );
+  const filteredMemorized = useMemo(() => 
+    filterVerses(versesMemorized, searchQuery), 
+    [versesMemorized, searchQuery, filterVerses]
+  );
 
   const formatDate = (date: Date | null): string => {
     if (!date) return 'Not practiced';
@@ -157,10 +243,10 @@ export default function PracticeScreen() {
     practiceDate.setHours(0, 0, 0, 0);
     
     const diffTime = practiceDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays < 0) {
-      return `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`;
+      return `Overdue ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'} ago`;
     } else if (diffDays === 0) {
       return 'Due today';
     } else if (diffDays === 1) {
@@ -168,87 +254,45 @@ export default function PracticeScreen() {
     } else {
       const month = practiceDate.toLocaleString('default', { month: 'short' });
       const day = practiceDate.getDate();
-      return `Due ${month} ${day}`;
+      const year = practiceDate.getFullYear();
+      const currentYear = today.getFullYear();
+      
+      if (year !== currentYear) {
+        return `Due ${month} ${day}, ${year}`;
+      } else {
+        return `Due ${month} ${day}`;
+      }
     }
   };
 
-  // Animated styles for accordion
-  const memorizedAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      height: memorizedExpanded.value ? withTiming(memorizedHeight.value, { duration: 300 }) : withTiming(0, { duration: 300 }),
-      overflow: 'hidden',
-    };
-  });
-
-  const notStartedAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      height: notStartedExpanded.value ? withTiming(notStartedHeight.value, { duration: 300 }) : withTiming(0, { duration: 300 }),
-      overflow: 'hidden',
-    };
-  });
-
-  const memorizedChevronStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: withTiming(memorizedExpanded.value ? '180deg' : '0deg', { duration: 300 }) }],
-    };
-  });
-
-  const notStartedChevronStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: withTiming(notStartedExpanded.value ? '180deg' : '0deg', { duration: 300 }) }],
-    };
-  });
-
-  const overdueAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      height: overdueExpanded.value ? withTiming(overdueHeight.value, { duration: 300 }) : withTiming(0, { duration: 300 }),
-      overflow: 'hidden',
-    };
-  });
-
-  const overdueChevronStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: withTiming(overdueExpanded.value ? '180deg' : '0deg', { duration: 300 }) }],
-    };
-  });
-
-  const renderVerseItem = (userVerse: UserVerse, index: number, section: string) => {
+  const renderVerseItem = (userVerse: UserVerse, index: number) => {
     const nextPracticeDate = userVerse.nextPracticeDate ? new Date(userVerse.nextPracticeDate) : null;
     
     return (
       <TouchableOpacity
-        key={userVerse.id || `${section}-${index}`}
+        key={userVerse.id || `verse-${index}`}
         onPress={() => handlePractice(userVerse)}
-        style={{ width: '100%', marginBottom: 15 }}
+        style={{ width: '100%', marginBottom: 10 }}
       >
-        <View style={{ width: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface }}>
+        <View style={{ width: '100%', padding: 12, borderRadius: 8, backgroundColor: theme.colors.surface }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ ...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600, fontSize: 18, color: theme.colors.onBackground }}>
+              <Text style={{ ...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600, fontSize: 16, color: theme.colors.onBackground, marginBottom: 4 }}>
                 {userVerse.readableReference || 'Unknown Reference'}
               </Text>
-              <View style={{ flexDirection: 'column', gap: 4, marginTop: 5 }}>
-                <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>
-                  {userVerse.timesMemorized || 0} time{(userVerse.timesMemorized || 0) === 1 ? '' : 's'} memorized
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2 }}>
+                <Text style={{ ...styles.tinyText, fontSize: 13, color: theme.colors.primary }}>
+                  {userVerse.timesMemorized || 0}x memorized
                 </Text>
                 {nextPracticeDate && (
-                  <Text style={{ ...styles.tinyText, color: theme.colors.onSurfaceVariant }}>
+                  <Text style={{ ...styles.tinyText, fontSize: 13, color: theme.colors.onSurfaceVariant }}>
                     {formatDate(nextPracticeDate)}
                   </Text>
                 )}
               </View>
-              {userVerse.verses && userVerse.verses.length > 0 && (
-                <Text style={{ fontFamily: 'Noto Serif', fontSize: 16, marginTop: 5, opacity: 0.7, color: theme.colors.onBackground }}>
-                  {userVerse.verses[0].text.substring(0, 50)}{userVerse.verses[0].text.length > 50 ? '...' : ''}
-                </Text>
-              )}
             </View>
-            <View style={{ alignItems: 'flex-end', marginLeft: 15 }}>
-              {section === 'notStarted' ? (
-                <Ionicons name="play-circle-outline" size={40} color={theme.colors.primary} />
-              ) : (
-                <Ionicons name="chevron-forward" size={24} color={theme.colors.onBackground} />
-              )}
+            <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.onSurfaceVariant} />
             </View>
           </View>
         </View>
@@ -258,16 +302,53 @@ export default function PracticeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['top']}>
-      <ScrollView
+      {/* Android: Overlay search bar over header */}
+      {Platform.OS === 'android' && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 30,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            backgroundColor: theme.colors.background,
+            paddingTop: 8,
+            paddingHorizontal: 16,
+            paddingBottom: 8,
+          }}
+        >
+          <Searchbar
+            placeholder="Filter passages"
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            style={{
+              backgroundColor: theme.colors.surface,
+              elevation: 0,
+            }}
+            inputStyle={{
+              color: theme.colors.onSurface,
+            }}
+            iconColor={theme.colors.onSurfaceVariant}
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+          />
+        </View>
+      )}
+
+      <Animated.ScrollView
         style={styles.scrollContainer}
         contentContainerStyle={{
           alignItems: 'flex-start',
           justifyContent: 'flex-start',
           paddingBottom: 100,
           paddingHorizontal: 20,
-          paddingTop: 20,
+          paddingTop: Platform.OS === 'android' ? 80 : 20, // Space for search bar on Android
           width: '100%'
         }}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
       >
         {loading ? (
           <View style={{ width: '100%' }}>
@@ -280,7 +361,7 @@ export default function PracticeScreen() {
             ))}
           </View>
         ) : (
-          versesMemorized.length === 0 && versesInProgress.length === 0 && versesNotStarted.length === 0 && versesOverdue.length === 0 && (!recentPracticeLoaded || recentPractice.length === 0) ? (
+          versesMemorized.length === 0 && versesInProgress.length === 0 && versesNotStarted.length === 0 && versesOverdue.length === 0 ? (
             <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 100, width: '100%' }}>
               <Ionicons name="book-outline" size={80} color={theme.colors.onSurface} />
               <Text style={{ ...styles.text, fontSize: 20, fontWeight: '600', marginTop: 20, textAlign: 'center' }}>
@@ -289,188 +370,66 @@ export default function PracticeScreen() {
             </View>
           ) : (
             <View style={{ width: '100%' }}>
-              {/* Recent Practice Section */}
-              {recentPracticeLoaded && (
-                <View style={{ width: '100%', marginBottom: 30, marginTop: 5, borderRadius: 20 }}>
-                  <Text style={{ ...styles.text, fontFamily: 'Inter bold', marginBottom: 5, backgroundColor: theme.colors.background, zIndex: 9999 }}>Recent Practice</Text>
-                  {recentPractice.length > 0 ? (
-                    <View style={{ flexDirection: 'row', position: 'relative' }}>
-                      <View style={{ flex: 1, marginLeft: 20 }}>
-                        {recentPractice.map((uv, index) => (
-                          <View key={uv.id || index} style={{ 
-                            flexDirection: 'row', 
-                            alignItems: 'center', 
-                            justifyContent: 'space-between',
-                            position: 'relative'
-                          }}>
-                            <View style={{
-                              position: 'absolute',
-                              left: -10,
-                              top: 0,
-                              width: 4,
-                              height: 34,
-                              borderRadius: 9999,
-                              backgroundColor: theme.colors.onBackground
-                            }}/>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginLeft: 10, height: 30, marginTop: 0 }}>
-                              <Text style={{ fontFamily: 'Inter', fontSize: 16, color: theme.colors.onBackground, marginRight: 12 }}>
-                                {uv.readableReference}
-                              </Text>
-                              <Text style={{ fontFamily: 'Inter', fontSize: 14, color: theme.colors.onSurfaceVariant }}>
-                                {uv.timesMemorized || 0}x memorized
-                              </Text>
-                            </View>
-                            <TouchableOpacity 
-                              activeOpacity={0.1}
-                              onPress={async () => {
-                                try {
-                                  // Populate verses if not already populated
-                                  let verseToPractice = uv;
-                                  if (!verseToPractice.verses || verseToPractice.verses.length === 0) {
-                                    const searchData = await getVerseSearchResult(uv.readableReference);
-                                    verseToPractice = { ...uv, verses: searchData.verses || [] };
-                                  }
-                                  const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-                                  setEditingUserVerse(verseToPractice);
-                                  router.push('/practiceSession');
-                                } catch (e) {
-                                  console.error('Failed to load verse for practice', e);
-                                  alert('Failed to load verse');
-                                }
-                              }}
-                            >
-                              <Text style={{ ...styles.tinyText, fontSize: 12, textDecorationLine: 'underline', opacity: 0.8}}>
-                                Learn again
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        ))}
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={{ flexDirection: 'row', position: 'relative', marginTop: 5 }}>
-                      {/* L shape for empty state */}
-                      <View style={{ marginLeft: 20, alignItems: 'flex-start' }}>
-                        <View style={{
-                          position: 'absolute',
-                          left: -10,
-                          top: 0,
-                          width: 4,
-                          height: 30,
-                          borderRadius: 9999,
-                          backgroundColor: theme.colors.onBackground
-                        }}/>
-                      </View>
-                      <View style={{ flex: 1, alignItems: 'flex-start', marginLeft: 10, marginTop: 5 }}>
-                        <Text style={{ 
-                          fontFamily: 'Inter', 
-                          fontSize: 14, 
-                          color: theme.colors.onBackground,
-                        }}>
-                          No passages practiced
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              )}
               {/* Overdue Section */}
-              {versesOverdue.length > 0 && (
-                <View style={{ width: '100%', marginBottom: 30 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      overdueExpanded.value = !overdueExpanded.value;
-                    }}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}
-                  >
-                    <Text style={{ ...styles.subheading }}>
-                      Overdue ({versesOverdue.length})
-                    </Text>
-                    <Animated.View style={overdueChevronStyle}>
-                      <Ionicons name="chevron-down" size={20} color={theme.colors.onBackground} />
-                    </Animated.View>
-                  </TouchableOpacity>
-                  <Animated.View style={overdueAnimatedStyle}>
-                    <View
-                      onLayout={(event) => {
-                        overdueHeight.value = event.nativeEvent.layout.height;
-                      }}
-                    >
-                      {versesOverdue.map((userVerse, index) => renderVerseItem(userVerse, index, 'overdue'))}
-                    </View>
-                  </Animated.View>
-                </View>
-              )}
-
-              {/* Memorized Section */}
-              {versesMemorized.length > 0 && (
-                <View style={{ width: '100%', marginBottom: 30 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      memorizedExpanded.value = !memorizedExpanded.value;
-                    }}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}
-                  >
-                    <Text style={{ ...styles.subheading }}>
-                      Memorized ({versesMemorized.length})
-                    </Text>
-                    <Animated.View style={memorizedChevronStyle}>
-                      <Ionicons name="chevron-down" size={20} color={theme.colors.onBackground} />
-                    </Animated.View>
-                  </TouchableOpacity>
-                  <Animated.View style={memorizedAnimatedStyle}>
-                    <View
-                      onLayout={(event) => {
-                        memorizedHeight.value = event.nativeEvent.layout.height;
-                      }}
-                    >
-                      {versesMemorized.map((userVerse, index) => renderVerseItem(userVerse, index, 'memorized'))}
-                    </View>
-                  </Animated.View>
+              {filteredOverdue.length > 0 && (
+                <View style={{ width: '100%', marginBottom: 20 }}>
+                  <Text style={{ ...styles.subheading, marginBottom: 12 }}>
+                    Overdue ({filteredOverdue.length})
+                  </Text>
+                  {filteredOverdue.map((userVerse, index) => renderVerseItem(userVerse, index))}
                 </View>
               )}
 
               {/* In Progress Section */}
-              {versesInProgress.length > 0 && (
-                <View style={{ width: '100%', marginBottom: 30 }}>
-                  <Text style={{ ...styles.subheading, marginBottom: 15 }}>
-                    In Progress ({versesInProgress.length})
+              {filteredInProgress.length > 0 && (
+                <View style={{ width: '100%', marginBottom: 20 }}>
+                  <Text style={{ ...styles.subheading, marginBottom: 12 }}>
+                    In Progress ({filteredInProgress.length})
                   </Text>
-                  {versesInProgress.map((userVerse, index) => renderVerseItem(userVerse, index, 'inProgress'))}
+                  {filteredInProgress.map((userVerse, index) => renderVerseItem(userVerse, index))}
                 </View>
               )}
 
               {/* Not Started Section */}
-              {versesNotStarted.length > 0 && (
-                <View style={{ width: '100%', marginBottom: 30 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      notStartedExpanded.value = !notStartedExpanded.value;
-                    }}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 15 }}
-                  >
-                    <Text style={{ ...styles.subheading }}>
-                      Not Started ({versesNotStarted.length})
-                    </Text>
-                    <Animated.View style={notStartedChevronStyle}>
-                      <Ionicons name="chevron-down" size={20} color={theme.colors.onBackground} />
-                    </Animated.View>
-                  </TouchableOpacity>
-                  <Animated.View style={notStartedAnimatedStyle}>
-                    <View
-                      onLayout={(event) => {
-                        notStartedHeight.value = event.nativeEvent.layout.height;
-                      }}
-                    >
-                      {versesNotStarted.map((userVerse, index) => renderVerseItem(userVerse, index, 'notStarted'))}
-                    </View>
-                  </Animated.View>
+              {filteredNotStarted.length > 0 && (
+                <View style={{ width: '100%', marginBottom: 20 }}>
+                  <Text style={{ ...styles.subheading, marginBottom: 12 }}>
+                    Not Started ({filteredNotStarted.length})
+                  </Text>
+                  {filteredNotStarted.map((userVerse, index) => renderVerseItem(userVerse, index))}
+                </View>
+              )}
+
+              {/* Memorized Section */}
+              {filteredMemorized.length > 0 && (
+                <View style={{ width: '100%', marginBottom: 20 }}>
+                  <Text style={{ ...styles.subheading, marginBottom: 12 }}>
+                    Memorized ({filteredMemorized.length}{searchQuery.trim() ? ` of ${versesMemorized.length}` : ''})
+                  </Text>
+                  {filteredMemorized.map((userVerse, index) => renderVerseItem(userVerse, index))}
+                </View>
+              )}
+
+              {/* Show message if searching and no results */}
+              {searchQuery.trim() && 
+               filteredOverdue.length === 0 && 
+               filteredInProgress.length === 0 && 
+               filteredNotStarted.length === 0 && 
+               filteredMemorized.length === 0 && (
+                <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 100, width: '100%' }}>
+                  <Ionicons name="search-outline" size={80} color={theme.colors.onSurfaceVariant} />
+                  <Text style={{ ...styles.text, fontSize: 20, fontWeight: '600', marginTop: 20, textAlign: 'center' }}>
+                    No passages found
+                  </Text>
+                  <Text style={{ ...styles.tinyText, marginTop: 8, color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
+                    Try searching by reference or verse text
+                  </Text>
                 </View>
               )}
             </View>
           )
         )}
-      </ScrollView>
+      </Animated.ScrollView>
     </SafeAreaView>
   );
 }

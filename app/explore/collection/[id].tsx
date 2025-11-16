@@ -1,12 +1,13 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { ActivityIndicator, Snackbar, Surface, Text } from 'react-native-paper';
-import { addUserVersesToNewCollection, createCollectionDB, getMostRecentCollectionId, getPublishedCollection, getUserCollections, getUserVersesByCollectionWithVerses, incrementPublishedCollectionSaveCount, PublishedCollection, refreshUser, updateCollectionsOrder } from '../../db';
-import { Collection, useAppStore, UserVerse } from '../../store';
+import { ActivityIndicator, Snackbar, Text } from 'react-native-paper';
+import CollectionNoteItem from '../../components/collectionNote';
+import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getMostRecentCollectionId, getPublishedCollection, getUserCollections, getUserProfile, getUserVersesByCollectionWithVerses, incrementPublishedCollectionSaveCount, PublishedCollection, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../../db';
+import { Collection, CollectionNote, useAppStore, UserVerse } from '../../store';
 import useStyles from '../../styles';
 import useAppTheme from '../../theme';
 
@@ -29,12 +30,70 @@ export default function PublishedCollectionView() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [authorProfile, setAuthorProfile] = useState<{ firstName: string; lastName: string; username: string } | null>(null);
+
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const cats = await getAllCategories();
+        setAllCategories(cats);
+      } catch {}
+    })();
+  }, []);
+
+  // Derive category names from ids with a single categories fetch
+  const categoryNames = useMemo<string[]>(() => {
+    if (!collection) return [];
+    const idToName = new Map<number, string>(allCategories.map(c => [c.categoryId, c.name]));
+    const ids = (collection.categoryIds || []);
+    const names: string[] = [];
+    const seen = new Set<string>();
+    ids.forEach((id) => {
+      const n = idToName.get(id);
+      if (n) {
+        const key = n.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          names.push(n);
+        }
+      }
+    });
+    return names;
+  }, [collection, allCategories]);
 
   useLayoutEffect(() => {
     if (collection) {
-      navigation.setOptions({ title: collection.title });
+      navigation.setOptions({
+        title: collection.title,
+        headerRight: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="people" size={14} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
+              <Text style={{ ...styles.tinyText, fontSize: 14, marginBottom: 0 }}>{savedCount}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={isSaving}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 6,
+                borderRadius: 8,
+                backgroundColor: theme.colors.surface2,
+                opacity: isSaving ? 0.6 : 1
+              }}
+            >
+              {isSaving ? (
+                <ActivityIndicator animating size="small" color={theme.colors.onSurface} />
+              ) : (
+                <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0 }}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ),
+      });
     }
-  }, [collection]);
+  }, [collection, isSaving, savedCount, theme.colors.surface2, theme.colors.onSurface]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +128,30 @@ export default function PublishedCollectionView() {
           });
           setSavedCount(published.numSaves ?? 0);
           setErrorMessage(null);
+          
+          // Fetch author profile to get first and last name
+          if (published.author) {
+            try {
+              const profile = await getUserProfile(published.author);
+              if (!cancelled) {
+                setAuthorProfile({
+                  firstName: profile.firstName || '',
+                  lastName: profile.lastName || '',
+                  username: profile.username
+                });
+              }
+            } catch (e) {
+              console.error('Failed to fetch author profile:', e);
+              // Fallback to just username if profile fetch fails
+              if (!cancelled) {
+                setAuthorProfile({
+                  firstName: '',
+                  lastName: '',
+                  username: published.author
+                });
+              }
+            }
+          }
         }
       } catch (e) {
         console.error('Failed to load published collection', e);
@@ -81,6 +164,39 @@ export default function PublishedCollectionView() {
   }, [id]);
 
   const numVerses = useMemo(() => collection?.userVerses?.length ?? 0, [collection]);
+  const orderedItems = useMemo(() => {
+    if (!collection) return [];
+    const verseOrder = (collection.verseOrder ?? '').trim();
+    const verses = collection.userVerses ?? [];
+    const notes: CollectionNote[] = (collection as any).notes ?? [];
+    if (!verseOrder) {
+      const items: Array<{type:'verse'|'note'; data:any}> = [];
+      verses.forEach(v => items.push({type:'verse', data:v}));
+      notes.forEach(n => items.push({type:'note', data:n}));
+      return items;
+    }
+    const orderArray = verseOrder.split(',').map(t => t.trim()).filter(Boolean);
+    const verseMap = new Map<string, UserVerse>();
+    verses.forEach(uv => {
+      if (uv.readableReference) verseMap.set(uv.readableReference.trim().toLowerCase(), uv);
+    });
+    const noteMap = new Map<string, CollectionNote>();
+    notes.forEach(n => { if (n.id) noteMap.set(n.id.trim(), n); });
+    const items: Array<{type:'verse'|'note'; data:any}> = [];
+    orderArray.forEach(tok => {
+      const lower = tok.toLowerCase();
+      if (noteMap.has(tok)) {
+        items.push({type:'note', data: noteMap.get(tok)!});
+        noteMap.delete(tok);
+      } else if (verseMap.has(lower)) {
+        items.push({type:'verse', data: verseMap.get(lower)!});
+        verseMap.delete(lower);
+      }
+    });
+    verseMap.forEach(v => items.push({type:'verse', data:v}));
+    noteMap.forEach(n => items.push({type:'note', data:n}));
+    return items;
+  }, [collection?.verseOrder, collection?.userVerses, (collection as any)?.notes]);
   const publishedDateText = useMemo(() => {
     if (!collection?.publishedDate) return null;
     const date = new Date(collection.publishedDate);
@@ -96,7 +212,14 @@ export default function PublishedCollectionView() {
 
   const handleSave = async () => {
     if (!collection) return;
-    if (collections.length >= 40) {
+    
+    // Check collection limit based on paid status
+    const maxCollections = user.isPaid ? 40 : 5;
+    if (collections.length >= maxCollections) {
+      if (!user.isPaid) {
+        router.push('/pro');
+        return;
+      }
       setErrorMessage('You can create up to 40 collections.');
       return;
     }
@@ -153,6 +276,25 @@ export default function PublishedCollectionView() {
       await createCollectionDB(duplicateCollection, user.username);
       const newCollectionId = await getMostRecentCollectionId(user.username);
 
+      // Persist notes and verse order onto the new collection before adding verses
+      try {
+        const notes: CollectionNote[] = (collection as any).notes ?? [];
+        const updated: Collection = {
+          collectionId: newCollectionId,
+          title: duplicateCollection.title,
+          authorUsername: duplicateCollection.authorUsername,
+          username: user.username,
+          visibility: 'Private',
+          verseOrder: collection.verseOrder ?? '',
+          userVerses: [],
+          notes,
+          favorites: false,
+        };
+        await updateCollectionDB(updated);
+      } catch (e) {
+        console.warn('Failed to set notes/verseOrder on new collection:', e);
+      }
+
       if (collection.userVerses && collection.userVerses.length > 0) {
         await addUserVersesToNewCollection(collection.userVerses, newCollectionId);
       }
@@ -204,79 +346,113 @@ export default function PublishedCollectionView() {
   return (
     <>
       <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={{ padding: 16 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ ...styles.tinyText }}>{numVerses} {numVerses === 1 ? 'verse' : 'verses'}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={isSaving}
-            style={{
-              paddingHorizontal: 20,
-              paddingVertical: 6,
-              borderRadius: 8,
-              backgroundColor: theme.colors.surface2,
-              opacity: isSaving ? 0.6 : 1
-            }}
-          >
-            {isSaving ? (
-              <ActivityIndicator animating size="small" color={theme.colors.onSurface} />
-            ) : (
-              <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0 }}>Save</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        {collection.description ? (
+          <Text style={{...styles.tinyText, fontFamily: 'Noto Serif'}}>{collection.description}</Text>
+        ) : (
+          
+        <Text style={{ ...styles.tinyText }}>No description</Text>
+        )}
+        <View />
       </View>
 
-      
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: -4 }}>
-        <Ionicons name="people" size={14} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
-        <Text style={{...styles.tinyText, fontSize: 14}}>{savedCount} {(savedCount === 1 ? 'Save' : 'Saves')}</Text>
-      </View>
 
-      {!!publishedDateText && (
-        <Text style={{ ...styles.tinyText, marginTop: 6 }}>
-          Published on {publishedDateText}
-        </Text>
-      )}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Ionicons name="person-outline" size={18} color={theme.colors.onSurfaceVariant} />
+                <Text style={{ 
+                  ...styles.tinyText, 
+                  marginLeft: 8, 
+                  color: theme.colors.onSurfaceVariant,
+                  fontSize: 14 
+                }}>
+                  Created by: {(() => {
+                    if (authorProfile) {
+                      const fullName = `${authorProfile.firstName} ${authorProfile.lastName}`.trim();
+                      return fullName ? `${fullName} @${authorProfile.username}` : `@${authorProfile.username}`;
+                    }
+                    return collection.author;
+                  })()}
+                </Text>
+              </View>
+              {publishedDateText && (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="time-outline" size={18} color={theme.colors.onSurfaceVariant} />
+                  <Text style={{ 
+                    ...styles.tinyText, 
+                    marginLeft: 8, 
+                    color: theme.colors.onSurfaceVariant,
+                    fontSize: 14 
+                  }}>
+                    Last updated: {publishedDateText}
+                  </Text>
+                </View>
+              )}
+              
+        <Text style={{ ...styles.tinyText, marginTop: 8 }}>{numVerses} {numVerses === 1 ? 'passage' : 'passages'}</Text>
+        {categoryNames.length > 0 && (
+          <View style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {categoryNames.map((name, idx) => (
+              <View
+                key={`${name}-${idx}`}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 999,
+                  backgroundColor: theme.colors.surface2,
+                }}
+              >
+                <Text style={{ ...styles.tinyText, marginBottom: 0 }}>{name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
-      <Text style={{ ...styles.tinyText, marginTop: 6 }}>
-        Created by @{collection.author}
-      </Text>
-
-      {!!collection.description && (
-        <Surface style={{ minWidth: '100%', padding: 14, borderRadius: 6, backgroundColor: theme.colors.surface, marginTop: 12 }} elevation={2}>
-          <Text style={{ ...styles.text }}>{collection.description}</Text>
-        </Surface>
-      )}
-
-      <View style={{ height: 16 }} />
+      <View style={{ height: 50 }} />
 
       <View>
-        {(collection.userVerses || []).map((uv: UserVerse, idx) => (
-          <View key={uv.readableReference || `uv-${idx}`} style={{ minWidth: '100%', marginBottom: 16 }}>
-            <Surface style={{ minWidth: '100%', padding: 20, borderRadius: 3, backgroundColor: theme.colors.surface }} elevation={4}>
-              <View>
-                <Text style={{ ...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600 }}>{uv.readableReference}</Text>
-                {(uv.verses || []).map((v, vIdx) => {
-                  const verseNumberText = (() => {
-                    if (v.verse_Number === null || v.verse_Number === undefined) {
-                      return (vIdx + 1).toString();
-                    }
-                    const asString = `${v.verse_Number}`.trim();
-                    return asString.length > 0 ? asString : (vIdx + 1).toString();
-                  })();
-                  return (
-                    <View key={v.verse_reference || `${uv.readableReference}-v-${vIdx}`}>
-                      <Text style={{ ...styles.text, fontFamily: 'Noto Serif', fontSize: 18 }}>
-                        {`${verseNumberText}: ${v.text}`}
-                      </Text>
-                    </View>
-                  );
-                })}
+        {orderedItems.map((item, idx) => {
+          if (item.type === 'note') {
+            const note = item.data as CollectionNote;
+            return (
+              <CollectionNoteItem
+                key={note.id || `note-${idx}`}
+                note={note}
+                isOwned={false}
+              />
+            );
+          }
+          const uv = item.data as UserVerse;
+          return (
+            <View key={uv.readableReference || `uv-${idx}`} style={{ minWidth: '100%', marginBottom: 20 }}>
+              <View style={{ minWidth: '100%', borderRadius: 3 }}>
+                <View>
+                  <Text style={{ ...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600 }}>{uv.readableReference}</Text>
+                  {(uv.verses || []).map((v, vIdx) => {
+                    const verseNumberText = (() => {
+                      if (v.verse_Number === null || v.verse_Number === undefined) {
+                        return (vIdx + 1).toString();
+                      }
+                      const asString = `${v.verse_Number}`.trim();
+                      return asString.length > 0 ? asString : (vIdx + 1).toString();
+                    })();
+                    return (
+                      <View key={v.verse_reference || `${uv.readableReference}-v-${vIdx}`} style={{}}>
+                        <View>
+                          <Text style={{ ...styles.text, fontFamily: 'Noto Serif', fontSize: 18 }}>
+                            {`${verseNumberText}: ${v.text}`}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
-            </Surface>
-          </View>
-        ))}
+              {/* Match collection view styling with a divider */}
+              {/* Using a simple line via a View to avoid adding new imports if not present */}
+              <View style={{ height: 1, backgroundColor: theme.colors.surface2, marginHorizontal: -50, marginTop: 20 }} />
+            </View>
+          );
+        })}
       </View>
 
         <View style={{ height: 40 }} />

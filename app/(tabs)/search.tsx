@@ -1,4 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -8,7 +9,7 @@ import ExploreCollectionCard from '../components/exploreCollectionCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { SearchResultSkeleton } from '../components/skeleton';
 import { addUserVersesToNewCollection, checkRelationship, createCollectionDB, getMostRecentCollectionId, getPopularSearches, getUserCollections, getVerseSearchResult, PublishedCollection, refreshUser, searchPublishedCollections, searchUsers, sendFriendRequest, trackSearch, updateCollectionDB, updateCollectionsOrder } from '../db';
-import { Collection, useAppStore, User, UserVerse, Verse } from '../store';
+import { Collection, SearchData, useAppStore, User, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -29,12 +30,13 @@ export default function SearchScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<SearchTab>('passages');
   const [loading, setLoading] = useState(false);
-  const [passageResults, setPassageResults] = useState<Verse[]>([]);
+  const [passageResults, setPassageResults] = useState<(Verse | UserVerse)[]>([]);
   const [peopleResults, setPeopleResults] = useState<User[]>([]);
   const [collectionResults, setCollectionResults] = useState<PublishedCollection[]>([]);
   const [relationships, setRelationships] = useState<Map<string, number>>(new Map());
   const [showCollectionPicker, setShowCollectionPicker] = useState(false);
   const [selectedVerse, setSelectedVerse] = useState<Verse | null>(null);
+  const [selectedUserVerse, setSelectedUserVerse] = useState<UserVerse | null>(null);
   const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
   const [isAddingToCollection, setIsAddingToCollection] = useState(false);
   const [isCreatingNewCollection, setIsCreatingNewCollection] = useState(false);
@@ -45,6 +47,7 @@ export default function SearchScreen() {
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [verseToShare, setVerseToShare] = useState<Verse | null>(null);
+  const [userVerseToShare, setUserVerseToShare] = useState<UserVerse | null>(null);
 
   const normalizedSearchTerm = useMemo(
     () => searchQuery.trim().toLowerCase(),
@@ -53,9 +56,13 @@ export default function SearchScreen() {
 
   const verseReferenceSet = useMemo(() => {
     const set = new Set<string>();
-    passageResults.forEach((verse) => {
-      if (verse.verse_reference) {
-        set.add(verse.verse_reference.trim().toLowerCase());
+    passageResults.forEach((item) => {
+      if ('verse_reference' in item && item.verse_reference) {
+        // Single verse
+        set.add(item.verse_reference.trim().toLowerCase());
+      } else if ('readableReference' in item && item.readableReference) {
+        // UserVerse (passage)
+        set.add(item.readableReference.trim().toLowerCase());
       }
     });
     return set;
@@ -117,7 +124,7 @@ export default function SearchScreen() {
     setLoading(true);
     try {
       const [passageSearchResult, peopleSearchResults] = await Promise.all([
-        getVerseSearchResult(searchTerm).catch(() => ({ verses: [] })),
+        getVerseSearchResult(searchTerm).catch(() => ({ verses: [], searched_By_Passage: false, readable_Reference: '' } as SearchData)),
         searchUsers(searchTerm).catch(() => [])
       ]);
       
@@ -133,23 +140,71 @@ export default function SearchScreen() {
         "Invalid search format."
       ];
       
-      if (passageSearchResult.verses.length === 1) {
-        const verseReference = passageSearchResult.verses[0]?.verse_reference || "";
-        const isError = errorMessages.some(msg => verseReference.includes(msg));
+      // Check for Oracle database errors (ORA-)
+      const hasOracleError = passageSearchResult.verses.some((v: Verse) => 
+        v.verse_reference?.includes('ORA-') || v.text?.includes('ORA-')
+      );
+      if (hasOracleError) {
+        errorMessages.push('ORA-');
+      }
+      
+      // Check if this is a passage search (multiple verses bundled together)
+      if (passageSearchResult.searched_By_Passage && passageSearchResult.verses.length > 0) {
+        // Filter out any verses with ORA- errors
+        const filteredVerses = passageSearchResult.verses.filter((v: Verse) => 
+          !v.verse_reference?.includes('ORA-') && !v.text?.includes('ORA-')
+        );
+        
+        if (filteredVerses.length > 0) {
+          // Create a UserVerse for the passage
+          const userVerse: UserVerse = {
+            username: user.username,
+            readableReference: passageSearchResult.readable_Reference || filteredVerses[0].verse_reference || '',
+            verses: filteredVerses
+          };
+          setPassageResults([userVerse]);
+        } else {
+          setPassageResults([]);
+        }
+      } else if (passageSearchResult.verses.length === 1) {
+        const verse = passageSearchResult.verses[0];
+        const verseReference = verse?.verse_reference || "";
+        const verseText = verse?.text || "";
+        const isError = errorMessages.some(msg => 
+          verseReference.includes(msg) || verseText.includes(msg)
+        );
         if (isError) {
           setPassageResults([]);
         } else {
           setPassageResults(passageSearchResult.verses);
         }
       } else {
-        setPassageResults(passageSearchResult.verses);
+        // Filter out any verses with ORA- errors
+        const filteredVerses = passageSearchResult.verses.filter((v: Verse) => 
+          !v.verse_reference?.includes('ORA-') && !v.text?.includes('ORA-')
+        );
+        setPassageResults(filteredVerses);
       }
       
       setPeopleResults(peopleSearchResults);
       
-      const verseReferences = (passageSearchResult.verses || [])
-        .map((verse) => verse.verse_reference)
-        .filter((ref): ref is string => typeof ref === 'string' && ref.trim().length > 0);
+      // For collection search, ungroup UserVerse back into individual verses
+      // This ensures we search for collections containing any of the verses in the passage
+      // Use passageSearchResult.verses directly since passageResults hasn't been set yet
+      const verseReferences: string[] = [];
+      
+      // Extract all individual verses from the search result
+      // If it's a passage search, we want to search for collections containing any of those verses
+      passageSearchResult.verses.forEach((verse: Verse) => {
+        if (verse.verse_reference && typeof verse.verse_reference === 'string' && verse.verse_reference.trim().length > 0) {
+          verseReferences.push(verse.verse_reference);
+        }
+      });
+      
+      // Also include the readable reference if it's a passage search (for additional matching)
+      if (passageSearchResult.searched_By_Passage && passageSearchResult.readable_Reference) {
+        verseReferences.push(passageSearchResult.readable_Reference);
+      }
 
       const collections = await searchPublishedCollections({
         query: searchTerm,
@@ -217,6 +272,15 @@ export default function SearchScreen() {
 
   const handleSaveVerse = (verse: Verse) => {
     setSelectedVerse(verse);
+    setSelectedUserVerse(null);
+    setPickedCollection(undefined);
+    setNewCollectionTitle('');
+    setShowCollectionPicker(true);
+  };
+
+  const handleSaveUserVerse = (userVerse: UserVerse) => {
+    setSelectedUserVerse(userVerse);
+    setSelectedVerse(null);
     setPickedCollection(undefined);
     setNewCollectionTitle('');
     setShowCollectionPicker(true);
@@ -237,28 +301,36 @@ export default function SearchScreen() {
   };
 
   const handleCreateNewCollection = async () => {
-    if (!selectedVerse || !user?.username || isCreatingNewCollection || !newCollectionTitle.trim()) return;
-    if (collections.length >= 40) {
+    if ((!selectedVerse && !selectedUserVerse) || !user?.username || isCreatingNewCollection || !newCollectionTitle.trim()) return;
+    
+    // Check collection limit based on paid status
+    const maxCollections = user.isPaid ? 40 : 5;
+    if (collections.length >= maxCollections) {
+      if (!user.isPaid) {
+        router.push('/pro');
+        return;
+      }
       setSnackbarMessage('You can create up to 40 collections.');
       setSnackbarVisible(true);
       return;
     }
 
     setIsCreatingNewCollection(true);
-    const userVerse: UserVerse = {
+    const userVerse: UserVerse = selectedUserVerse || {
       username: user.username,
-      readableReference: selectedVerse.verse_reference,
-      verses: [selectedVerse]
+      readableReference: selectedVerse!.verse_reference,
+      verses: [selectedVerse!]
     };
 
     try {
       const finalTitle = newCollectionTitle.trim() === '' ? 'New Collection' : (newCollectionTitle.trim() === 'Favorites' ? 'Favorites-Other' : newCollectionTitle.trim());
+      const verseOrderString = userVerse.readableReference ? `${userVerse.readableReference},` : '';
       const newCollection: Collection = {
         title: finalTitle,
         authorUsername: user.username,
         username: user.username,
         visibility: 'private',
-        verseOrder: `${selectedVerse.verse_reference},`,
+        verseOrder: verseOrderString,
         userVerses: [userVerse],
         notes: [],
         favorites: false,
@@ -280,11 +352,16 @@ export default function SearchScreen() {
       const refreshedUser = await refreshUser(user.username);
       setUser(refreshedUser);
 
-      if (selectedVerse?.verse_reference) {
-        incrementVerseSaveAdjustment(selectedVerse.verse_reference);
-      }
+      // Increment save adjustments for all verses in the userVerse
+      userVerse.verses.forEach(verse => {
+        if (verse.verse_reference) {
+          incrementVerseSaveAdjustment(verse.verse_reference);
+        }
+      });
+      
       setShowCollectionPicker(false);
       setSelectedVerse(null);
+      setSelectedUserVerse(null);
       setPickedCollection(undefined);
       setNewCollectionTitle('');
       setSnackbarMessage('Collection created and verse saved');
@@ -299,13 +376,30 @@ export default function SearchScreen() {
   };
 
   const handleAddToCollection = async () => {
-    if (!pickedCollection || !selectedVerse || !user.username || isAddingToCollection) return;
+    if (!pickedCollection || (!selectedVerse && !selectedUserVerse) || !user.username || isAddingToCollection) return;
     
-    const parsed = parseVerseReference(selectedVerse.verse_reference);
-    if (!parsed) return;
+    // Check verse limit per collection for free users
+    if (!user.isPaid) {
+      const currentVerseCount = pickedCollection.userVerses?.length ?? 0;
+      const maxVersesPerCollection = 10;
+      
+      if (currentVerseCount >= maxVersesPerCollection) {
+        router.push('/pro');
+        return;
+      }
+    }
+    
+    const userVerse: UserVerse = selectedUserVerse || {
+      username: user.username,
+      readableReference: selectedVerse!.verse_reference,
+      verses: [selectedVerse!]
+    };
+    
+    const readableRef = userVerse.readableReference;
+    if (!readableRef) return;
 
     const alreadyExists = pickedCollection.userVerses.some(
-      uv => uv.readableReference === selectedVerse.verse_reference
+      uv => uv.readableReference === readableRef
     );
 
     if (alreadyExists) {
@@ -313,23 +407,18 @@ export default function SearchScreen() {
       setSnackbarVisible(true);
       setShowCollectionPicker(false);
       setSelectedVerse(null);
+      setSelectedUserVerse(null);
       setPickedCollection(undefined);
       return;
     }
 
     setIsAddingToCollection(true);
 
-    const userVerse: UserVerse = {
-      username: user.username,
-      readableReference: selectedVerse.verse_reference,
-      verses: [selectedVerse]
-    };
-
     try {
       await addUserVersesToNewCollection([userVerse], pickedCollection.collectionId!);
       
       const currentOrder = pickedCollection.verseOrder || '';
-      const newOrder = currentOrder ? `${currentOrder}${selectedVerse.verse_reference},` : `${selectedVerse.verse_reference},`;
+      const newOrder = currentOrder ? `${currentOrder}${readableRef},` : `${readableRef},`;
       
       const updatedCollection = {
         ...pickedCollection,
@@ -349,12 +438,16 @@ export default function SearchScreen() {
         ));
       }
 
-      if (selectedVerse?.verse_reference) {
-        incrementVerseSaveAdjustment(selectedVerse.verse_reference);
-      }
+      // Increment save adjustments for all verses in the userVerse
+      userVerse.verses.forEach(verse => {
+        if (verse.verse_reference) {
+          incrementVerseSaveAdjustment(verse.verse_reference);
+        }
+      });
 
       setShowCollectionPicker(false);
       setSelectedVerse(null);
+      setSelectedUserVerse(null);
       setPickedCollection(undefined);
       setIsAddingToCollection(false);
       setSnackbarMessage('Verse added to collection!');
@@ -379,11 +472,132 @@ export default function SearchScreen() {
     router.push(`../book/${encodedBookName}?chapter=${parsed.chapter}`);
   };
 
-  const renderPassageResult = ({ item }: { item: Verse }) => {
-    const savedAdjustment = verseSaveAdjustments[item.verse_reference] ?? 0;
-    const savedCount = (item.users_Saved_Verse ?? 0) + savedAdjustment;
-    const savedLabel = savedCount === 1 ? 'save' : 'saved';
-    const memorizedCount = item.users_Memorized ?? 0;
+  const handleReadUserVerse = (userVerse: UserVerse) => {
+    if (userVerse.verses.length === 0) return;
+    const firstVerse = userVerse.verses[0];
+    const parsed = parseVerseReference(firstVerse.verse_reference);
+    if (!parsed) {
+      setSnackbarMessage('Could not parse verse reference');
+      setSnackbarVisible(true);
+      return;
+    }
+    
+    const encodedBookName = encodeURIComponent(parsed.bookName);
+    router.push(`../book/${encodedBookName}?chapter=${parsed.chapter}`);
+  };
+
+  const renderPassageResult = ({ item }: { item: Verse | UserVerse }) => {
+    // Check if it's a UserVerse (passage) or single Verse
+    if ('readableReference' in item && 'verses' in item) {
+      // It's a UserVerse (passage)
+      const userVerse = item as UserVerse;
+      
+      return (
+        <View style={{
+          marginVertical: 12,
+          borderRadius: 12,
+          marginBottom: 25
+        }}>
+          <Text style={{
+            fontSize: 18,
+            fontWeight: '600',
+            color: theme.colors.onBackground,
+            marginBottom: 12,
+            fontFamily: 'Inter'
+          }}>
+            {userVerse.readableReference}
+          </Text>
+          
+          {/* Render each verse in the passage */}
+          {userVerse.verses.map((verse, index) => {
+            const savedAdjustment = verseSaveAdjustments[verse.verse_reference] ?? 0;
+            const savedCount = (verse.users_Saved_Verse ?? 0) + savedAdjustment;
+            const savedLabel = savedCount === 1 ? 'save' : 'saved';
+            const memorizedCount = verse.users_Memorized ?? 0;
+            const isSingleVerse = userVerse.verses.length === 1;
+            
+            return (
+              <View key={index} style={{ marginBottom: 16 }}>
+                {/* Hide verse reference if only one verse in passage */}
+                {!isSingleVerse && (
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '600',
+                    color: theme.colors.onBackground,
+                    marginBottom: 6,
+                    fontFamily: 'Inter'
+                  }}>
+                    {verse.verse_reference}
+                  </Text>
+                )}
+                <Text style={{
+                  fontSize: 14,
+                  color: theme.colors.onSurfaceVariant,
+                  fontFamily: 'Inter',
+                  lineHeight: 20,
+                  marginBottom: 8
+                }}>
+                  {verse.text}
+                </Text>
+                
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="people-outline" size={14} color={theme.colors.onSurfaceVariant} />
+                    <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
+                      {savedCount} {savedLabel}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.onSurfaceVariant} />
+                    <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontFamily: 'Inter' }}>
+                      {memorizedCount} memorized
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })}
+          
+          {/* Action buttons for the entire passage */}
+          <View style={{ flexDirection: 'row', marginTop: 12, gap: 16 }}>
+            <TouchableOpacity 
+              onPress={() => handleSaveUserVerse(userVerse)}
+              activeOpacity={0.1}
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+            >
+              <Ionicons name="bookmark-outline" size={18} color={theme.colors.onBackground} />
+              <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => handleReadUserVerse(userVerse)}
+              activeOpacity={0.1}
+              style={{ flexDirection: 'row', alignItems: 'center' }}
+            >
+              <Ionicons name="library-outline" size={18} color={theme.colors.onBackground} />
+              <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Read</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center' }} 
+              activeOpacity={0.1} 
+              onPress={() => {
+                // Share the entire UserVerse (passage)
+                setUserVerseToShare(userVerse);
+                setVerseToShare(null);
+              }}
+            >
+              <Ionicons name="share-social-outline" size={18} color={theme.colors.onBackground} />
+              <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Share</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    } else {
+      // It's a single Verse
+      const verse = item as Verse;
+      const savedAdjustment = verseSaveAdjustments[verse.verse_reference] ?? 0;
+      const savedCount = (verse.users_Saved_Verse ?? 0) + savedAdjustment;
+      const savedLabel = savedCount === 1 ? 'save' : 'saved';
+      const memorizedCount = verse.users_Memorized ?? 0;
 
     return (
     <View style={{
@@ -398,7 +612,7 @@ export default function SearchScreen() {
         marginBottom: 8,
         fontFamily: 'Inter'
       }}>
-        {item.verse_reference}
+            {verse.verse_reference}
       </Text>
       <Text style={{
         fontSize: 14,
@@ -406,7 +620,7 @@ export default function SearchScreen() {
         fontFamily: 'Inter',
         lineHeight: 20
       }}>
-        {item.text}
+            {verse.text}
       </Text>
       
       <View style={{ flexDirection: 'row', marginTop: 8, gap: 16 }}>
@@ -426,7 +640,7 @@ export default function SearchScreen() {
       
       <View style={{ flexDirection: 'row', marginTop: 12, gap: 16 }}>
         <TouchableOpacity 
-          onPress={() => handleSaveVerse(item)}
+              onPress={() => handleSaveVerse(verse)}
           activeOpacity={0.1}
           style={{ flexDirection: 'row', alignItems: 'center' }}
         >
@@ -434,20 +648,28 @@ export default function SearchScreen() {
           <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Save</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          onPress={() => handleReadVerse(item)}
+              onPress={() => handleReadVerse(verse)}
           activeOpacity={0.1}
           style={{ flexDirection: 'row', alignItems: 'center' }}
         >
           <Ionicons name="library-outline" size={18} color={theme.colors.onBackground} />
           <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Read</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }} activeOpacity={0.1} onPress={() => setVerseToShare(item)}>
-          <Ionicons name="share-social-outline" size={18} color={theme.colors.onBackground} />
-          <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Share</Text>
-        </TouchableOpacity>
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center' }} 
+              activeOpacity={0.1} 
+              onPress={() => {
+                setVerseToShare(verse);
+                setUserVerseToShare(null);
+              }}
+            >
+              <Ionicons name="share-social-outline" size={18} color={theme.colors.onBackground} />
+              <Text style={{ marginLeft: 4, color: theme.colors.onBackground }}>Share</Text>
+            </TouchableOpacity>
       </View>
     </View>
   );
+    }
   };
 
   const renderCollectionResult = ({ item }: { item: PublishedCollection }) => (
@@ -495,9 +717,18 @@ export default function SearchScreen() {
           alignItems: 'center',
           borderWidth: 2,
           borderColor: theme.colors.onBackground,
-          marginRight: 12
+          marginRight: 12,
+          overflow: 'hidden'
         }}>
-          <Ionicons name="person" size={24} color={theme.colors.onBackground} />
+          {item.profilePictureUrl ? (
+            <Image
+              source={{ uri: item.profilePictureUrl }}
+              style={{ width: 48, height: 48 }}
+              contentFit="cover"
+            />
+          ) : (
+            <Ionicons name="person" size={24} color={theme.colors.onBackground} />
+          )}
         </View>
         
         <View style={{ flex: 1 }}>
@@ -770,7 +1001,12 @@ export default function SearchScreen() {
               {activeTab === 'passages' ? (
                 <FlatList
                   data={passageResults}
-                  keyExtractor={(item, index) => item.verse_reference || index.toString()}
+                  keyExtractor={(item, index) => {
+                    if ('readableReference' in item) {
+                      return item.readableReference || index.toString();
+                    }
+                    return item.verse_reference || index.toString();
+                  }}
                   renderItem={renderPassageResult}
                   ListEmptyComponent={
                     passageResults.length === 0 ? (
@@ -1055,11 +1291,32 @@ export default function SearchScreen() {
       </Snackbar>
 
       <ShareVerseSheet
-        visible={!!verseToShare}
-        verseReference={verseToShare?.verse_reference || null}
-        onClose={() => setVerseToShare(null)}
-        onShareSuccess={(friend) => { setVerseToShare(null); setSnackbarMessage(`Verse shared with ${friend}`); setSnackbarVisible(true); }}
-        onShareError={() => { setSnackbarMessage('Failed to share verse'); setSnackbarVisible(true); }}
+        visible={!!verseToShare || !!userVerseToShare}
+        userVerses={
+          userVerseToShare 
+            ? [userVerseToShare]
+            : verseToShare 
+              ? [{
+                  username: user.username,
+                  readableReference: verseToShare.verse_reference,
+                  verses: [verseToShare]
+                }]
+              : []
+        }
+        onClose={() => {
+          setVerseToShare(null);
+          setUserVerseToShare(null);
+        }}
+        onShareSuccess={(friend) => { 
+          setVerseToShare(null);
+          setUserVerseToShare(null);
+          setSnackbarMessage(`Verse shared with ${friend}`);
+          setSnackbarVisible(true);
+        }}
+        onShareError={() => { 
+          setSnackbarMessage('Failed to share verse. Please save the verse to a collection first.');
+          setSnackbarVisible(true);
+        }}
       />
     </View>
   );

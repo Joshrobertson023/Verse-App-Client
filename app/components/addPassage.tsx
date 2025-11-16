@@ -11,9 +11,10 @@ import useAppTheme from '../theme';
 interface AddPassageProps {
     onAddPassage: () => void;
     onClickPlus: (verse: Verse) => void;
+    onAddPassageVerses?: (userVerse: UserVerse) => void; // Optional callback for adding passages with multiple verses when editing
 }
 
-export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps) {
+export default function AddPassage({onAddPassage, onClickPlus, onAddPassageVerses}: AddPassageProps) {
     const styles = useStyles();
     const theme = useAppTheme();
     const [searchQuery, setSearchQuery] = useState('');
@@ -26,6 +27,7 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
     const user = useAppStore((state) => state.user);
     const addUserVerseToCollection = useAppStore((state) => state.addUserVerseToCollection);
     const newCollection = useAppStore((state) => state.newCollection);
+    const editingCollection = useAppStore((state) => state.editingCollection);
     const verseSaveAdjustments = useAppStore((state) => state.verseSaveAdjustments);
     const [errorSearching, setErrorSearching] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
@@ -78,6 +80,32 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
     
     const handleAddPassage = () => {
         if (passageSearchResults === undefined) return;
+        
+        // Check if we're editing a collection - if so, use the appropriate callback
+        if (editingCollection) {
+            if (passageSearchResults.verses && passageSearchResults.verses.length > 0) {
+                // Create a UserVerse with all verses from the passage
+                const userVerse: UserVerse = {
+                    username: user.username,
+                    readableReference: passageSearchResults.readable_Reference || 'Undefined',
+                    verses: passageSearchResults.verses,
+                };
+                
+                // If onAddPassageVerses is provided (for editing), use it to add the full passage
+                if (onAddPassageVerses) {
+                    onAddPassageVerses(userVerse);
+                    onAddPassage();
+                } else {
+                    // Fallback: use onClickPlus with first verse (for single verses)
+                    const firstVerse = passageSearchResults.verses[0];
+                    onClickPlus(firstVerse);
+                    onAddPassage();
+                }
+            }
+            return;
+        }
+        
+        // When creating a new collection, use the store's addUserVerseToCollection
         const userVerse: UserVerse = {
             username: user.username,
             readableReference: passageSearchResults ? passageSearchResults.readable_Reference : 'Undefined',
@@ -92,7 +120,7 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
     }
 
     return (
-        <ScrollView style={{padding: 20}}>
+        <ScrollView style={{paddingHorizontal: 20, paddingTop: 20}}>
             <Searchbar
                 placeholder="Search by reference or keywords"
                 onChangeText={(value) => {
@@ -197,8 +225,6 @@ export default function AddPassage({onAddPassage, onClickPlus}: AddPassageProps)
                         </View>
                 ) })
                 ) : <View></View>}
-
-                <View style={{height: 100}}></View>
 
         </ScrollView>
     )

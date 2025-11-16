@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Collection, Verse } from '../store';
+import { Collection, useAppStore, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +22,21 @@ interface SaveVerseToCollectionSheetProps {
 export default function SaveVerseToCollectionSheet({ visible, verse, collections, pickedCollection, setPickedCollection, loading, onCancel, onConfirm, confirming, onCreateNewCollection, creatingNewCollection }: SaveVerseToCollectionSheetProps) {
   const styles = useStyles();
   const theme = useAppTheme();
+  const user = useAppStore((state) => state.user);
   const [newCollectionTitle, setNewCollectionTitle] = useState('');
+
+  // Filter to only show collections owned by the user
+  const userOwnedCollections = useMemo(() => {
+    return collections.filter(col => {
+      const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
+      const owner = col.username ? normalize(col.username) : undefined;
+      const author = col.authorUsername ? normalize(col.authorUsername) : undefined;
+      const currentUser = normalize(user?.username);
+      
+      // Collection is owned by user if username matches OR authorUsername matches (and username is not set or also matches)
+      return (owner === currentUser) || (author === currentUser && (!owner || owner === currentUser));
+    });
+  }, [collections, user?.username]);
 
   if (!verse) return null;
 
@@ -97,7 +111,7 @@ export default function SaveVerseToCollectionSheet({ visible, verse, collections
                 Or select existing collection
               </Text>
               <FlatList
-                data={collections}
+                data={userOwnedCollections}
                 keyExtractor={(c) => String(c.collectionId)}
                 renderItem={({ item }) => (
                   <TouchableOpacity

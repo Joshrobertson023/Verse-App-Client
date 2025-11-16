@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { Image } from 'expo-image';
+import { ActivityIndicator, FlatList, Text, View } from 'react-native';
 import { getLeaderboard, getUserRank } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
@@ -89,21 +89,21 @@ export default function LeaderboardScreen() {
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          paddingVertical: 12,
+          paddingVertical: 5,
           paddingHorizontal: 16,
-          backgroundColor: isCurrentUser ? theme.colors.primary + '20' : 'transparent',
+          backgroundColor: isCurrentUser ? theme.colors.surface : 'transparent',
           marginHorizontal: 16,
-          borderRadius: 12,
+          borderRadius: 10,
           marginBottom: 8,
         }}
       >
         {/* Rank */}
-        <View style={{ width: 40, alignItems: 'center' }}>
+        <View style={{ width: 20, marginRight: 10, alignItems: 'center' }}>
           <Text
             style={{
               fontSize: 16,
               fontWeight: '600',
-              color: isCurrentUser ? theme.colors.primary : theme.colors.onBackground,
+              color: theme.colors.onBackground,
               fontFamily: 'Inter',
             }}
           >
@@ -120,8 +120,8 @@ export default function LeaderboardScreen() {
             backgroundColor: theme.colors.surface,
             marginRight: 12,
             overflow: 'hidden',
-            borderWidth: isCurrentUser ? 2 : 0,
-            borderColor: theme.colors.primary,
+            borderColor: isCurrentUser ? theme.colors.primary : 'transparent',
+            borderWidth: 1.5
           }}
         >
           {item.profilePictureUrl ? (
@@ -143,7 +143,7 @@ export default function LeaderboardScreen() {
             style={{
               fontSize: 16,
               fontWeight: '600',
-              color: isCurrentUser ? theme.colors.primary : theme.colors.onBackground,
+              color: theme.colors.onBackground,
               fontFamily: 'Inter',
             }}
           >
@@ -164,9 +164,8 @@ export default function LeaderboardScreen() {
         <View style={{ alignItems: 'flex-end' }}>
           <Text
             style={{
-              fontSize: 18,
-              fontWeight: '700',
-              color: isCurrentUser ? theme.colors.primary : theme.colors.onBackground,
+              fontSize: 16,
+              color: theme.colors.onBackground,
               fontFamily: 'Inter',
             }}
           >
@@ -207,16 +206,11 @@ export default function LeaderboardScreen() {
         {/* User's Profile Summary at Top */}
         <View
           style={{
-            backgroundColor: theme.colors.surface,
-            padding: 20,
             marginHorizontal: 16,
-            marginTop: 16,
             borderRadius: 16,
-            borderWidth: 2,
-            borderColor: theme.colors.primary,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View
               style={{
                 width: 60,
@@ -225,8 +219,8 @@ export default function LeaderboardScreen() {
                 backgroundColor: theme.colors.background,
                 marginRight: 16,
                 overflow: 'hidden',
-                borderWidth: 2,
                 borderColor: theme.colors.primary,
+                borderWidth: 1.5
               }}
             >
               {user.profilePictureUrl ? (
@@ -242,17 +236,40 @@ export default function LeaderboardScreen() {
               )}
             </View>
             <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 20,
-                  fontWeight: '700',
-                  color: theme.colors.onBackground,
-                  fontFamily: 'Inter',
-                  marginBottom: 4,
-                }}
-              >
-                {user.firstName} {user.lastName}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Text
+                  style={{
+                    fontSize: 20,
+                    fontWeight: '700',
+                    color: theme.colors.onBackground,
+                    fontFamily: 'Inter',
+                    marginRight: 12,
+                  }}
+                >
+                  {user.firstName} {user.lastName}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    fontWeight: '600',
+                    color: theme.colors.onSurfaceVariant,
+                    fontFamily: 'Inter',
+                    marginRight: 12,
+                  }}
+                >
+                  #{userRank || '--'}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 18,
+                    fontWeight: '700',
+                    color: theme.colors.onBackground,
+                    fontFamily: 'Inter',
+                  }}
+                >
+                  {user.points || 0} pts
+                </Text>
+              </View>
               <Text
                 style={{
                   fontSize: 14,
@@ -264,58 +281,6 @@ export default function LeaderboardScreen() {
               </Text>
             </View>
           </View>
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-around',
-              paddingTop: 12,
-              borderTopWidth: 1,
-              borderTopColor: theme.colors.outline,
-            }}
-          >
-            <View style={{ alignItems: 'center' }}>
-              <Text
-                style={{
-                  fontSize: 24,
-                  fontWeight: '700',
-                  color: theme.colors.primary,
-                  fontFamily: 'Inter',
-                }}
-              >
-                {userRank || '--'}
-              </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter',
-                }}
-              >
-                Rank
-              </Text>
-            </View>
-            <View style={{ alignItems: 'center' }}>
-              <Text
-                style={{
-                  fontSize: 24,
-                  fontWeight: '700',
-                  color: theme.colors.primary,
-                  fontFamily: 'Inter',
-                }}
-              >
-                {user.points || 0}
-              </Text>
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: theme.colors.onSurfaceVariant,
-                  fontFamily: 'Inter',
-                }}
-              >
-                Points
-              </Text>
-            </View>
-          </View>
         </View>
 
         {/* Leaderboard Header */}
@@ -324,7 +289,6 @@ export default function LeaderboardScreen() {
             flexDirection: 'row',
             paddingHorizontal: 16,
             paddingVertical: 12,
-            marginTop: 16,
             borderBottomWidth: 1,
             borderBottomColor: theme.colors.outline,
           }}

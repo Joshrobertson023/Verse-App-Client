@@ -7,7 +7,7 @@ import { Dialog, Portal, RadioButton } from 'react-native-paper';
 import { bibleBooks } from '../bibleData';
 import VerseSheet from '../components/verseSheet';
 import { DEFAULT_READER_SETTINGS, READER_BACKGROUND_THEMES, READER_FONT_OPTIONS, READER_PRESETS, READER_SETTINGS_STORAGE_KEY, type ReaderBackgroundKey, type ReaderPresetKey, type ReaderSettings } from '../constants/reader';
-import { getChapterVerses, refreshUser, updateUserProfile, getHighlightsByChapter, Highlight } from '../db';
+import { getChapterVerses, refreshUser, updateUserProfile, getHighlightsByChapter, getVersesWithPrivateNotes, getVersesWithPublicNotes, Highlight } from '../db';
 import { useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -113,6 +113,7 @@ const sanitizeReaderSettings = (settings: Partial<ReaderSettings> | null | undef
     letterSpacing,
     background,
     showMetadata: typeof settings.showMetadata === 'boolean' ? settings.showMetadata : fallback.showMetadata,
+    showPublicNoteIcons: typeof settings.showPublicNoteIcons === 'boolean' ? settings.showPublicNoteIcons : fallback.showPublicNoteIcons,
   };
 };
 
@@ -194,6 +195,8 @@ export default function ChapterReadingPage() {
   const [styleDialogVisible, setStyleDialogVisible] = useState(false);
   const [settingsHydrated, setSettingsHydrated] = useState(false);
   const [highlights, setHighlights] = useState<Set<string>>(new Set());
+  const [versesWithNotes, setVersesWithNotes] = useState<Set<string>>(new Set());
+  const [versesWithPublicNotes, setVersesWithPublicNotes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -359,6 +362,56 @@ export default function ChapterReadingPage() {
     [user?.username]
   );
 
+  const loadVersesWithNotes = useCallback(
+    async (book: string, chapterNumber: number) => {
+      if (!user?.username || user.username === 'Default User') return;
+      
+      try {
+        const verseRefs = await getVersesWithPrivateNotes(user.username, book, chapterNumber);
+        const notesSet = new Set(verseRefs);
+        setVersesWithNotes(prev => {
+          const newSet = new Set(prev);
+          // Remove old notes for this chapter
+          Array.from(newSet).forEach(ref => {
+            if (ref.startsWith(`${book} ${chapterNumber}:`)) {
+              newSet.delete(ref);
+            }
+          });
+          // Add new notes
+          notesSet.forEach(ref => newSet.add(ref));
+          return newSet;
+        });
+      } catch (error) {
+        console.error('Failed to load verses with notes:', error);
+      }
+    },
+    [user?.username]
+  );
+
+  const loadVersesWithPublicNotes = useCallback(
+    async (book: string, chapterNumber: number) => {
+      try {
+        const verseRefs = await getVersesWithPublicNotes(book, chapterNumber);
+        const notesSet = new Set(verseRefs);
+        setVersesWithPublicNotes(prev => {
+          const newSet = new Set(prev);
+          // Remove old notes for this chapter
+          Array.from(newSet).forEach(ref => {
+            if (ref.startsWith(`${book} ${chapterNumber}:`)) {
+              newSet.delete(ref);
+            }
+          });
+          // Add new notes
+          notesSet.forEach(ref => newSet.add(ref));
+          return newSet;
+        });
+      } catch (error) {
+        console.error('Failed to load verses with public notes:', error);
+      }
+    },
+    []
+  );
+
   const ensureChapterData = useCallback(
     async (book: string, chapterNumber: number) => {
       if (!book || chapterNumber <= 0) return;
@@ -377,8 +430,10 @@ export default function ChapterReadingPage() {
         const data = await getChapterVerses(book, chapterNumber);
         prefetchedChaptersRef.current.set(cacheKey, data);
         
-        // Load highlights for this chapter if user is logged in
+        // Load highlights and notes for this chapter if user is logged in
         await loadHighlightsForChapter(book, chapterNumber);
+        await loadVersesWithNotes(book, chapterNumber);
+        await loadVersesWithPublicNotes(book, chapterNumber);
       } catch (error) {
         console.error('Failed to load chapter:', error);
       } finally {
@@ -388,7 +443,7 @@ export default function ChapterReadingPage() {
         }
       }
     },
-    [loadHighlightsForChapter]
+    [loadHighlightsForChapter, loadVersesWithNotes, loadVersesWithPublicNotes]
   );
 
   const getChapterMetaForIndex = useCallback(
@@ -803,7 +858,7 @@ export default function ChapterReadingPage() {
                     ? highlightBackground
                     : 'transparent';
                 // Keep consistent padding/margin regardless of selection state
-                const versePadding = isVerseHighlighted ? 8 : 0;
+                const versePadding = 0;
                 const verseRadius = isVerseHighlighted ? 4 : 0;
                 // Increase line height slightly (add 4 to the existing line height)
                 const adjustedLineHeight = readerSettings.lineHeight + 4;
@@ -811,7 +866,7 @@ export default function ChapterReadingPage() {
                   <Pressable
                     key={verse.id || index}
                     style={{ 
-                      marginBottom: 0,
+                      marginBottom: 3,
                       backgroundColor: verseBackground,
                       padding: versePadding,
                       borderRadius: verseRadius,
@@ -827,7 +882,7 @@ export default function ChapterReadingPage() {
                       style={{
                         ...styles.text,
                         marginBottom: 0,
-                        marginLeft: 16, // Small indentation for each new verse/paragraph
+                        marginLeft: 0,
                         fontFamily: readerSettings.fontFamily === 'System' ? undefined : readerSettings.fontFamily,
                         fontSize: readerSettings.fontSize,
                         lineHeight: adjustedLineHeight,
@@ -846,12 +901,33 @@ export default function ChapterReadingPage() {
                         {index + 1}{' '}
                       </Text>
                       <Text style={{ color: activeBackground.textColor }}>{verse.text}</Text>
+                      {verse.verse_reference && (
+                        <>
+                          {versesWithNotes.has(verse.verse_reference) && (
+                            <Ionicons 
+                              name="document-text-outline" 
+                              size={14} 
+                              color={activeBackground.textColor} 
+                              style={{ marginLeft: 4, opacity: 0.7 }}
+                            />
+                          )}
+                          {readerSettings.showPublicNoteIcons && versesWithPublicNotes.has(verse.verse_reference) && (
+                            <Ionicons 
+                              name="people-outline" 
+                              size={14} 
+                              color={activeBackground.textColor} 
+                              style={{ marginLeft: 4, opacity: 0.7 }}
+                            />
+                          )}
+                        </>
+                      )}
                     </Text>
                   {readerSettings.showMetadata &&
                     ((verse.users_Saved_Verse ?? 0) > 0 || (verse.users_Memorized ?? 0) > 0) && (
                       <View
                         style={{
-                          marginTop: 10,
+                          marginTop: 0,
+                          marginBottom: 0,
                           flexDirection: 'row',
                           alignItems: 'center',
                           gap: 20,
@@ -1084,6 +1160,10 @@ export default function ChapterReadingPage() {
             onClose={() => {
               setSelectedVerseIndices(new Set());
               setSelectedUserVerse(null);
+              // Reload verses with notes in case a note was created
+              if (activeBookName && currentChapter && user?.username && user.username !== 'Default User') {
+                loadVersesWithNotes(activeBookName, currentChapter);
+              }
             }}
             bookName={activeBookName}
             chapter={currentChapter}
@@ -1091,6 +1171,9 @@ export default function ChapterReadingPage() {
             onHighlightChange={() => {
               // Reload highlights for the current chapter when a highlight is toggled
               loadHighlightsForChapter(activeBookName, currentChapter);
+              // Also reload verses with notes in case a note was created
+              loadVersesWithNotes(activeBookName, currentChapter);
+              loadVersesWithPublicNotes(activeBookName, currentChapter);
             }}
             onUnselectVerse={(verseReference: string) => {
               // Find and unselect ONLY the verse that matches the reference
@@ -1194,6 +1277,30 @@ export default function ChapterReadingPage() {
                         onValueChange={handleToggleShowMetadata}
                         trackColor={{ false: dialogBorderColor, true: dialogChipActiveBackground }}
                         thumbColor={readerSettings.showMetadata ? dialogPrimaryTextColor : dialogSecondaryTextColor}
+                        ios_backgroundColor={dialogBorderColor}
+                      />
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                      <Text
+                        style={{
+                          fontSize: 16,
+                          color: dialogPrimaryTextColor,
+                          fontFamily: 'Source Sans Pro',
+                          flex: 1,
+                        }}
+                      >
+                        Show public note icons
+                      </Text>
+                      <Switch
+                        value={readerSettings.showPublicNoteIcons}
+                        onValueChange={(value) =>
+                          setReaderSettings((prev) => ({
+                            ...prev,
+                            showPublicNoteIcons: value,
+                          }))
+                        }
+                        trackColor={{ false: dialogBorderColor, true: dialogChipActiveBackground }}
+                        thumbColor={readerSettings.showPublicNoteIcons ? dialogPrimaryTextColor : dialogSecondaryTextColor}
                         ios_backgroundColor={dialogBorderColor}
                       />
                     </View>
