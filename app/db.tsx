@@ -792,6 +792,22 @@ export async function getFriends(username: string): Promise<User[]> {
     }
 }
 
+export async function getFriendNames(username: string): Promise<User[]> {
+    try {
+        const response = await fetch(`${baseUrl}/relationships/friends/${username}/names`);
+        if (response.ok) {
+            const data: User[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get friend names');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function removeFriend(username: string, friendUsername: string): Promise<void> {
     try {
         const response = await fetch(`${baseUrl}/relationships/${username}/${friendUsername}`, {

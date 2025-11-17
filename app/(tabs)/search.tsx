@@ -315,12 +315,27 @@ export default function SearchScreen() {
       return;
     }
 
-    setIsCreatingNewCollection(true);
+    // Ensure verse_reference is set for single verses
+    if (!selectedUserVerse && (!selectedVerse || !selectedVerse.verse_reference)) {
+      setSnackbarMessage('Error: Verse reference is missing');
+      setSnackbarVisible(true);
+      return;
+    }
+    
     const userVerse: UserVerse = selectedUserVerse || {
       username: user.username,
       readableReference: selectedVerse!.verse_reference,
       verses: [selectedVerse!]
     };
+
+    // Ensure readableReference is set
+    if (!userVerse.readableReference || userVerse.readableReference.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setIsCreatingNewCollection(true);
 
     try {
       const finalTitle = newCollectionTitle.trim() === '' ? 'New Collection' : (newCollectionTitle.trim() === 'Favorites' ? 'Favorites-Other' : newCollectionTitle.trim());
@@ -389,6 +404,13 @@ export default function SearchScreen() {
       }
     }
     
+    // Ensure verse_reference is set for single verses
+    if (!selectedUserVerse && (!selectedVerse || !selectedVerse.verse_reference)) {
+      setSnackbarMessage('Error: Verse reference is missing');
+      setSnackbarVisible(true);
+      return;
+    }
+
     const userVerse: UserVerse = selectedUserVerse || {
       username: user.username,
       readableReference: selectedVerse!.verse_reference,
@@ -396,7 +418,11 @@ export default function SearchScreen() {
     };
     
     const readableRef = userVerse.readableReference;
-    if (!readableRef) return;
+    if (!readableRef || readableRef.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      return;
+    }
 
     const alreadyExists = pickedCollection.userVerses.some(
       uv => uv.readableReference === readableRef

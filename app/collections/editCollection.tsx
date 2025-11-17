@@ -89,8 +89,8 @@ export default function EditCollection() {
     const settingsSheetRef = useRef<BottomSheet>(null);
     
     // Snap points for bottom sheets
-    const passageSnapPoints = useMemo(() => ['100%'], []);
-    const noteSnapPoints = useMemo(() => ['100%'], []);
+    const passageSnapPoints = useMemo(() => ['85%'], []);
+    const noteSnapPoints = useMemo(() => ['60%'], []);
     const settingsSnapPoints = useMemo(() => ['40%'], []);
 
 
@@ -761,7 +761,7 @@ export default function EditCollection() {
             >
             <BottomSheetScrollView
               style={{ flex: 1 }}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+              contentContainerStyle={{ paddingBottom: 40 }}
             >
               <AddPassage 
                 onAddPassage={addPassage} 

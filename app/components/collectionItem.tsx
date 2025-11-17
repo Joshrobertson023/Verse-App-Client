@@ -91,7 +91,7 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
                   <TouchableOpacity 
                     activeOpacity={0.1}
                     onPress={() => onMenuPress(collection)}>
-                    <Ionicons name='ellipsis-vertical' size={30} color={theme.colors.onBackground} />
+                    <Ionicons name='ellipsis-vertical' size={22} color={theme.colors.onBackground} />
                   </TouchableOpacity>}
                   
               </View>

@@ -645,6 +645,10 @@ export default function RootLayout() {
           name="book"
           options={{ headerShown: false }}
             />
+            <Stack.Screen
+          name="chapters"
+          options={{ headerShown: false }}
+            />
             <Stack.Screen 
               name="explore/collection/[id]"
               options={{

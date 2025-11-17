@@ -1,5 +1,5 @@
-import React from 'react';
 import { Stack } from 'expo-router';
+import React from 'react';
 import useAppTheme from '../theme';
 
 export default function ChaptersLayout() {
@@ -7,18 +7,18 @@ export default function ChaptersLayout() {
 	return (
 		<Stack
 			screenOptions={{
-				headerStyle: { backgroundColor: theme.colors.background },
+				headerShown: true,
+				headerStyle: {
+					backgroundColor: theme.colors.background,
+				},
 				headerTintColor: theme.colors.onBackground,
-				headerTitleStyle: { color: theme.colors.onBackground },
+				headerTitleStyle: {
+					color: theme.colors.onBackground,
+				},
 				contentStyle: { backgroundColor: theme.colors.background },
 			}}
 		>
-			<Stack.Screen 
-				name="[bookName]" 
-				options={{
-					headerShown: true,
-				}}
-			/>
+		<Stack.Screen name="[bookName]" />
 		</Stack>
 	);
 }

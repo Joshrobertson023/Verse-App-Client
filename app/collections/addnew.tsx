@@ -479,7 +479,7 @@ export default function Index() {
             >
             <BottomSheetScrollView
               style={{ flex: 1 }}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+              contentContainerStyle={{ paddingBottom: 40 }}
             >
               <AddPassage onAddPassage={closeSheet} onClickPlus={clickPlus} />
             </BottomSheetScrollView>

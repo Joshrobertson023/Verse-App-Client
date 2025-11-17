@@ -1,21 +1,23 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { router } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Snackbar } from 'react-native-paper';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, Platform, RefreshControl, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Searchbar, Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ExploreCollectionCard from '../components/exploreCollectionCard';
 import SearchResultVerseCard from '../components/searchResultVerseCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { Skeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getCollectionsByCategory, getMostRecentCollectionId, getPopularPublishedCollections, getRecentPublishedCollections, getTopCategories, getTopMemorizedVerses, getTopSavedVerses, getUserCollections, PublishedCollection, getPublishedCollectionsByAuthor, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
-import { Collection, useAppStore, UserVerse, Verse } from '../store';
+import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getCollectionsByCategory, getMostRecentCollectionId, getPopularPublishedCollections, getPublishedCollectionsByAuthor, getRecentPublishedCollections, getTopCategories, getTopMemorizedVerses, getTopSavedVerses, getUserCollections, getVerseSearchResult, PublishedCollection, refreshUser, searchPublishedCollections, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { Collection, SearchData, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 export default function ExploreScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
+  const navigation = useNavigation();
   const user = useAppStore((state) => state.user);
   const collections = useAppStore((state) => state.collections);
   const setCollections = useAppStore((state) => state.setCollections);
@@ -42,6 +44,9 @@ export default function ExploreScreen() {
   const [versesToShare, setVersesToShare] = useState<UserVerse[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const selectedCategoryRef = useRef<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<PublishedCollection[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     selectedCategoryRef.current = selectedCategoryId;
@@ -94,7 +99,7 @@ export default function ExploreScreen() {
         getPublishedCollectionsByAuthor(user.username)
       ]);
       setCategories(loadedCategories);
-      setMyCollections(sortCollectionsBySaves(myPublished));
+      setMyCollections(sortCollectionsBySaves(attachCategoryNames(myPublished, loadedCategories)));
 
       let categoryId = selectedCategoryRef.current;
 
@@ -107,7 +112,12 @@ export default function ExploreScreen() {
       }
 
       if (categoryId != null) {
-        await fetchCategoryCollections(categoryId);
+        try {
+          const cols = await getCollectionsByCategory(categoryId);
+          setCategoryCollections(sortCollectionsBySaves(attachCategoryNames(cols, loadedCategories)));
+        } catch (e) {
+          setCategoryCollections([]);
+        }
       } else {
         setCategoryCollections([]);
       }
@@ -138,6 +148,85 @@ export default function ExploreScreen() {
     }
   }, [fetchCategoryCollections]);
 
+  const handleSearch = useCallback(async (searchTerm: string) => {
+    const trimmedQuery = searchTerm.trim();
+    if (!trimmedQuery) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // First try to search by passage (verse reference)
+      const passageSearchResult: SearchData = await getVerseSearchResult(trimmedQuery).catch(() => ({ verses: [], searched_By_Passage: false, readable_Reference: '' } as SearchData));
+      
+      // Extract verse references from passage search results
+      const verseReferences: string[] = [];
+      passageSearchResult.verses.forEach((verse: Verse) => {
+        if (verse.verse_reference && typeof verse.verse_reference === 'string' && verse.verse_reference.trim().length > 0) {
+          verseReferences.push(verse.verse_reference);
+        }
+      });
+      
+      // Also include the readable reference if it's a passage search
+      if (passageSearchResult.searched_By_Passage && passageSearchResult.readable_Reference) {
+        verseReferences.push(passageSearchResult.readable_Reference);
+      }
+
+      // Search published collections by title, author, category, or passages
+      const collections = await searchPublishedCollections({
+        query: trimmedQuery,
+        verseReferences,
+        limit: 50,
+      });
+      
+      // Attach category names to search results
+      const allCats = await getAllCategories();
+      const collectionsWithCategories = attachCategoryNames(collections, allCats);
+      
+      setSearchResults(collectionsWithCategories);
+    } catch (error) {
+      console.error('Search error:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [attachCategoryNames]);
+
+  // Set up native iOS search bar in header
+  useLayoutEffect(() => {
+    if (Platform.OS === 'ios') {
+      navigation.setOptions({
+        headerSearchBarOptions: {
+          placeholder: 'Search',
+          onChangeText: (event: any) => {
+            const text = event.nativeEvent.text || '';
+            setSearchQuery(text);
+            if (text.trim()) {
+              handleSearch(text);
+            } else {
+              setSearchResults([]);
+              setIsSearching(false);
+            }
+          },
+          onSearchButtonPress: (event: any) => {
+            const text = event.nativeEvent.text || '';
+            setSearchQuery(text);
+            if (text.trim()) {
+              handleSearch(text);
+            }
+          },
+          onCancelButtonPress: () => {
+            setSearchQuery('');
+            setSearchResults([]);
+            setIsSearching(false);
+          },
+        },
+      });
+    }
+  }, [navigation, handleSearch]);
+
   useEffect(() => {
     // Run initial load once on mount to avoid re-fetch loops from changing callbacks/state
     loadExploreData(true);
@@ -146,10 +235,10 @@ export default function ExploreScreen() {
 
 
   const SectionHeader = ({ title, route }: { title: string; route: string }) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 16 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginTop: 16, marginBottom: -5 }}>
       <Text style={{ ...styles.text, fontWeight: 700 }}>{title}</Text>
       <TouchableOpacity onPress={() => router.push(route as any)}>
-        <Text style={{ ...styles.tinyText, color: theme.colors.primary }}>See all</Text>
+        <Text style={{ ...styles.tinyText, color: theme.colors.primary, marginBottom: 10 }}>See all</Text>
       </TouchableOpacity>
     </View>
   );
@@ -171,7 +260,8 @@ export default function ExploreScreen() {
     <ScrollView
       horizontal
       decelerationRate="fast"
-          snapToInterval={317}
+      snapToInterval={316}
+      snapToAlignment="start"
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingHorizontal: 8 }}
     >
@@ -252,11 +342,28 @@ export default function ExploreScreen() {
     }
 
     setIsCreatingNewCollection(true);
+    
+    // Ensure verse_reference is set
+    if (!selectedVerse.verse_reference) {
+      setSnackbarMessage('Error: Verse reference is missing');
+      setSnackbarVisible(true);
+      setIsCreatingNewCollection(false);
+      return;
+    }
+
     const userVerse: UserVerse = {
       username: user.username,
       readableReference: selectedVerse.verse_reference,
       verses: [selectedVerse]
     };
+
+    // Ensure readableReference is set
+    if (!userVerse.readableReference || userVerse.readableReference.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      setIsCreatingNewCollection(false);
+      return;
+    }
 
     try {
       const finalTitle = newCollectionTitle.trim() === '' ? 'New Collection' : (newCollectionTitle.trim() === 'Favorites' ? 'Favorites-Other' : newCollectionTitle.trim());
@@ -334,13 +441,27 @@ export default function ExploreScreen() {
       return;
     }
 
-    setIsAddingToCollection(true);
+    // Ensure verse_reference is set, use it as readableReference
+    if (!selectedVerse.verse_reference) {
+      setSnackbarMessage('Error: Verse reference is missing');
+      setSnackbarVisible(true);
+      return;
+    }
 
     const userVerse: UserVerse = {
       username: user.username,
       readableReference: selectedVerse.verse_reference,
       verses: [selectedVerse]
     };
+
+    // Ensure readableReference is set
+    if (!userVerse.readableReference || userVerse.readableReference.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setIsAddingToCollection(true);
 
     try {
       await addUserVersesToNewCollection([userVerse], pickedCollection.collectionId!);
@@ -415,25 +536,106 @@ export default function ExploreScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} edges={['top']}>
-    <ScrollView
-      style={{backgroundColor: theme.colors.background}}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => loadExploreData(false)}
-          colors={[theme.colors.primary]}
-          tintColor={theme.colors.primary}
-        />
-      }
-    >
+      {/* Android: Overlay search bar over header */}
+      {Platform.OS === 'android' && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 30,
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            backgroundColor: theme.colors.background,
+            paddingTop: 8,
+            paddingHorizontal: 16,
+            paddingBottom: 8,
+          }}
+        >
+          <Searchbar
+            placeholder="Search"
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              if (text.trim()) {
+                handleSearch(text);
+              } else {
+                setSearchResults([]);
+                setIsSearching(false);
+              }
+            }}
+            onSubmitEditing={(event) => {
+              const text = event.nativeEvent.text || '';
+              if (text.trim()) {
+                handleSearch(text);
+              }
+            }}
+            value={searchQuery}
+            style={{
+              backgroundColor: theme.colors.surface,
+              elevation: 0,
+            }}
+            inputStyle={{
+              color: theme.colors.onSurface,
+            }}
+            iconColor={theme.colors.onSurfaceVariant}
+          />
+        </View>
+      )}
       
-      {/* My Collections (published by me) */}
+      {/* Show search results when searching, otherwise show regular content */}
+      {searchQuery.trim() ? (
+        <ScrollView
+          style={{ backgroundColor: theme.colors.background }}
+          contentContainerStyle={{ paddingTop: Platform.OS === 'android' ? 60 : 0, paddingBottom: 20 }}
+        >
+          {isSearching ? (
+            <View style={{ paddingTop: 20 }}>
+              {[1, 2, 3].map(i => (
+                <View key={`search-skel-${i}`} style={{ marginHorizontal: 8, marginBottom: 8 }}>
+                  <Skeleton width="100%" height={140} borderRadius={14} />
+                </View>
+              ))}
+            </View>
+          ) : searchResults.length > 0 ? (
+            <View style={{ paddingTop: 20 }}>
+              <Text style={{ ...styles.text, fontWeight: 700, marginHorizontal: 16, marginBottom: 12 }}>
+                Search Results
+              </Text>
+              {searchResults.map((c) => (
+                <View key={`search-${c.publishedId}`} style={{ marginHorizontal: 8, marginBottom: 8 }}>
+                  <ExploreCollectionCard collection={c} onSaved={handleCollectionSaved} fullWidth />
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ ...styles.tinyText, color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
+                No collections found
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        <ScrollView
+          style={{backgroundColor: theme.colors.background}}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadExploreData(false)}
+              colors={[theme.colors.background === '#151515ff' ? theme.colors.background : theme.colors.primary]}
+              tintColor={theme.colors.background === '#151515ff' ? theme.colors.background : theme.colors.primary}
+            />
+          }
+        >
+          {/* Spacer for Android search overlay */}
+          {Platform.OS === 'android' && <View style={{ height: 60 }} />}
+          
+          {/* My Collections (published by me) */}
       <SectionHeader title="My Collections" route="../explore/my" />
       {isLoading ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
           {[1,2,3].map(i => (
             <View key={`my-skel-${i}`} style={{ marginHorizontal: 8 }}>
-              <Skeleton width={300} height={110} borderRadius={14} />
+              <Skeleton width={300} height={140} borderRadius={14} />
             </View>
           ))}
         </ScrollView>
@@ -462,11 +664,18 @@ export default function ExploreScreen() {
         )}
       </View>
       {/* Category collection items */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
+      <ScrollView 
+        horizontal 
+        decelerationRate="fast"
+        snapToInterval={316}
+        snapToAlignment="start"
+        showsHorizontalScrollIndicator={false} 
+        contentContainerStyle={{ paddingHorizontal: 8 }}
+      >
         {isCategoryLoading ? (
           [1,2,3].map(i => (
             <View key={`cat-skel-${i}`} style={{ marginHorizontal: 8 }}>
-              <Skeleton width={300} height={110} borderRadius={14} />
+              <Skeleton width={300} height={140} borderRadius={14} />
             </View>
           ))
         ) : categoryCollections.length === 0 ? (
@@ -487,7 +696,7 @@ export default function ExploreScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
           {[1,2,3].map(i => (
             <View key={`pop-skel-${i}`} style={{ marginHorizontal: 8 }}>
-              <Skeleton width={300} height={110} borderRadius={14} />
+              <Skeleton width={300} height={140} borderRadius={14} />
             </View>
           ))}
         </ScrollView>
@@ -500,7 +709,7 @@ export default function ExploreScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8 }}>
           {[1,2,3].map(i => (
             <View key={`rec-skel-${i}`} style={{ marginHorizontal: 8 }}>
-              <Skeleton width={300} height={110} borderRadius={14} />
+              <Skeleton width={300} height={140} borderRadius={14} />
             </View>
           ))}
         </ScrollView>
@@ -562,6 +771,8 @@ export default function ExploreScreen() {
         </ScrollView>
       )}
       <View style={{height: 20}} />
+        </ScrollView>
+      )}
 
       <Modal
         visible={showCollectionPicker}
@@ -797,7 +1008,6 @@ export default function ExploreScreen() {
         onShareSuccess={handleShareSuccess}
         onShareError={() => { setSnackbarMessage('Failed to share verse'); setSnackbarVisible(true); }}
       />
-    </ScrollView>
     </SafeAreaView>
   );
 }

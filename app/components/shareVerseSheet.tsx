@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Portal } from 'react-native-paper';
-import { getFriends, shareVerse } from '../db';
+import { getFriendNames, shareVerse } from '../db';
 import { useAppStore, User, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -33,7 +33,7 @@ export default function ShareVerseSheet({ visible, userVerses, onClose, onShareS
   const loadFriends = async () => {
     setLoading(true);
     try {
-      const data = await getFriends(user.username);
+      const data = await getFriendNames(user.username);
       setFriends(data);
     } catch (error) {
       console.error('Failed to load friends:', error);

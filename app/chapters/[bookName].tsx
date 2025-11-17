@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useLocalSearchParams, router, Stack } from 'expo-router';
-import React, { useMemo } from 'react';
+import { useLocalSearchParams, router, useNavigation } from 'expo-router';
+import React, { useLayoutEffect, useMemo } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { bibleBooks } from '../bibleData';
 import useStyles from '../styles';
@@ -9,6 +9,7 @@ import useAppTheme from '../theme';
 export default function ChaptersPage() {
 	const styles = useStyles();
 	const theme = useAppTheme();
+	const navigation = useNavigation();
 	const { bookName } = useLocalSearchParams<{ bookName: string }>();
 
 	const decodedBookName = useMemo(() => (bookName ? decodeURIComponent(bookName) : ''), [bookName]);
@@ -17,25 +18,26 @@ export default function ChaptersPage() {
 		[decodedBookName]
 	);
 
+	useLayoutEffect(() => {
+		navigation.setOptions({
+			title: decodedBookName || '',
+			headerStyle: {
+				backgroundColor: theme.colors.background,
+			},
+			headerTintColor: theme.colors.onBackground,
+			headerTitleStyle: {
+				color: theme.colors.onBackground,
+			},
+			headerVisible: false,
+		});
+	}, [navigation, decodedBookName, theme]);
+
 	const handleChapterSelect = (chapter: number) => {
 		router.push(`/book/${encodeURIComponent(decodedBookName)}?chapter=${chapter}`);
 	};
 
 	return (
-		<>
-			<Stack.Screen 
-				options={{ 
-					title: decodedBookName || 'Chapters',
-					headerStyle: {
-						backgroundColor: theme.colors.background,
-					},
-					headerTintColor: theme.colors.onBackground,
-					headerTitleStyle: {
-						color: theme.colors.onBackground,
-					},
-				}} 
-			/>
-			<View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+		<View style={{ flex: 1, backgroundColor: theme.colors.background }}>
 				<ScrollView
 					style={{ flex: 1 }}
 					contentContainerStyle={{ padding: 20 }}
@@ -90,7 +92,6 @@ export default function ChaptersPage() {
 					</View>
 				</ScrollView>
 		</View>
-		</>
 	);
 }
 

@@ -798,16 +798,17 @@ export default function PracticeSessionScreen() {
       }
       
       // Record practice and check if today's activity was newly tracked
-      let streakAfter = streakBefore;
-      try {
-        streakAfter = await recordPractice(user.username);
-        // If streak increased, it means today's activity was newly recorded
-        if (streakAfter > streakBefore) {
-          setStreakSnackbarVisible(true);
-        }
-      } catch (error) {
-        console.error('Failed to record practice:', error);
-      }
+      // Skipping practice recording for now - was failing
+      // let streakAfter = streakBefore;
+      // try {
+      //   streakAfter = await recordPractice(user.username);
+      //   // If streak increased, it means today's activity was newly recorded
+      //   if (streakAfter > streakBefore) {
+      //     setStreakSnackbarVisible(true);
+      //   }
+      // } catch (error) {
+      //   console.error('Failed to record practice:', error);
+      // }
       
       // Refresh user to get updated points
       try {

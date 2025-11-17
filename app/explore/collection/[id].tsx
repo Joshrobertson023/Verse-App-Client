@@ -42,12 +42,12 @@ export default function PublishedCollectionView() {
     })();
   }, []);
 
-  // Derive category names from ids with a single categories fetch
-  const categoryNames = useMemo<string[]>(() => {
+  // Derive category names and IDs from collection with a single categories fetch
+  const categoryInfo = useMemo<Array<{ name: string; id: number }>>(() => {
     if (!collection) return [];
     const idToName = new Map<number, string>(allCategories.map(c => [c.categoryId, c.name]));
     const ids = (collection.categoryIds || []);
-    const names: string[] = [];
+    const categories: Array<{ name: string; id: number }> = [];
     const seen = new Set<string>();
     ids.forEach((id) => {
       const n = idToName.get(id);
@@ -55,11 +55,11 @@ export default function PublishedCollectionView() {
         const key = n.toLowerCase();
         if (!seen.has(key)) {
           seen.add(key);
-          names.push(n);
+          categories.push({ name: n, id });
         }
       }
     });
-    return names;
+    return categories;
   }, [collection, allCategories]);
 
   useLayoutEffect(() => {
@@ -389,20 +389,22 @@ export default function PublishedCollectionView() {
               )}
               
         <Text style={{ ...styles.tinyText, marginTop: 8 }}>{numVerses} {numVerses === 1 ? 'passage' : 'passages'}</Text>
-        {categoryNames.length > 0 && (
+        {categoryInfo.length > 0 && (
           <View style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-            {categoryNames.map((name, idx) => (
-              <View
-                key={`${name}-${idx}`}
+            {categoryInfo.map((category, idx) => (
+              <TouchableOpacity
+                key={`${category.name}-${category.id}-${idx}`}
+                onPress={() => router.push(`/explore/category/${category.id}` as any)}
+                activeOpacity={0.7}
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
+                  paddingHorizontal: 13,
+                  paddingVertical: 7,
                   borderRadius: 999,
                   backgroundColor: theme.colors.surface2,
                 }}
               >
-                <Text style={{ ...styles.tinyText, marginBottom: 0 }}>{name}</Text>
-              </View>
+                <Text style={{ ...styles.tinyText, marginBottom: 0 }}>{category.name}</Text>
+              </TouchableOpacity>
             ))}
           </View>
         )}

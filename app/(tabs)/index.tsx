@@ -162,8 +162,14 @@ export default function Index() {
   // Verse of the Day state
   const [currentVod, setCurrentVod] = useState<VodType | null>(null);
   const [vodTexts, setVodTexts] = useState<Record<string, Verse[]>>({});
+  const vodTextsRef = useRef<Record<string, Verse[]>>({});
   const screenWidth = Dimensions.get('window').width;
   const cardWidth = useMemo(() => Math.min(screenWidth - 50, 580), [screenWidth]);
+  
+  // Keep ref in sync with state
+  useEffect(() => {
+    vodTextsRef.current = vodTexts;
+  }, [vodTexts]);
 
   // Collection picker state for Verse of the Day Save functionality
   const [showVodCollectionPicker, setShowVodCollectionPicker] = useState(false);
@@ -226,6 +232,50 @@ export default function Index() {
     setBannerDismissed(false);
   }, [siteBanner.message]);
 
+  const loadTextForReference = React.useCallback(async (readableReference: string | undefined | null) => {
+    if (!readableReference) return;
+
+    // Check if already loading
+    if (queuedVodLoads.has(readableReference)) {
+      return; // Already loading
+    }
+
+    // Check if already loaded using ref (synchronous check)
+    if (vodTextsRef.current[readableReference] && vodTextsRef.current[readableReference]!.length > 0) {
+      return; // Already loaded
+    }
+
+    // Mark as loading
+    queuedVodLoads.add(readableReference);
+
+    try {
+      const data: SearchData = await getVerseSearchResult(readableReference);
+      
+      // Update state if not already loaded (race condition protection)
+      setVodTexts(prev => {
+        // Check again in case another request completed first
+        if (prev[readableReference] && prev[readableReference]!.length > 0) {
+          queuedVodLoads.delete(readableReference);
+          return prev;
+        }
+        queuedVodLoads.delete(readableReference);
+        return { ...prev, [readableReference]: data.verses || [] };
+      });
+    } catch (e) {
+      console.error('Failed to fetch verse text', e);
+      // Set empty array on error to prevent infinite retries
+      setVodTexts(prev => {
+        // Only set empty if not already loaded
+        if (prev[readableReference] && prev[readableReference]!.length > 0) {
+          queuedVodLoads.delete(readableReference);
+          return prev;
+        }
+        queuedVodLoads.delete(readableReference);
+        return { ...prev, [readableReference]: [] };
+      });
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -253,31 +303,14 @@ export default function Index() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [loadTextForReference]);
 
-
-  const loadTextForReference = async (readableReference: string | undefined | null) => {
-    if (!readableReference) return;
-
-    if (vodTexts[readableReference] && vodTexts[readableReference]!.length > 0) {
-      return;
+  // Reload text when currentVod changes
+  useEffect(() => {
+    if (currentVod?.readableReference) {
+      loadTextForReference(currentVod.readableReference);
     }
-
-    if (queuedVodLoads.has(readableReference)) {
-      return;
-    }
-
-    queuedVodLoads.add(readableReference);
-
-    try {
-      const data: SearchData = await getVerseSearchResult(readableReference);
-      setVodTexts(prev => ({ ...prev, [readableReference]: data.verses || [] }));
-    } catch (e) {
-      console.error('Failed to fetch verse text', e);
-    } finally {
-      queuedVodLoads.delete(readableReference);
-    }
-  };
+  }, [currentVod?.readableReference, loadTextForReference]);
 
   const handleSaveVodVerse = (readableReference: string) => {
     const verses = vodTexts[readableReference];
@@ -328,13 +361,28 @@ export default function Index() {
       return;
     }
 
-    setIsCreatingNewVodCollection(true);
-    const readableReference = selectedVodVerse.verse_reference || '';
+    // Ensure verse_reference is set
+    if (!selectedVodVerse.verse_reference) {
+      setSnackbarMessage('Error: Verse reference is missing');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    const readableReference = selectedVodVerse.verse_reference;
     const userVerse: UserVerse = {
       username: user.username,
       readableReference: readableReference,
       verses: [selectedVodVerse]
     };
+
+    // Ensure readableReference is set
+    if (!userVerse.readableReference || userVerse.readableReference.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setIsCreatingNewVodCollection(true);
 
     try {
       const finalTitle = newVodCollectionTitle.trim() === '' ? 'New Collection' : (newVodCollectionTitle.trim() === 'Favorites' ? 'Favorites-Other' : newVodCollectionTitle.trim());
@@ -384,7 +432,14 @@ export default function Index() {
   const handleAddVodToCollection = async () => {
     if (!pickedVodCollection || !selectedVodVerse || !user.username || isAddingVodToCollection) return;
 
-    const readableReference = selectedVodVerse.verse_reference || '';
+    // Ensure verse_reference is set
+    if (!selectedVodVerse.verse_reference) {
+      setSnackbarMessage('Error: Verse reference is missing');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    const readableReference = selectedVodVerse.verse_reference;
     const alreadyExists = pickedVodCollection.userVerses.some(
       uv => uv.readableReference === readableReference
     );
@@ -398,13 +453,20 @@ export default function Index() {
       return;
     }
 
-    setIsAddingVodToCollection(true);
-
     const userVerse: UserVerse = {
       username: user.username,
       readableReference: readableReference,
       verses: [selectedVodVerse]
     };
+
+    // Ensure readableReference is set
+    if (!userVerse.readableReference || userVerse.readableReference.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      return;
+    }
+
+    setIsAddingVodToCollection(true);
 
     try {
       await addUserVersesToNewCollection([userVerse], pickedVodCollection.collectionId!);
@@ -871,7 +933,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             ]}
           >
             <Text style={{ ...styles.tinyText, fontFamily: 'Inter', marginRight: 12, height: '100%' }}>
-              Collection submitted for review. You will be notified when it has been approved and is available on Explore.
+              Your collection has been submitted and is currently under review. When it is approved, you will be notified.
             </Text>
           </Banner>
         ) : null}
@@ -1163,7 +1225,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                   console.error('Failed to update collections sort by:', error);
                 }
               }}>
-              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 0 ? '700' : '500' }}>Use Custom Order</Text>
+              <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 0 ? '700' : '500' }}>Custom Order</Text>
             </TouchableOpacity>
             <Divider />
             <TouchableOpacity
@@ -1182,11 +1244,19 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               }}>
               <Text style={{ ...styles.tinyText, fontSize: 16, fontWeight: activeCollectionsSortBy === 1 ? '700' : '500' }}>Newest Modified</Text>
             </TouchableOpacity>
+            <View style={{ marginBottom: 0 }} />
+            <Divider style={{ marginBottom: 0 }} />
           </View>
-          <View>
-            <Divider style={{ marginTop: 20, marginBottom: 20 }} />
+          <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
             <TouchableOpacity
-              style={sheetItemStyle.settingsItem}
+              style={{
+                height: 50,
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: theme.colors.surface2,
+                borderRadius: 8,
+                marginTop: 12,
+              }}
               activeOpacity={0.1}
               onPress={() => {
                 closeCollectionsSettingsSheet();
@@ -1321,7 +1391,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                 const nonFavorites = userOwnedCollections.filter(col => !col.favorites && col.title !== 'Favorites');
                 
                 return (
-                  <>
+                  <React.Fragment key="vod-collections-list">
                     <View key="favorites-section">
                       {favorites.map((collection, idx) => (
                         <TouchableOpacity
@@ -1388,7 +1458,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                         </TouchableOpacity>
                       ))}
                     </View>
-                  </>
+                  </React.Fragment>
                 );
               })()}
             </ScrollView>

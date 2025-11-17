@@ -380,13 +380,13 @@ export default function PracticeScreen() {
                 </View>
               )}
 
-              {/* In Progress Section */}
-              {filteredInProgress.length > 0 && (
+              {/* Memorized Section */}
+              {filteredMemorized.length > 0 && (
                 <View style={{ width: '100%', marginBottom: 20 }}>
                   <Text style={{ ...styles.subheading, marginBottom: 12 }}>
-                    In Progress ({filteredInProgress.length})
+                    Memorized ({filteredMemorized.length}{searchQuery.trim() ? ` of ${versesMemorized.length}` : ''})
                   </Text>
-                  {filteredInProgress.map((userVerse, index) => renderVerseItem(userVerse, index))}
+                  {filteredMemorized.map((userVerse, index) => renderVerseItem(userVerse, index))}
                 </View>
               )}
 
@@ -400,13 +400,13 @@ export default function PracticeScreen() {
                 </View>
               )}
 
-              {/* Memorized Section */}
-              {filteredMemorized.length > 0 && (
+              {/* In Progress Section */}
+              {filteredInProgress.length > 0 && (
                 <View style={{ width: '100%', marginBottom: 20 }}>
                   <Text style={{ ...styles.subheading, marginBottom: 12 }}>
-                    Memorized ({filteredMemorized.length}{searchQuery.trim() ? ` of ${versesMemorized.length}` : ''})
+                    In Progress ({filteredInProgress.length})
                   </Text>
-                  {filteredMemorized.map((userVerse, index) => renderVerseItem(userVerse, index))}
+                  {filteredInProgress.map((userVerse, index) => renderVerseItem(userVerse, index))}
                 </View>
               )}
 

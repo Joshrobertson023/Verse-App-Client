@@ -830,6 +830,13 @@ const handleSaveToCollection = useCallback(async () => {
     }
   }
 
+  // Ensure readableReference is set
+  if (!selectedUserVerse.readableReference || selectedUserVerse.readableReference.trim() === '') {
+    setSnackbarMessage('Error: Verse reference is invalid');
+    setSnackbarVisible(true);
+    return;
+  }
+
   setUserVerseActionLoading(true);
   try {
     await insertUserVerse({
@@ -868,6 +875,13 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
       return;
     }
     setSnackbarMessage('You can create up to 40 collections');
+    setSnackbarVisible(true);
+    return;
+  }
+
+  // Ensure readableReference is set
+  if (!selectedUserVerse.readableReference || selectedUserVerse.readableReference.trim() === '') {
+    setSnackbarMessage('Error: Verse reference is invalid');
     setSnackbarVisible(true);
     return;
   }
@@ -1049,7 +1063,20 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                     <View style={{minWidth: '100%', borderRadius: 3,}}>
 
                         <View>
-                          <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
+                          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
+                            <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
+                            {isOwnedCollection && (
+                              <TouchableOpacity
+                                activeOpacity={0.1}
+                                onPress={() => openUserVerseSettingsSheet(userVerse)}
+                                style={{ padding: 8, marginTop: -20 }}
+                              >
+                                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                                  <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.onBackground} />
+                                </View>
+                              </TouchableOpacity>
+                            )}
+                          </View>
                           {(userVerse.verses || []).map((verse, verseIndex) => (
                               <View key={verse.verse_reference || `${userVerse.readableReference}-verse-${verseIndex}`} style={{}}>
                                   <View>
@@ -1124,16 +1151,6 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                                     <Text style={{marginLeft: 6, color: theme.colors.onBackground}}>Practice</Text>
                                   </View>
                                 </TouchableOpacity>
-                                {isOwnedCollection && (
-                                  <TouchableOpacity
-                                    activeOpacity={0.1}
-                                    onPress={() => openUserVerseSettingsSheet(userVerse)}
-                                  >
-                                    <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                                      <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.onBackground} />
-                                    </View>
-                                  </TouchableOpacity>
-                                )}
                               </View>
                             </View>
                           </View>
@@ -1390,10 +1407,6 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
                   {selectedNote && (
                     <>
-                      <Text style={{...styles.text, fontSize: 18, fontWeight: '600', marginBottom: 10, marginTop: 10, textAlign: 'center'}}>
-                        Note
-                      </Text>
-                      <Divider />
                       <TouchableOpacity
                         style={{ height: 50, justifyContent: 'center', alignItems: 'center' }}
                         onPress={handleDeleteNote}
@@ -1432,10 +1445,6 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
               <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
                 {selectedUserVerse && (
                   <>
-                    <Text style={{...styles.text, fontSize: 18, fontWeight: '600', marginBottom: 10, marginTop: 10, textAlign: 'center'}}>
-                      {selectedUserVerse.readableReference}
-                    </Text>
-                    <Divider />
                     <TouchableOpacity
                       style={sheetItemStyle.settingsItem}
                       onPress={() => {

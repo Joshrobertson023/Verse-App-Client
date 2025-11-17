@@ -605,6 +605,13 @@ export default function NotificationsScreen() {
       return;
     }
 
+    // Ensure readableReference is set
+    if (!userVerseFromNotification.readableReference || userVerseFromNotification.readableReference.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      return;
+    }
+
     setIsCreatingNewCollection(true);
     const userVerse: UserVerse = {
       ...userVerseFromNotification,
@@ -674,6 +681,13 @@ export default function NotificationsScreen() {
 
   const handleConfirmSaveSharedVerse = async () => {
     if (!pickedCollection || !userVerseFromNotification || !user?.username || isSavingToCollection) return;
+
+    // Ensure readableReference is set
+    if (!userVerseFromNotification.readableReference || userVerseFromNotification.readableReference.trim() === '') {
+      setSnackbarMessage('Error: Verse reference is invalid');
+      setSnackbarVisible(true);
+      return;
+    }
 
     setIsSavingToCollection(true);
     const userVerse: UserVerse = {

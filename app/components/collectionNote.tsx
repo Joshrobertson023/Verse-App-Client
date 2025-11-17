@@ -27,9 +27,10 @@ export default function CollectionNoteItem({ note, isOwned, onMenuPress }: Props
 						<TouchableOpacity
 							activeOpacity={0.1}
 							onPress={() => onMenuPress(note)}
+							style={{ padding: 8, marginTop: -20 }}
 						>
 							<View style={{flexDirection: 'row', alignItems: 'center'}}>
-								<Ionicons name="ellipsis-vertical" size={18} color={theme.colors.onBackground} />
+								<Ionicons name="ellipsis-vertical" size={22} color={theme.colors.onBackground} />
 							</View>
 						</TouchableOpacity>
 					)}

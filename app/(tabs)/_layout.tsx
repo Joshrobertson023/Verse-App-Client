@@ -148,8 +148,21 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
         tabBarItemStyle: {
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: 6,
+          paddingHorizontal: 0,
           paddingVertical: 6,
+          width: '100%',
+        },
+        tabBarIconStyle: {
+          width: '100%',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 0,
+          marginLeft: 2,
+        },
+        tabBarLabelStyle: {
+          width: '100%',
+          textAlign: 'center',
+          marginTop: 0,
         },
         animation: 'fade',
         sceneStyle: {
@@ -167,8 +180,8 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
         headerTintColor: theme.colors.onBackground,
         tabBarStyle: {
           backgroundColor: theme.colors.background,
-          height: 70 + insets.bottom,
-          paddingBottom: Math.max(insets.bottom, 10),
+          height: 70 + insets.bottom + 10,
+          paddingBottom: Math.max(insets.bottom, 10) + 10,
           paddingTop: 10,
           paddingLeft: 5,
           paddingRight: 5,
@@ -229,11 +242,13 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
             </View>
           ),
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons 
-              name={focused ? 'home' : 'home-outline'} 
-              color={focused ? theme.colors.primary : inactiveColor} 
-              size={28} 
-            />
+            <View style={{ marginLeft: 0 }}>
+              <Ionicons 
+                name={focused ? 'home' : 'home-outline'} 
+                color={focused ? theme.colors.primary : inactiveColor} 
+                size={28} 
+              />
+            </View>
           ),
           tabBarLabel: ({ focused }) => (
             <Text
@@ -255,7 +270,7 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           title: 'Practice',
           headerShown: false,
           tabBarIcon: ({ focused }) => (
-            <View style={{ position: 'relative' }}>
+            <View style={{ position: 'relative', marginLeft: 0 }}>
               <Ionicons 
                 name={focused ? 'extension-puzzle' : 'extension-puzzle-outline'} 
                 color={focused ? theme.colors.primary : inactiveColor} 
@@ -336,11 +351,13 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           title: 'Bible',
           headerShown: false,
           tabBarIcon: ({ focused }) => (
-            <Ionicons 
-              name={focused ? 'book-sharp' : 'book-outline'} 
-              color={focused ? theme.colors.primary : inactiveColor} 
-              size={28}
-            />
+            <View style={{ marginLeft: 0 }}>
+              <Ionicons 
+                name={focused ? 'book-sharp' : 'book-outline'} 
+                color={focused ? theme.colors.primary : inactiveColor} 
+                size={28}
+              />
+            </View>
           ),
           tabBarLabel: ({ focused }) => (
             <Text
@@ -362,11 +379,13 @@ const CustomTabBar: React.FC<BottomTabBarProps> = (props) => {
           title: 'Explore',
           headerShown: false,
           tabBarIcon: ({ focused }) => (
+            <View style={{ marginLeft: 0 }}>
               <Ionicons 
                 name={focused ? 'planet' : 'planet-outline'} 
                 color={focused ? theme.colors.primary : inactiveColor} 
                 size={28}
               />
+            </View>
           ),
           tabBarLabel: ({ focused }) => (
             <Text

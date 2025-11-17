@@ -26,6 +26,11 @@
         "backgroundImage": "./assets/images/Logo.png",
         "monochromeImage": "./assets/images/Logo.png"
       },
+      "splash": {
+        "image": "./assets/images/LogoIcon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#b93838ff"
+      },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.VerseApp"

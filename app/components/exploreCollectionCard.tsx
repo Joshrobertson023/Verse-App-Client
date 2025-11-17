@@ -252,24 +252,26 @@ export default function ExploreCollectionCard({ collection, onSaved, fullWidth =
 
   return (
     <TouchableOpacity
-      onPress={() => router.push(`../explore/collection/${collection.publishedId}` as any)}
+      onPress={() => router.push(`/explore/collection/${collection.publishedId}` as any)}
       style={{
         width: fullWidth ? '100%' : 300,
         borderRadius: 14,
         padding: 14,
         marginHorizontal: fullWidth ? 0 : 8,
         backgroundColor: theme.colors.surface,
-        height: 140, // enforce consistent height
+        height: 145, // enforce consistent height
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text numberOfLines={1} style={{ ...styles.text, fontWeight: 700, marginRight: 12 }}>
-          {collection.title && collection.title.length >= 17 
-            ? `${collection.title.substring(0, 14)}...` 
-            : collection.title}
-        </Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flex: 1, marginRight: 12, minHeight: 36, justifyContent: 'center' }}>
+          <Text numberOfLines={1} style={{ ...styles.text, fontWeight: 700, lineHeight: 20 }}>
+            {collection.title && collection.title.length >= 17 
+              ? `${collection.title.substring(0, 14)}...` 
+              : collection.title}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: -15 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 32 }}>
             <Ionicons name="people" size={14} color={theme.colors.onSurface} style={{ marginRight: 6 }} />
             <Text style={{ ...styles.tinyText, fontSize: 14, marginBottom: 0 }}>{savedCount}</Text>
           </View>
@@ -277,9 +279,11 @@ export default function ExploreCollectionCard({ collection, onSaved, fullWidth =
             onPress={handleSave}
             disabled={isSaving}
             style={{
-              paddingHorizontal: 20,
-              paddingVertical: 4,
-              marginTop: -12,
+              paddingHorizontal: 10,
+              paddingVertical: 3,
+              height: 28,
+              justifyContent: 'center',
+              alignItems: 'center',
               borderRadius: 8,
               backgroundColor: theme.colors.surface2,
               opacity: isSaving ? 0.6 : 1,
@@ -288,33 +292,44 @@ export default function ExploreCollectionCard({ collection, onSaved, fullWidth =
             {isSaving ? (
               <ActivityIndicator size="small" color={theme.colors.onSurface} />
             ) : (
-              <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0 }}>Save</Text>
+              <Text style={{ ...styles.tinyText, fontWeight: 600, fontFamily: 'Inter', marginBottom: 0, fontSize: 12 }}>Save</Text>
             )}
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Description snippet under title (first few words with ellipsis) */}
-      {typeof collection.description === 'string' && collection.description.trim().length > 0 && (
-        <Text
-          numberOfLines={2}
-          style={{
-            ...styles.text,
-            fontFamily: 'Noto Serif',
-            fontSize: 16,
-            fontStyle: 'italic',
-            marginTop: 6,
-          }}
-        >
-          {collection.description.trim()}
-        </Text>
-      )}
+      <View style={{ marginTop: 4, minHeight: 32 }}>
+        {typeof collection.description === 'string' && collection.description.trim().length > 0 ? (
+          <Text
+            numberOfLines={2}
+            style={{
+              ...styles.tinyText,
+              fontSize: 12,
+              lineHeight: 16,
+            }}
+          >
+            {collection.description.trim()}
+          </Text>
+        ) : (
+          <Text
+            numberOfLines={2}
+            style={{
+              ...styles.tinyText,
+              fontSize: 12,
+              lineHeight: 16,
+              color: theme.colors.onSurfaceVariant,
+              fontStyle: 'italic',
+            }}
+          >
+            No description{'\n'}{' '.repeat(50)}
+          </Text>
+        )}
+      </View>
 
-      <View style={{ height: 4 }} />
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
-        <Text style={styles.tinyText}>{collection.userVerses?.length ?? 0} {(collection.userVerses?.length ?? 0) === 1 ? 'passage' : 'passages'}</Text>
-        <Text style={styles.tinyText}>@{collection.author}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+        <Text style={{ ...styles.tinyText, fontSize: 11 }}>{collection.userVerses?.length ?? 0} {(collection.userVerses?.length ?? 0) === 1 ? 'passage' : 'passages'}</Text>
+        <Text style={{ ...styles.tinyText, fontSize: 11 }}>@{collection.author}</Text>
       </View>
 
       {/* Category tags at bottom */}
@@ -328,30 +343,30 @@ export default function ExploreCollectionCard({ collection, onSaved, fullWidth =
         const catNames = allNames.slice(0, maxChips);
         if (catNames.length === 0) return null;
         return (
-          <View style={{ marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          <View style={{ marginTop: 6, marginBottom: 5, flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
             {catNames.map((name, idx) => (
               <View
                 key={`${name}-${idx}`}
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
+                  paddingHorizontal: 7,
+                  paddingVertical: 3,
                   borderRadius: 999,
                   backgroundColor: theme.colors.surface2,
                 }}
               >
-                <Text style={{ ...styles.tinyText, marginBottom: 0 }}>{name}</Text>
+                <Text style={{ ...styles.tinyText, marginBottom: 0, fontSize: 10 }}>{name}</Text>
               </View>
             ))}
             {allNames.length > maxChips && (
               <View
                 style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
+                  paddingHorizontal: 7,
+                  paddingVertical: 3,
                   borderRadius: 999,
                   backgroundColor: theme.colors.surface2,
                 }}
               >
-                <Text style={{ ...styles.tinyText, marginBottom: 0 }}>{`+${allNames.length - maxChips}`}</Text>
+                <Text style={{ ...styles.tinyText, marginBottom: 0, fontSize: 10 }}>{`+${allNames.length - maxChips}`}</Text>
               </View>
             )}
           </View>

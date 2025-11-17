@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Portal } from 'react-native-paper';
-import { getFriends, shareCollection } from '../db';
+import { getFriendNames, shareCollection } from '../db';
 import { Collection, useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -33,7 +33,7 @@ export default function ShareCollectionSheet({ visible, collection, onClose, onS
   const loadFriends = async () => {
     setLoading(true);
     try {
-      const data = await getFriends(user.username);
+      const data = await getFriendNames(user.username);
       setFriends(data);
     } catch (error) {
       console.error('Failed to load friends:', error);
