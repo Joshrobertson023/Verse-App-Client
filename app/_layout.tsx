@@ -540,7 +540,6 @@ export default function RootLayout() {
               name="collections/[id]"
               options={{
                 title: '',
-                animation: 'fade_from_bottom',
                 headerStyle: {
                   backgroundColor: theme.colors.background,
                 },

@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Collection, useAppStore } from '../store'; // Adjust the import path for your Collection type
+import { Collection, useAppStore } from '../store';
 import getStyles from '../styles';
 import useAppTheme from '../theme';
+import CollectionDonut from './collectionDonut';
 
 interface CollectionItemProps {
   collection: Collection;
@@ -14,10 +15,8 @@ interface CollectionItemProps {
 export default function collectionItem({ collection, onMenuPress }: CollectionItemProps) {
   const styles = getStyles();
   const theme = useAppTheme();
-  const [menuVisible, setMenuVisible] = useState(false);
-  const openMenu = () => setMenuVisible(true);
-  const closeMenu = () => setMenuVisible(false);
   const user = useAppStore((state) => state.user);
+  
   const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
   const ownerUsernameRaw = collection.username ?? collection.authorUsername;
   const authorUsernameRaw = collection.authorUsername;
@@ -47,16 +46,27 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
     ? `@${authorUsernameRaw}`
     : collection.visibility ?? '';
 
+  const handlePress = () => {
+    router.push(`../collections/${collection.collectionId}`);
+  };
+  
   return (
-      <TouchableOpacity
-        key={collection.collectionId}
-        style={{
-          padding: 0,
-          borderRadius: 10,
-        }}
-        activeOpacity={0.5}
-        onPress={() => router.push(`../collections/${collection.collectionId}`)}>
-      <View style={styles.collectionItem}>
+      <>
+        <View
+          key={collection.collectionId}
+          style={[
+            styles.collectionItem,
+            {
+              padding: 0,
+              borderRadius: 10,
+            }
+          ]}
+        >
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={handlePress}
+              style={{ flex: 1 }}
+            >
         <View style={{justifyContent: 'space-between', flexDirection: 'row', alignItems: 'center', width: '100%'}}>
           <View style={{justifyContent: 'space-between', height: '100%', flex: 1, marginRight: 10}}>
             <View style={{justifyContent: 'flex-start'}}>
@@ -81,26 +91,36 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
               <Text style={styles.tinyText}>{visibilityLabel}</Text>
             </View>
           </View>
-          <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'flex-end'}}>
+          <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'center', flexDirection: 'row', gap: 8}}>
 
+          {/* donut progress */}
+            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+              <CollectionDonut 
+                averageProgressPercent={collection.averageProgressPercent} 
+                size={50} 
+              />
+            </View>
+            
           {/* menu */}
-            <View>
+            <View style={{ alignItems: 'center', justifyContent: 'flex-start' }}>
               {collection.title === 'Favorites' ? 
               <Ionicons name='star' size={22} color={theme.colors.onBackground} style={{marginTop: 2, marginRight: 2}} />
               : 
                   <TouchableOpacity 
                     activeOpacity={0.1}
-                    onPress={() => onMenuPress(collection)}>
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        onMenuPress(collection);
+                      }}>
                     <Ionicons name='ellipsis-vertical' size={22} color={theme.colors.onBackground} />
                   </TouchableOpacity>}
                   
               </View>
-            <View>
-            </View>
           </View>
           
+            </View>
+          </TouchableOpacity>
         </View>
-      </View>
-    </TouchableOpacity>
+    </>
   );
 }

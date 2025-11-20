@@ -7,6 +7,7 @@ import { ActivityIndicator, Banner, Dialog, Divider, Portal, Snackbar } from 're
 import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import Button from '../components/Button';
 import CollectionItem from '../components/collectionItem';
+import PracticeModeModal from '../components/practiceModeModal';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { getUTCTimestamp } from '../dateUtils';
@@ -129,6 +130,8 @@ export default function Index() {
   const [reviewMessageDismissed, setReviewMessageDismissed] = useState(false);
   const [searchDialogVisible, setSearchDialogVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [practiceModeModalVisible, setPracticeModeModalVisible] = useState(false);
+  const [selectedVodUserVerse, setSelectedVodUserVerse] = useState<UserVerse | null>(null);
 
   const computeOwnership = (collection?: Collection) => {
     if (!collection) return false;
@@ -543,11 +546,17 @@ export default function Index() {
       verses: verses
     };
     
-    // Set the editing user verse and navigate to practice session
-    const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-    setEditingUserVerse(userVerse);
-    router.push('/practiceSession');
+    setSelectedVodUserVerse(userVerse);
+    setPracticeModeModalVisible(true);
   };
+
+  const handleLearnMode = useCallback(() => {
+    if (!selectedVodUserVerse) return;
+    
+    const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
+    setEditingUserVerse(selectedVodUserVerse);
+    router.push('/practiceSession');
+  }, [selectedVodUserVerse]);
 
 
   const hideDialog = () => setVisible(false);
@@ -1023,7 +1032,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             return (
               <React.Fragment key={itemKey}>
                 <Divider style={{marginHorizontal: -50, marginTop: 10, marginBottom: -10}} />
-                <CollectionItem collection={collection} onMenuPress={handleMenuPress} />
+                  <CollectionItem collection={collection} onMenuPress={handleMenuPress} />
               </React.Fragment>
             );
           })}
@@ -1632,6 +1641,15 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           {snackbarMessage}
         </Text>
       </Snackbar>
+
+      <PracticeModeModal
+        visible={practiceModeModalVisible}
+        onClose={() => {
+          setPracticeModeModalVisible(false);
+          setSelectedVodUserVerse(null);
+        }}
+        onSelectLearn={handleLearnMode}
+      />
 
     </View>
     </>

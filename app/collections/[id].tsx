@@ -6,13 +6,15 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { ActivityIndicator, BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { Dialog, Divider, Portal, Snackbar, Text } from 'react-native-paper';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, SlideInDown, ZoomIn, useAnimatedStyle, useSharedValue, withSpring, withTiming, Easing } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
+import CollectionNoteItem from '../components/collectionNote';
+import PracticeModeModal from '../components/practiceModeModal';
 import SaveVerseToCollectionSheet from '../components/saveVerseToCollectionSheet';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
-import CollectionNoteItem from '../components/collectionNote';
+import UserVerseDonut from '../components/userVerseDonut';
 import { formatISODate, getUTCTimestamp } from '../dateUtils';
 import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, deleteUserVerse, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, insertUserVerse, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { Collection, CollectionNote, useAppStore, UserVerse, Verse } from '../store';
@@ -191,9 +193,10 @@ export default function Index() {
     const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
   const [orderedUserVerses, setOrderedUserVerses] = useState<UserVerse[]>([]);
   const [orderedItems, setOrderedItems] = useState<Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}>>([]);
-  const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order (verseOrder) or date added, 1 = progress
+    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order (verseOrder) or date added, 1 = progress
     const [isVersesSettingsSheetOpen, setIsVersesSettingsSheetOpen] = useState(false);
     const [isCreatingCopy, setIsCreatingCopy] = useState(false);
+    const [practiceModeModalVisible, setPracticeModeModalVisible] = useState(false);
     
     // Bottom sheet refs for settings
     const collectionSettingsSheetRef = useRef<BottomSheet>(null);
@@ -244,6 +247,13 @@ export default function Index() {
       } catch {}
     })();
   }, [collection?.collectionId]);
+
+  const handleLearnMode = useCallback(() => {
+    if (!selectedUserVerse) return;
+    
+    useAppStore.getState().setEditingUserVerse(selectedUserVerse);
+    router.push('/practiceSession');
+  }, [selectedUserVerse]);
 
   const handleCreateCopy = async () => {
     if (!collection) return;
@@ -482,7 +492,7 @@ useLayoutEffect(() => {
       title: collection.title,
     });
   }
-}, [collection]);
+}, [collection, navigation]);
 
 
 // Animations
@@ -1002,11 +1012,13 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 }}
               >
 
+
           {/* Published Collection Metadata */}
           {collection && collection.authorUsername && collection.authorUsername.toLowerCase().trim() !== user.username.toLowerCase().trim() && (
             <View style={{ 
               width: '100%', 
               marginBottom: 24, 
+              marginTop: 20,
               borderRadius: 12 
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
@@ -1086,64 +1098,14 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                           ))}
                         </View>
                         <View style={{alignItems: 'stretch', justifyContent: 'space-between'}}>
-                          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
+                          <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
                             <View style={{flex: 1}}>
-                              <View style={{flexDirection: 'column', marginBottom: 8}}>
-                                <Text style={{...styles.tinyText, marginBottom: 4}}>
-                                  {userVerse.timesMemorized || 0} time{(userVerse.timesMemorized || 0) === 1 ? '' : 's'} memorized
-                                </Text>
-                                {(() => {
-                                  const calculateNextPracticeDate = (uv: UserVerse): Date | null => {
-                                    if (!uv.lastPracticed) return null;
-                                    const lastPracticed = new Date(uv.lastPracticed);
-                                    const timesMemorized = uv.timesMemorized || 0;
-                                    if (timesMemorized === 0) return null;
-                                    let daysToAdd: number;
-                                    if (timesMemorized === 1) {
-                                      daysToAdd = 1;
-                                    } else {
-                                      daysToAdd = Math.pow(2, timesMemorized - 2) * 2;
-                                    }
-                                    const nextDate = new Date(lastPracticed);
-                                    nextDate.setDate(nextDate.getDate() + daysToAdd);
-                                    return nextDate;
-                                  };
-                                  
-                                  const formatDate = (date: Date | null): string => {
-                                    if (!date) return 'Not practiced';
-                                    const today = new Date();
-                                    today.setHours(0, 0, 0, 0);
-                                    const practiceDate = new Date(date);
-                                    practiceDate.setHours(0, 0, 0, 0);
-                                    const diffTime = practiceDate.getTime() - today.getTime();
-                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                    if (diffDays < 0) {
-                                      return `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? '' : 's'}`;
-                                    } else if (diffDays === 0) {
-                                      return 'Due today';
-                                    } else if (diffDays === 1) {
-                                      return 'Due tomorrow';
-                                    } else {
-                                      const month = practiceDate.toLocaleString('default', { month: 'short' });
-                                      const day = practiceDate.getDate();
-                                      return `Due ${month} ${day}`;
-                                    }
-                                  };
-                                  
-                                  const nextDate = calculateNextPracticeDate(userVerse);
-                                  return nextDate ? (
-                                    <Text style={{...styles.tinyText, color: theme.colors.onSurfaceVariant}}>
-                                      {formatDate(nextDate)}
-                                    </Text>
-                                  ) : null;
-                                })()}
-                              </View>
                               <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 16}}>
                                 <TouchableOpacity 
                                   activeOpacity={0.1}
                                   onPress={() => {
-                                    useAppStore.getState().setEditingUserVerse(userVerse);
-                                    router.push('/practiceSession');
+                                    setSelectedUserVerse(userVerse);
+                                    setPracticeModeModalVisible(true);
                                   }}
                                 >
                                   <View style={{flexDirection: 'row', alignItems: 'center'}}>
@@ -1152,6 +1114,14 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                                   </View>
                                 </TouchableOpacity>
                               </View>
+                            </View>
+                            <View style={{marginLeft: 16, alignItems: 'center', justifyContent: 'center'}}>
+                              <UserVerseDonut 
+                                userVerse={userVerse} 
+                                size={60}
+                                nextPracticeDate={userVerse.nextPracticeDate ? new Date(userVerse.nextPracticeDate) : null}
+                                showDaysUntilDue={true}
+                              />
                             </View>
                           </View>
                         </View>
@@ -1650,6 +1620,15 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
               {snackbarMessage}
             </Text>
           </Snackbar>
+
+          <PracticeModeModal
+            visible={practiceModeModalVisible}
+            onClose={() => {
+              setPracticeModeModalVisible(false);
+              setSelectedUserVerse(null);
+            }}
+            onSelectLearn={handleLearnMode}
+          />
         </View>
       );
     }

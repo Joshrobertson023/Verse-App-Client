@@ -3,6 +3,7 @@ import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Snackbar } from 'react-native-paper';
+import PracticeModeModal from './components/practiceModeModal';
 import { getOverdueVerses, getVerseSearchResult } from './db';
 import { useAppStore, UserVerse } from './store';
 import useStyles from './styles';
@@ -16,6 +17,8 @@ export default function OverdueScreen() {
   const [overdueVersesLoaded, setOverdueVersesLoaded] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [practiceModeModalVisible, setPracticeModeModalVisible] = useState(false);
+  const [selectedUserVerse, setSelectedUserVerse] = useState<UserVerse | null>(null);
 
   // Load overdue verses when screen is focused
   useFocusEffect(
@@ -142,9 +145,8 @@ export default function OverdueScreen() {
                                 const searchData = await getVerseSearchResult(uv.readableReference);
                                 verseToPractice = { ...uv, verses: searchData.verses || [] };
                               }
-                              const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-                              setEditingUserVerse(verseToPractice);
-                              router.push('/practiceSession');
+                              setSelectedUserVerse(verseToPractice);
+                              setPracticeModeModalVisible(true);
                             } catch (e) {
                               console.error('Failed to load verse for practice', e);
                               setSnackbarMessage('Failed to load verse');
@@ -201,6 +203,20 @@ export default function OverdueScreen() {
           {snackbarMessage}
         </Text>
       </Snackbar>
+
+      <PracticeModeModal
+        visible={practiceModeModalVisible}
+        onClose={() => {
+          setPracticeModeModalVisible(false);
+          setSelectedUserVerse(null);
+        }}
+        onSelectLearn={() => {
+          if (!selectedUserVerse) return;
+          const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
+          setEditingUserVerse(selectedUserVerse);
+          router.push('/practiceSession');
+        }}
+      />
     </View>
   );
 }

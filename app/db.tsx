@@ -3142,3 +3142,91 @@ export async function rejectCollection(id: number, username: string, reason?: st
         throw error;
     }
 }
+
+export interface PracticeSession {
+    sessionId: number;
+    username: string;
+    userVerseId?: number;
+    readableReference: string;
+    practiceStyle: number;
+    accuracyPercent: number;
+    stageCount: number;
+    stageAccuracies: string;
+    practiceDate: string;
+    createdDate: string;
+}
+
+export async function getPracticeSessionsByUserVerseId(
+    username: string,
+    userVerseId: number,
+    limit: number = 5
+): Promise<PracticeSession[]> {
+    try {
+        const response = await fetch(
+            `${baseUrl}/practicesessions/userverse/${encodeURIComponent(username)}/${userVerseId}?limit=${limit}`
+        );
+        if (response.ok) {
+            const data: PracticeSession[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get practice sessions');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getPracticeSessionsByVerse(
+    username: string,
+    readableReference: string,
+    limit: number = 5
+): Promise<PracticeSession[]> {
+    try {
+        const response = await fetch(
+            `${baseUrl}/practicesessions/verse/${encodeURIComponent(username)}?readableReference=${encodeURIComponent(readableReference)}&limit=${limit}`
+        );
+        if (response.ok) {
+            const data: PracticeSession[] = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to get practice sessions');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export interface UserVerseParts {
+    book?: string,
+    chapter?: number,
+    verseParts?: string[],
+    text?: string
+}
+
+export async function getUserVerseParts(userVerse: UserVerse): Promise<UserVerseParts> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/parse`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                userVerse
+            }),
+        });
+        if (response.ok) {
+            const data: UserVerseParts = await response.json();
+            return data;
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText);
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}

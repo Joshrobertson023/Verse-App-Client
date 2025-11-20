@@ -25,6 +25,7 @@ export interface Collection {
     userVerses: UserVerse[];
     notes?: CollectionNote[];
     favorites: boolean;
+    averageProgressPercent?: number;
 }
 
 export interface User {

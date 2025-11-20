@@ -49,6 +49,7 @@
           "resizeMode": "contain",
           "backgroundColor": "#b93838ff",
           "dark": {
+            "image": "./assets/images/LogoIcon.png",
             "backgroundColor": "#b93838ff"
           }
         }

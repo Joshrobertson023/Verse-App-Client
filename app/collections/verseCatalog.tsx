@@ -261,7 +261,6 @@ export default function VerseCatalogScreen() {
             );
           })
         )}
-        <View style={{ height: 100 }} />
       </ScrollView>
     </View>
   );
