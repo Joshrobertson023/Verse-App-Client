@@ -1,9 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
 import React from 'react';
-import { Modal, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
-import useAppTheme from '../theme';
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import useStyles from '../styles';
+import useAppTheme from '../theme';
 
 interface PracticeModeModalProps {
   visible: boolean;
@@ -36,12 +35,11 @@ export default function PracticeModeModal({ visible, onClose, onSelectLearn }: P
           <View style={modalStyles.buttonGrid}>
             {/* Learn Button - Enabled */}
             <TouchableOpacity
-              style={[modalStyles.modeButton, { backgroundColor: theme.colors.primary }]}
+              style={[modalStyles.modeButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.onBackground, borderWidth: .5 }]}
               onPress={handleLearn}
-              activeOpacity={0.8}
             >
-              <Ionicons name="book" size={48} color="#fff" />
-              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: '#fff', marginTop: 12 }]}>
+              <Ionicons name="book" size={48} color={theme.colors.onBackground} />
+              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onBackground, marginTop: 12 }]}>
                 Learn
               </Text>
             </TouchableOpacity>
@@ -53,7 +51,7 @@ export default function PracticeModeModal({ visible, onClose, onSelectLearn }: P
               activeOpacity={1}
             >
               <Ionicons name="create-outline" size={48} color={theme.colors.onSurfaceVariant} />
-              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, marginTop: 12 }]}>
+              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, marginTop: 12, textAlign: 'center' }]}>
                 Practice Typing Verse
               </Text>
             </TouchableOpacity>
@@ -65,7 +63,7 @@ export default function PracticeModeModal({ visible, onClose, onSelectLearn }: P
               activeOpacity={1}
             >
               <Ionicons name="move-outline" size={48} color={theme.colors.onSurfaceVariant} />
-              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, marginTop: 12 }]}>
+              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, marginTop: 12, textAlign: 'center' }]}>
                 Drag and Drop
               </Text>
             </TouchableOpacity>
@@ -77,18 +75,17 @@ export default function PracticeModeModal({ visible, onClose, onSelectLearn }: P
               activeOpacity={1}
             >
               <Ionicons name="albums-outline" size={48} color={theme.colors.onSurfaceVariant} />
-              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, marginTop: 12 }]}>
+              <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onSurfaceVariant, marginTop: 12, textAlign: 'center' }]}>
                 Flashcards
               </Text>
             </TouchableOpacity>
           </View>
 
           <TouchableOpacity
-            style={[modalStyles.cancelButton, { backgroundColor: theme.colors.surface2 }]}
+            style={[modalStyles.cancelButton, { backgroundColor: theme.colors.surface2, marginTop: 20, height: 50 }]}
             onPress={onClose}
-            activeOpacity={0.7}
           >
-            <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onBackground }]}>
+            <Text style={[styles.text, { fontSize: 16, fontWeight: '600', color: theme.colors.onBackground, paddingTop: 13 }]}>
               Cancel
             </Text>
           </TouchableOpacity>
@@ -122,7 +119,7 @@ const modalStyles = StyleSheet.create({
     marginBottom: 24,
   },
   modeButton: {
-    width: '48%',
+    width: '45%',
     aspectRatio: 1,
     borderRadius: 16,
     justifyContent: 'center',
@@ -131,10 +128,13 @@ const modalStyles = StyleSheet.create({
   },
   cancelButton: {
     width: '100%',
-    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
 });
+
+
+
+
 

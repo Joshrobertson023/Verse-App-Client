@@ -7,7 +7,7 @@ import { Dialog, Portal, RadioButton } from 'react-native-paper';
 import { bibleBooks } from '../bibleData';
 import VerseSheet from '../components/verseSheet';
 import { DEFAULT_READER_SETTINGS, READER_BACKGROUND_THEMES, READER_FONT_OPTIONS, READER_PRESETS, READER_SETTINGS_STORAGE_KEY, type ReaderBackgroundKey, type ReaderPresetKey, type ReaderSettings } from '../constants/reader';
-import { getChapterVerses, refreshUser, updateUserProfile, getHighlightsByChapter, getVersesWithPrivateNotes, getVersesWithPublicNotes, Highlight } from '../db';
+import { getChapterVerses, getHighlightsByChapter, getVersesWithPrivateNotes, getVersesWithPublicNotes } from '../db';
 import { useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -991,7 +991,7 @@ export default function ChapterReadingPage() {
                 fontFamily: readerSettings.fontFamily === 'System' ? undefined : readerSettings.fontFamily,
               }}
             >
-              All Scripture is quoted from the King James Version (KJV) Bible (public domain).
+              All Scripture is quoted from the King James Version Bible (public domain).
             </Text>
           </View>
         </ScrollView>

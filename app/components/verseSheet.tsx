@@ -246,7 +246,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
     const sheetRef = useRef<BottomSheet>(null);
     
     // Snap points for the bottom sheet
-    const snapPoints = useMemo(() => ['35%', '90%'], []);
+    const snapPoints = useMemo(() => ['20%', '90%'], []);
 
     const handleSheetChange = useCallback((index: number) => {
         if (index === -1) {
@@ -628,13 +628,24 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                         <View
                             style={{
                                 paddingTop: 12,
+                                marginTop: 8,
                                 paddingBottom: 8,
+                                marginBottom: 10,
                                 flexDirection: 'row',
                                 alignItems: 'center',
-                                justifyContent: 'flex-end',
+                                justifyContent: 'space-between',
                                 gap: 12,
                             }}
                         >
+                            <Text
+                                style={{
+                                    fontFamily: 'Noto Serif bold',
+                                    fontSize: 28,
+                                    color: theme.colors.onBackground,
+                                }}
+                            >
+                                {readableReference}
+                            </Text>
                             <TouchableOpacity 
                               onPress={handleManualDismiss} 
                               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -650,16 +661,6 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                               <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
                             </TouchableOpacity>
                         </View>
-                            <Text
-                                style={{
-                                    fontFamily: 'Noto Serif bold',
-                                    fontSize: 28,
-                                    color: theme.colors.onBackground,
-                                    marginBottom: 20,
-                                }}
-                            >
-                                {readableReference}
-                            </Text>
 
 
                             {verses.length > 1 ? (
@@ -942,7 +943,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                         <ActivityIndicator size="small" color={theme.colors.onBackground} />
                                     ) : privateNotes.length === 0 ? (
                                         <Text style={{ color: theme.colors.onBackground, fontSize: 14, fontStyle: 'italic' }}>
-                                            No private notes yet. Add one above!
+                                            No private notes
                                         </Text>
                                     ) : (
                                         <ScrollView 
@@ -1132,7 +1133,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                         <ActivityIndicator size="small" color={theme.colors.onBackground} />
                                     ) : notes.length === 0 ? (
                                         <Text style={{ color: theme.colors.onBackground, fontSize: 14, fontStyle: 'italic' }}>
-                                            No public notes yet. Be the first to add one!
+                                            No public notes
                                         </Text>
                                     ) : (
                                         <ScrollView 

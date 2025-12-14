@@ -1,5 +1,4 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Slider from '@react-native-community/slider';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -23,16 +22,14 @@ const getPracticeSettingsKeys = (username: string) => ({
 interface Word {
   id: number;
   word: string;
-  isVisible: boolean;
-  isNumber: boolean;
-  showSpace: boolean;
   isCorrect: boolean | null;
+  isHint: boolean;
 }
 
 export default function PracticeSessionScreen() {
   const styles = useStyles();
   const theme = useAppTheme();
-  const editingUserVerse = useAppStore((state) => state.editingUserVerse);
+  const selectedUserVerse = useAppStore((state) => state.selectedUserVerse);
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
   const [allWords, setAllWords] = useState<Word[]>([]);
@@ -44,6 +41,7 @@ export default function PracticeSessionScreen() {
   const [loading, setLoading] = useState(false);
   const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
   const setProfileCache = useAppStore((state) => state.setProfileCache);
+  const reviewReference = useAppStore((state) => state.reviewReference);
   const [showSettings, setShowSettings] = useState(false);
   const [learnVerseReference, setLearnVerseReference] = useState(true);
   const [totalStages, setTotalStages] = useState(DEFAULT_STAGES);
@@ -54,32 +52,133 @@ export default function PracticeSessionScreen() {
   const [book, setBook] = useState('');
   const [chapter, setChapter] = useState('');
   const [versesTypeParts, setVersesTypeParts] = useState<string[]>([]);
+  const [passageText, setPassageText] = useState('');
+  const [firstStageWords, setFirstStageWords] = useState<Word[]>([]);
   // Parts of the verse reference user has to type, so if 19-20, it's 19 and 20.
+
+  // Track next upcoming expected word
+  // Main loop:
+  // When button is tapped, complete word, remove isHint, set isCorrect
+  // Move upcoming expected word to next
+  // Need to track current index in passage text?
 
   useEffect(() => {
     const getUserVersePracticing = async () => {
-      if (!editingUserVerse?.verses?.length) {
+      if (!selectedUserVerse?.verses?.length) {
         Alert.alert('Error', 'No passage to practice');
         router.back();
         return;
       }
-  
-      // Parse reference on server
-      const userVerseParts: UserVerseParts = await getUserVerseParts(editingUserVerse);
-      alert(userVerseParts.book || '' + userVerseParts.chapter || '' + userVerseParts.text || '');
-  
+
+      const userVerseParts: UserVerseParts = await getUserVerseParts(selectedUserVerse);
+
+      const bookValue = userVerseParts.book ?? '';
+      const chapterValue = userVerseParts.chapter?.toString() || '';
+      const versePartsValue = userVerseParts.verseParts ?? [];
+      const passageTextValue = userVerseParts.text ?? '';
+
+      setBook(bookValue);
+      setChapter(chapterValue);
+      setVersesTypeParts(versePartsValue);
+      setPassageText(passageTextValue);
+
+      alert(
+        'Book: ' + bookValue +
+        ' | Chapter: ' + chapterValue +
+        ' | readableReference: ' + selectedUserVerse.readableReference
+      );
+
+      const words: Word[] = [];
+      let counter = 0;
+
+      if (reviewReference) {
+        words.push({ id: counter++, isHint: true, word: chapterValue, isCorrect: null });
+        words.push({ id: counter++, isHint: true, word: chapterValue, isCorrect: null });
+
+        for (let i = 0; i < versePartsValue.length; i++) {
+          words.push({
+            id: counter++,
+            isHint: true,
+            word: versePartsValue[i] ?? '',
+            isCorrect: null,
+          });
+        }
+      }
+
+      for (let i = 0; i < passageTextValue.length; i++) {
+        words.push({
+          id: counter++,
+          isHint: true,
+          word: passageTextValue[i],
+          isCorrect: null,
+        });
+      }
+
+      setFirstStageWords(words);
+
+      const totalLength = passageTextValue.length;
+      const stageHiddenIndices: number[][] = [];
+
+      const percentStage1 = 0.10;
+      const percentIncrement = 0.20;
+
+      const getRandomUnique = (count: number, max: number): number[] => {
+        const set = new Set<number>();
+        while (set.size < count) {
+          set.add(Math.floor(Math.random() * max));
+        }
+        return Array.from(set);
+      };
+
+      const stage1Count = Math.floor(totalLength * percentStage1);
+      const stage1 = getRandomUnique(stage1Count, totalLength);
+      stageHiddenIndices.push(stage1);
+
+      const stage2Count = Math.floor(totalLength * (percentStage1 + percentIncrement));
+      const stage2NewCount = stage2Count - stage1.length;
+      const stage2New = getRandomUnique(stage2NewCount, totalLength);
+      const stage2 = Array.from(new Set([...stage1, ...stage2New]));
+      stageHiddenIndices.push(stage2);
+
+      const stage3Count = Math.floor(totalLength * (percentStage1 + percentIncrement * 2));
+      const stage3NewCount = stage3Count - stage2.length;
+      const stage3New = getRandomUnique(stage3NewCount, totalLength);
+      const stage3 = Array.from(new Set([...stage2, ...stage3New]));
+      stageHiddenIndices.push(stage3);
+
+      const stage4Count = Math.floor(totalLength * (percentStage1 + percentIncrement * 3));
+      const stage4NewCount = stage4Count - stage3.length;
+      const stage4New = getRandomUnique(stage4NewCount, totalLength);
+      const stage4 = Array.from(new Set([...stage3, ...stage4New]));
+      stageHiddenIndices.push(stage4);
+
+      // Save for later stages
+      setAllWords(words);
+      // You probably want this stored:
+      // setStageHiddenIndices(stageHiddenIndices);
+
+      // creates:
+      // stageHiddenIndices[0] → Stage 1 hidden IDs
+      // stageHiddenIndices[1] → Stage 2 hidden IDs
+      // stageHiddenIndices[2] → Stage 3 hidden IDs
+      // stageHiddenIndices[3] → Stage 4 hidden IDs
+
+
+      console.log("Hidden indices all 4 stages:", stageHiddenIndices);
+
       if (!settingsLoaded) {
         return;
       }
-    }
+    };
+
     getUserVersePracticing();
-  }, [editingUserVerse, learnVerseReference, totalStages, settingsLoaded]);
+  }, [selectedUserVerse, learnVerseReference, totalStages, settingsLoaded]);
 
   useEffect(() => { // Runs when stage changes
     
   }, [currentStage, allWords]);
 
-  useEffect(() => {
+  useEffect(() => { // Load practice settings from server
     const loadPracticeSettings = async () => {
       if (!user?.username) {
         setLearnVerseReference(true);
@@ -89,39 +188,7 @@ export default function PracticeSessionScreen() {
       }
 
       try {
-        const settingsKeys = getPracticeSettingsKeys(user.username);
-        const [restartStage, learnReference, stages] = await Promise.all([
-          AsyncStorage.getItem(settingsKeys.RESTART_STAGE_ON_WRONG),
-          AsyncStorage.getItem(settingsKeys.LEARN_VERSE_REFERENCE),
-          AsyncStorage.getItem(settingsKeys.TOTAL_STAGES),
-        ]);
 
-        // Set practice settings
-        const isFreeAccount = !user.isPaid;
-        if (isFreeAccount) {
-          setLearnVerseReference(true);
-          setTotalStages(DEFAULT_STAGES);
-          await AsyncStorage.setItem(settingsKeys.RESTART_STAGE_ON_WRONG, 'true');
-          await AsyncStorage.setItem(settingsKeys.LEARN_VERSE_REFERENCE, 'true');
-          await AsyncStorage.setItem(settingsKeys.TOTAL_STAGES, DEFAULT_STAGES.toString());
-        } else {          
-          if (learnReference !== null) {
-            setLearnVerseReference(learnReference === 'true');
-          } else {
-            setLearnVerseReference(true);
-          }
-          
-          if (stages !== null) {
-            const parsedStages = parseInt(stages, 10);
-            if (!isNaN(parsedStages) && parsedStages >= MIN_STAGES && parsedStages <= MAX_STAGES) {
-              setTotalStages(parsedStages);
-            } else {
-              setTotalStages(DEFAULT_STAGES);
-            }
-          } else {
-            setTotalStages(DEFAULT_STAGES);
-          }
-        }
       } catch (error) {
         console.error('Failed to load practice settings:', error);
         setLearnVerseReference(true);
@@ -134,44 +201,11 @@ export default function PracticeSessionScreen() {
     loadPracticeSettings();
   }, [user?.username, user?.isPaid]);
 
-  // Save learnVerseReference to AsyncStorage
-  const handleSetLearnVerseReference = async (value: boolean) => {
-    if (!user?.username) return;
-    setLearnVerseReference(value);
-    try {
-      const settingsKeys = getPracticeSettingsKeys(user.username);
-      await AsyncStorage.setItem(settingsKeys.LEARN_VERSE_REFERENCE, value.toString());
-      // Reset the practice session when this setting changes
-
-
-    } catch (error) {
-      console.error('Failed to save learnVerseReference setting:', error);
-    }
-  };
-
-
-  // Save totalStages to AsyncStorage
-  const handleSetTotalStages = async (value: number) => {
-    if (!user?.username) return;
-    setTotalStages(value);
-    try {
-      const settingsKeys = getPracticeSettingsKeys(user.username);
-      await AsyncStorage.setItem(settingsKeys.TOTAL_STAGES, value.toString());
-      // If current stage exceeds new total, reset to stage 1
-
-      //Else - Update display words for current stage with new total
-    } catch (error) {
-      console.error('Failed to save totalStages setting:', error);
-    }
-  };
-
   const createWord = (id: number, word: string, isNumber: boolean, showSpace: boolean): Word => ({
     id,
     word,
-    isVisible: true,
-    isNumber,
-    showSpace,
     isCorrect: null,
+    isHint: false,
   });
 
   // Hide words
@@ -265,7 +299,7 @@ export default function PracticeSessionScreen() {
     <>
       <Stack.Screen
         options={{
-          title: learnVerseReference ? '' : (editingUserVerse?.readableReference || ''),
+          title: learnVerseReference ? '' : (selectedUserVerse?.readableReference || ''),
           headerBackVisible: true,
           headerStyle: { backgroundColor: theme.colors.surface },
           headerTintColor: theme.colors.onBackground,
@@ -319,7 +353,14 @@ export default function PracticeSessionScreen() {
             </TouchableOpacity>
           </View> */}
           
-            {/* Background text */}
+            {/* Main Text Area */}
+
+            <View style={{
+              height: '70%',
+              width: '100%',
+            }}>
+
+            </View>
             
             {/* Input overlay */}
 
@@ -447,7 +488,6 @@ export default function PracticeSessionScreen() {
               </View>
               <Switch
                 value={learnVerseReference}
-                onValueChange={handleSetLearnVerseReference}
                 disabled={!user.isPaid}
                 trackColor={{
                   false: theme.colors.surface2,

@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { ActivityIndicator, BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { Dialog, Divider, Portal, Snackbar, Text } from 'react-native-paper';
-import Animated, { FadeIn, FadeInDown, SlideInDown, ZoomIn, useAnimatedStyle, useSharedValue, withSpring, withTiming, Easing } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import AddPassage from '../components/addPassage';
 import CollectionNoteItem from '../components/collectionNote';
 import PracticeModeModal from '../components/practiceModeModal';
@@ -193,7 +193,7 @@ export default function Index() {
     const [userVerses, setUserVerses] = useState<UserVerse[]>([]);
   const [orderedUserVerses, setOrderedUserVerses] = useState<UserVerse[]>([]);
   const [orderedItems, setOrderedItems] = useState<Array<{type: 'verse', data: UserVerse} | {type: 'note', data: CollectionNote}>>([]);
-    const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order (verseOrder) or date added, 1 = progress
+  const [versesSortBy, setVersesSortBy] = useState(0); // 0 = custom order (verseOrder) or date added, 1 = progress
     const [isVersesSettingsSheetOpen, setIsVersesSettingsSheetOpen] = useState(false);
     const [isCreatingCopy, setIsCreatingCopy] = useState(false);
     const [practiceModeModalVisible, setPracticeModeModalVisible] = useState(false);
@@ -248,10 +248,8 @@ export default function Index() {
     })();
   }, [collection?.collectionId]);
 
-  const handleLearnMode = useCallback(() => {
+  const handleLearnMode = useCallback(async () => {
     if (!selectedUserVerse) return;
-    
-    useAppStore.getState().setEditingUserVerse(selectedUserVerse);
     router.push('/practiceSession');
   }, [selectedUserVerse]);
 
@@ -644,7 +642,6 @@ const handleVersesSettingsSheetChange = useCallback((index: number) => {
 }, []);
 
 const openUserVerseSettingsSheet = (userVerse: UserVerse) => {
-  // Close any open modals first
   if (showSaveToCollectionSheet) {
     setShowSaveToCollectionSheet(false);
   }
@@ -1075,7 +1072,7 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                     <View style={{minWidth: '100%', borderRadius: 3,}}>
 
                         <View>
-                          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8}}>
+                          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: -5}}>
                             <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
                             {isOwnedCollection && (
                               <TouchableOpacity
@@ -1092,36 +1089,50 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                           {(userVerse.verses || []).map((verse, verseIndex) => (
                               <View key={verse.verse_reference || `${userVerse.readableReference}-verse-${verseIndex}`} style={{}}>
                                   <View>
-                                      <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 18}}>{verse.verse_Number}: {verse.text} </Text>
+                                      <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 16, color: 'lightgray'}}>{verse.verse_Number}: {verse.text} </Text>
                                   </View>
                               </View>
                           ))}
                         </View>
                         <View style={{alignItems: 'stretch', justifyContent: 'space-between'}}>
                           <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
-                            <View style={{flex: 1}}>
-                              <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 16}}>
-                                <TouchableOpacity 
-                                  activeOpacity={0.1}
-                                  onPress={() => {
-                                    setSelectedUserVerse(userVerse);
-                                    setPracticeModeModalVisible(true);
-                                  }}
-                                >
-                                  <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                                    <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.onBackground} />
-                                    <Text style={{marginLeft: 6, color: theme.colors.onBackground}}>Practice</Text>
-                                  </View>
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                            <View style={{marginLeft: 16, alignItems: 'center', justifyContent: 'center'}}>
+                            <View style={{alignItems: 'center', justifyContent: 'center'}}>
                               <UserVerseDonut 
                                 userVerse={userVerse} 
                                 size={60}
                                 nextPracticeDate={userVerse.nextPracticeDate ? new Date(userVerse.nextPracticeDate) : null}
                                 showDaysUntilDue={true}
                               />
+                            </View>
+                            <View style={{}}>
+                              <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4, marginRight: 8, gap: 16}}>
+                                <TouchableOpacity
+                                  onPress={() => {
+                                    useAppStore.getState().setSelectedUserVerse(userVerse);
+                                    setSelectedUserVerse(userVerse);
+                                    setPracticeModeModalVisible(true);
+                                  }}
+                                  activeOpacity={0.7}
+                                  style={{
+                                    backgroundColor: theme.colors.surface,
+                                    borderRadius: 12,
+                                    paddingVertical: 14,
+                                    paddingHorizontal: 16,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.surface2,
+                                  }}
+                                >
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                    <Ionicons name="extension-puzzle-outline" size={20} color={theme.colors.onBackground} />
+                                    <Text style={{ fontFamily: 'Inter', fontSize: 15, color: theme.colors.onBackground }}>
+                                      Practice
+                                    </Text>
+                                  </View>
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           </View>
                         </View>
@@ -1621,6 +1632,7 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
             </Text>
           </Snackbar>
 
+          {/* Practice Mode Modal */}
           <PracticeModeModal
             visible={practiceModeModalVisible}
             onClose={() => {

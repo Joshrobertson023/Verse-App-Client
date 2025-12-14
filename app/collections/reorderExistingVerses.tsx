@@ -3,11 +3,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Text, TouchableOpacity, View } from 'react-native';
 import DraggableFlatList, {
-    RenderItemParams,
+  RenderItemParams,
 } from 'react-native-draggable-flatlist';
 import colors from '../colors';
-import { updateCollectionDB, deleteUserVersesFromCollection, addUserVersesToNewCollection, getUserCollections } from '../db';
-import { useAppStore, UserVerse, Collection, CollectionNote } from '../store';
+import { addUserVersesToNewCollection, deleteUserVersesFromCollection, getUserCollections, updateCollectionDB } from '../db';
+import { Collection, CollectionNote, useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -314,11 +314,6 @@ export default function ReorderExistingVerses() {
 
   return (
     <View style={styles.container}>
-      <View style={{backgroundColor: theme.colors.surface, padding: 15, borderRadius: 10, marginBottom: 15, marginTop: 10}}>
-        <Text style={{...styles.tinyText, color: theme.colors.onSurface}}>
-          Long press and drag to reorder your passages and notes
-        </Text>
-      </View>
 
       <DraggableFlatList
         data={reorderedData}
@@ -327,38 +322,38 @@ export default function ReorderExistingVerses() {
           ? item.data.readableReference || item.data.verses[0]?.verse_reference || `verse-${Math.random()}`
           : item.data.id}
         onDragEnd={handleDragEnd}
-        contentContainerStyle={{paddingBottom: 200, paddingHorizontal: 20}}
+        contentContainerStyle={{paddingBottom: 200}}
         onDragBegin={() => setSaveButtonEnabled(false)}
       />
 
       <View style={{
         position: 'absolute',
-        bottom: 70,
+        bottom: 50,
         left: 20,
         width: '47%',
         height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
-        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
+        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.2)',
         zIndex: 5,
       }}></View>
 
       <View style={{
         position: 'absolute',
-        bottom: 70,
+        bottom: 50,
         right: 20,
         width: '47%',
         height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
-        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
+        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.2)',
         zIndex: 5,
       }}></View>
 
       <View style={{
         flexDirection: 'row',
         position: 'absolute',
-        bottom: 70,
+        bottom: 50,
         left: 0,
         right: 0,
         justifyContent: 'space-around',

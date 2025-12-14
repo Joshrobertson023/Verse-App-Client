@@ -3214,9 +3214,7 @@ export async function getUserVerseParts(userVerse: UserVerse): Promise<UserVerse
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                userVerse
-            }),
+            body: JSON.stringify(userVerse),
         });
         if (response.ok) {
             const data: UserVerseParts = await response.json();

@@ -1,0 +1,3 @@
+Notifications:
+https://docs.expo.dev/push-notifications/push-notifications-setup/
+for api: https://docs.expo.dev/push-notifications/sending-notifications/

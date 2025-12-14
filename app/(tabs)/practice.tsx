@@ -2,13 +2,12 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Searchbar } from 'react-native-paper';
-import { ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import PracticeModeModal from '../components/practiceModeModal';
 import { VerseItemSkeleton } from '../components/skeleton';
 import UserVerseDonut from '../components/userVerseDonut';
-import PracticeModeModal from '../components/practiceModeModal';
 import { getOverdueVerses, getUnpopulatedMemorizedUserVerses, getUserVersesInProgress, getUserVersesNotStarted, getUserVersesPopulated, getVerseSearchResult } from '../db';
 import { Collection, UserVerse, useAppStore } from '../store';
 import useStyles from '../styles';
@@ -45,9 +44,6 @@ const VerseItem = React.memo(({
               {verse.readableReference || 'Unknown Reference'}
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2 }}>
-              <Text style={{ ...styles.tinyText, fontSize: 13, color: theme.colors.primary }}>
-                {verse.timesMemorized || 0}x memorized
-              </Text>
               {nextPracticeDate && (
                 <Text style={{ ...styles.tinyText, fontSize: 13, color: theme.colors.onSurfaceVariant }}>
                   {formatDate(nextPracticeDate)}

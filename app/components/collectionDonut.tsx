@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import useAppTheme from '../theme';
 import useStyles from '../styles';
+import useAppTheme from '../theme';
 
 interface CollectionDonutProps {
   averageProgressPercent?: number;
@@ -30,7 +30,7 @@ export default function CollectionDonut({ averageProgressPercent = 0, size = 50 
   
   // Colors: Green for memorized, Red for not memorized
   const greenColor = '#4CAF50'; // Green
-  const redColor = '#F44336'; // Red
+  const redColor = '#959595ff'; // Red
   
   return (
     <View style={donutStyles.container}>
@@ -64,19 +64,9 @@ export default function CollectionDonut({ averageProgressPercent = 0, size = 50 
         
         {/* Center text - show progress percentage or checkmark */}
         <View style={donutStyles.centerText}>
-          {progressPercent >= 100 ? (
-            <Text style={[styles.tinyText, { fontSize: 9, fontWeight: '600', color: greenColor }]}>
-              ✓
-            </Text>
-          ) : progressPercent > 0 ? (
-            <Text style={[styles.tinyText, { fontSize: 9, fontWeight: '600', color: theme.colors.onBackground }]}>
-              {Math.round(progressPercent)}%
-            </Text>
-          ) : (
-            <Text style={[styles.tinyText, { fontSize: 9, fontWeight: '600', color: theme.colors.onSurfaceVariant }]}>
-              —
-            </Text>
-          )}
+          <Text style={[styles.tinyText, { fontSize: 9, fontWeight: '600', color: theme.colors.onBackground }]}>
+            {Math.round(progressPercent)}%
+          </Text>
         </View>
       </View>
     </View>
@@ -97,4 +87,8 @@ const donutStyles = StyleSheet.create({
     height: '100%',
   },
 });
+
+
+
+
 

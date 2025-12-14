@@ -275,6 +275,7 @@ interface AppState {
   editingCollection: Collection | undefined;
   publishingCollection: Collection | undefined;
   editingUserVerse: UserVerse | undefined;
+  selectedUserVerse: UserVerse | undefined;
   numNotifications: number;
   collectionsSheetControls: CollectionSheetControls;
   popularSearches: string[];
@@ -284,6 +285,7 @@ interface AppState {
   verseSaveAdjustments: Record<string, number>;
   siteBanner: SiteBannerState;
   collectionReviewMessage: string | null;
+  reviewReference: boolean;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -303,6 +305,7 @@ interface AppState {
   setEditingCollection: (collection: Collection | undefined) => void;
   setPublishingCollection: (collection: Collection | undefined) => void;
   setEditingUserVerse: (userVerse: UserVerse | undefined) => void;
+  setSelectedUserVerse: (userVerse: UserVerse | undefined) => void;
   setNumNotifications?: (count: number) => void;
   setPopularSearches: (searches: string[]) => void;
   setProfileCache: (patch: Partial<ProfileCache>) => void;
@@ -328,6 +331,7 @@ export const useAppStore = create<AppState>((set) => ({
     editingCollection: undefined,
     publishingCollection: undefined,
     editingUserVerse: undefined,
+    selectedUserVerse: undefined,
     numNotifications: 0,
     collectionsSheetControls: defaultCollectionsSheetControls,
     popularSearches: [],
@@ -337,6 +341,7 @@ export const useAppStore = create<AppState>((set) => ({
     verseSaveAdjustments: {},
     siteBanner: defaultSiteBanner,
     collectionReviewMessage: null,
+    reviewReference: true,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -387,6 +392,7 @@ export const useAppStore = create<AppState>((set) => ({
     setEditingCollection: (collection: Collection | undefined) => set({editingCollection: collection ? cloneCollection(collection) : undefined}),
     setPublishingCollection: (collection: Collection | undefined) => set({publishingCollection: collection ? cloneCollection(collection) : undefined}),
     setEditingUserVerse: (userVerse: UserVerse | undefined) => set({editingUserVerse: userVerse}),
+    setSelectedUserVerse: (userVerse: UserVerse | undefined) => set({selectedUserVerse: userVerse}),
     setNumNotifications: (count: number) => set({numNotifications: count}),
     setShouldReloadPracticeList: (should: boolean) => set({shouldReloadPracticeList: should}),
     setPopularSearches: (searches: string[]) => set({popularSearches: searches}),
@@ -430,4 +436,5 @@ export const useAppStore = create<AppState>((set) => ({
     },
     setSiteBanner: (banner: SiteBannerState) => set({ siteBanner: banner }),
     setCollectionReviewMessage: (message: string | null) => set({ collectionReviewMessage: message }),
+    setReviewReference: (shouldReview: boolean) => set({reviewReference: shouldReview}),
 }))

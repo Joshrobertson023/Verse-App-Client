@@ -63,7 +63,8 @@ export default function ReorderCollections() {
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: isActive ? 0.3 : 0,
               shadowRadius: 4,
-              padding: 20
+              padding: 20,
+              marginBottom: -8
             },
           ]}
           onLongPress={drag}
@@ -93,6 +94,7 @@ export default function ReorderCollections() {
   }, []);
 
   const handleSave = async () => {
+    setSaveButtonEnabled(false);
     setIsSaving(true);
     const favorites = collections.filter(c => c.favorites || c.title === 'Favorites');
     const allReordered = [...favorites, ...reorderedData];
@@ -136,32 +138,32 @@ export default function ReorderCollections() {
 
       <View style={{
         position: 'absolute',
-        bottom: 70,
+        bottom: 50,
         left: 20,
         width: '47%',
         height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
-        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
+        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.2)',
         zIndex: 5,
       }}></View>
 
       <View style={{
         position: 'absolute',
-        bottom: 70,
+        bottom: 50,
         right: 20,
         width: '47%',
         height: 52,
         backgroundColor: 'transparent',
         borderRadius: 10,
-        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.5)',
+        boxShadow: '0px 0px 43px 20px rgba(0,0,0,.2)',
         zIndex: 5,
       }}></View>
 
       <View style={{
         flexDirection: 'row',
         position: 'absolute',
-        bottom: 70,
+        bottom: 50,
         left: 0,
         right: 0,
         justifyContent: 'space-around',

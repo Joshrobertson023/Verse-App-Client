@@ -519,11 +519,6 @@ export default function ProfileContent() {
           </View>
         </View>
 
-        <ProfileDrawerLink
-          icon="calendar"
-          label="Streak Calendar"
-          onPress={() => router.push('/user/streak')}
-        />
         <View style={{ marginTop: 10 }}>
           <ProfileDrawerLink
             icon="analytics-outline"

@@ -20,12 +20,12 @@
       }
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#181818",
-        "foregroundImage": "./assets/images/Logo.png",
-        "backgroundImage": "./assets/images/Logo.png",
-        "monochromeImage": "./assets/images/Logo.png"
-      },
+      // "adaptiveIcon": {
+      //   "backgroundColor": "#181818",
+      //   "foregroundImage": "./assets/images/Logo.png",
+      //   "backgroundImage": "./assets/images/Logo.png",
+      //   "monochromeImage": "./assets/images/Logo.png"
+      // },
       "splash": {
         "image": "./assets/images/LogoIcon.png",
         "resizeMode": "contain",
@@ -44,10 +44,10 @@
       [
         "expo-splash-screen",
         {
+          "backgroundColor": "#b93838ff",
           "image": "./assets/images/LogoIcon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#b93838ff",
           "dark": {
             "image": "./assets/images/LogoIcon.png",
             "backgroundColor": "#b93838ff"
