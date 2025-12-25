@@ -21,7 +21,9 @@ export default function useAppTheme() {
           onPrimary: '#73675aff',
           gray: '#737373ff',
           onSurfaceVariant: '#fff',
-          onSurface: '#fff'
+          onSurface: '#fff',
+          verseText: '#d3d3d3ff',
+          verseHint: '#959595ff'
         }
     } : {
         ...MD3LightTheme,
@@ -37,7 +39,9 @@ export default function useAppTheme() {
           onPrimary: '#603f1bff',
           gray: '#919191ff',
           onSurfaceVariant: '#000',
-          onSurface: '#000'
+          onSurface: '#000',
+          verseText: '#363636ff',
+          verseHint: '#4d4a4aff'
           // add more overrides as needed
         }
     };

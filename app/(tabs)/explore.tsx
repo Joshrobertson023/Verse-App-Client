@@ -9,7 +9,7 @@ import ExploreCollectionCard from '../components/exploreCollectionCard';
 import SearchResultVerseCard from '../components/searchResultVerseCard';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { Skeleton } from '../components/skeleton';
-import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getCollectionsByCategory, getMostRecentCollectionId, getPopularPublishedCollections, getPublishedCollectionsByAuthor, getRecentPublishedCollections, getTopCategories, getTopMemorizedVerses, getTopSavedVerses, getUserCollections, getVerseSearchResult, PublishedCollection, refreshUser, searchPublishedCollections, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { addUserVersesToNewCollection, Category, createCollectionDB, getAllCategories, getCategoriesForCollection, getCollectionsByCategory, getMostRecentCollectionId, getPopularPublishedCollections, getPublishedCollectionsByAuthor, getRecentPublishedCollections, getTopCategories, getTopMemorizedVerses, getTopSavedVerses, getUserCollections, getVerseSearchResult, PublishedCollection, refreshUser, searchPublishedCollections, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { Collection, SearchData, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -79,13 +79,33 @@ export default function ExploreScreen() {
     setIsCategoryLoading(true);
     try {
       const cols = await getCollectionsByCategory(id);
-      setCategoryCollections(sortCollectionsBySaves(attachCategoryNames(cols, categories)));
+      // Fetch all categories to ensure we can map all category IDs to names
+      const allCategories = await getAllCategories();
+      // Fetch all category IDs for each collection to ensure we have all categories, not just the filtered one
+      const colsWithAllCategories = await Promise.all(
+        cols.map(async (col) => {
+          if (col.publishedId) {
+            try {
+              const allCategoryIds = await getCategoriesForCollection(col.publishedId);
+              // Ensure categoryIds is always an array
+              return { ...col, categoryIds: Array.isArray(allCategoryIds) ? allCategoryIds : [] };
+            } catch (e) {
+              console.error(`Failed to fetch categories for collection ${col.publishedId}:`, e);
+              // Ensure categoryIds is always an array even on error
+              return { ...col, categoryIds: Array.isArray(col.categoryIds) ? col.categoryIds : [] };
+            }
+          }
+          // Ensure categoryIds is always an array
+          return { ...col, categoryIds: Array.isArray(col.categoryIds) ? col.categoryIds : [] };
+        })
+      );
+      setCategoryCollections(sortCollectionsBySaves(attachCategoryNames(colsWithAllCategories, allCategories)));
     } catch (e) {
       setCategoryCollections([]);
     } finally {
       setIsCategoryLoading(false);
     }
-  }, [sortCollectionsBySaves, attachCategoryNames, categories]);
+  }, [sortCollectionsBySaves, attachCategoryNames]);
 
   const loadExploreData = useCallback(async (initial = false) => {
     if (initial) {
@@ -114,7 +134,27 @@ export default function ExploreScreen() {
       if (categoryId != null) {
         try {
           const cols = await getCollectionsByCategory(categoryId);
-          setCategoryCollections(sortCollectionsBySaves(attachCategoryNames(cols, loadedCategories)));
+          // Fetch all categories to ensure we can map all category IDs to names
+          const allCategories = await getAllCategories();
+          // Fetch all category IDs for each collection to ensure we have all categories, not just the filtered one
+          const colsWithAllCategories = await Promise.all(
+            cols.map(async (col) => {
+              if (col.publishedId) {
+                try {
+                  const allCategoryIds = await getCategoriesForCollection(col.publishedId);
+                  // Ensure categoryIds is always an array
+                  return { ...col, categoryIds: Array.isArray(allCategoryIds) ? allCategoryIds : [] };
+                } catch (e) {
+                  console.error(`Failed to fetch categories for collection ${col.publishedId}:`, e);
+                  // Ensure categoryIds is always an array even on error
+                  return { ...col, categoryIds: Array.isArray(col.categoryIds) ? col.categoryIds : [] };
+                }
+              }
+              // Ensure categoryIds is always an array
+              return { ...col, categoryIds: Array.isArray(col.categoryIds) ? col.categoryIds : [] };
+            })
+          );
+          setCategoryCollections(sortCollectionsBySaves(attachCategoryNames(colsWithAllCategories, allCategories)));
         } catch (e) {
           setCategoryCollections([]);
         }

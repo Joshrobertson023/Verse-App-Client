@@ -2,10 +2,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Modal, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { Divider, TextInput } from 'react-native-paper';
-import { deleteUser, refreshUser, submitBugReport, updateActivityNotifications, updateBadgeNotificationsEnabled, updateBadgeOverdueEnabled, updateBibleVersion, updateEmail, updateNotifyCollectionSaved, updateNotifyMemorizedVerse, updateNotifyNoteLiked, updateNotifyPublishedCollection, updatePassword, updatePushNotifications, updateSubscribedVerseOfDay, updateUsername, updateUserProfile } from './db';
+import { ProfileDrawerLink } from './components/ProfileContent';
+import { deleteUser, refreshUser, submitBugReport, updateActivityNotifications, updateBadgeNotificationsEnabled, updateBadgeOverdueEnabled, updateBibleVersion, updateEmail, updateNotifyCollectionSaved, updateNotifyMemorizedVerse, updateNotifyNoteLiked, updateNotifyPublishedCollection, updatePassword, updatePushNotifications, updateSubscribedVerseOfDay, updateThemeDb, updateTypeOutReference, updateUsername, updateUserProfile, updatePracticeReminders, updateNotifyOfFriends, updateReceiveStreakReminders } from './db';
 import { ensurePushTokenRegistered, unregisterStoredPushToken } from './pushTokenManager';
 import { ThemePreference, useAppStore } from './store';
 import useStyles from './styles';
@@ -31,6 +32,9 @@ export default function SettingsScreen() {
   const [notifyNoteLiked, setNotifyNoteLiked] = useState(user.notifyNoteLiked ?? true);
   const [badgeNotificationsEnabled, setBadgeNotificationsEnabled] = useState(user.badgeNotificationsEnabled ?? true);
   const [badgeOverdueEnabled, setBadgeOverdueEnabled] = useState(user.badgeOverdueEnabled ?? true);
+  const [practiceRemindersEnabled, setPracticeRemindersEnabled] = useState(user.practiceNotificationsEnabled ?? true);
+  const [notifyOfFriends, setNotifyOfFriends] = useState(user.friendsActivityNotificationsEnabled ?? true);
+  const [receiveStreakReminders, setReceiveStreakReminders] = useState(user.streakRemindersEnabled ?? true);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUsernameConfirm, setShowUsernameConfirm] = useState(false);
   const [deleteUsernameInput, setDeleteUsernameInput] = useState('');
@@ -43,7 +47,7 @@ export default function SettingsScreen() {
   const [firstName, setFirstName] = useState(user.firstName || '');
   const [lastName, setLastName] = useState(user.lastName || '');
   const [bio, setBio] = useState(user.description || '');
-  const [bibleVersion, setBibleVersion] = useState(user.bibleVersion || 'KJV');
+  const [bibleVersion, setBibleVersion] = useState(user.bibleVersion ?? 0);
   const [showUsernameDialog, setShowUsernameDialog] = useState(false);
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -52,20 +56,10 @@ export default function SettingsScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [themePreferenceLocal, setThemePreferenceLocal] = useState<number>(0);
+  const [typeOutReference, setTypeOutReference] = useState(true);
 
-  // Sync profile state when user changes
-  useEffect(() => {
-    setFirstName(user.firstName || '');
-    setLastName(user.lastName || '');
-    setBio(user.description || '');
-    setBibleVersion(user.bibleVersion || 'KJV');
-    setNotifyMemorizedVerse(user.notifyMemorizedVerse ?? true);
-    setNotifyPublishedCollection(user.notifyPublishedCollection ?? true);
-    setNotifyCollectionSaved(user.notifyCollectionSaved ?? true);
-    setNotifyNoteLiked(user.notifyNoteLiked ?? true);
-    setBadgeNotificationsEnabled(user.badgeNotificationsEnabled ?? true);
-    setBadgeOverdueEnabled(user.badgeOverdueEnabled ?? true);
-  }, [user]);
+
 
   const themeOptions: Array<{ key: ThemePreference; label: string; description: string; icon: keyof typeof Ionicons.glyphMap }> = [
     { key: 'light', label: 'Light', description: '', icon: 'sunny-outline' },
@@ -73,8 +67,68 @@ export default function SettingsScreen() {
     { key: 'system', label: 'Use device setting', description: '', icon: 'phone-portrait-outline' },
   ];
 
+  const handleCustomizeFriendNotifications = () => {
+
+  }
+
   const handleThemeSelection = (preference: ThemePreference) => {
     setThemePreference(preference);
+    const themePreferenceEnum: number = preference === 'light' ? 2 : preference === 'dark' ? 1 : 0;
+    alert("updating theme preference to: " + themePreferenceEnum);
+    updateThemeDb(themePreferenceEnum, user.username);
+  };
+
+  const handleToggleTypeOutReference = async (value: boolean) => {
+    setTypeOutReference(value);
+    try {
+      await updateTypeOutReference(value, user.username);
+      setUser({...user, typeOutReference: value});
+    } catch (error) {
+      console.error('Failed to update type out reference setting:', error);
+      alert('Failed to update practice preference');
+    }
+  }
+
+  const handleTogglePracticeReminders = async (value: boolean) => {
+    setPracticeRemindersEnabled(value);
+    try {
+      await updatePracticeReminders(user.username, value);
+      setUser({
+        ...user,
+        practiceNotificationsEnabled: value
+      });
+    } catch (error) {
+      console.error('Failed to update practice reminders:', error);
+      alert('Failed to update practice reminders');
+    }
+  };
+
+  const handleToggleNotifyOfFriends = async (value: boolean) => {
+    setNotifyOfFriends(value);
+    try {
+      await updateNotifyOfFriends(user.username, value);
+      setUser({
+        ...user,
+        friendsActivityNotificationsEnabled: value
+      });
+    } catch (error) {
+      console.error('Failed to update notify of friends:', error);
+      alert('Failed to update notify of friends');
+    }
+  };
+
+  const handleToggleReceiveStreakReminders = async (value: boolean) => {
+    setReceiveStreakReminders(value);
+    try {
+      await updateReceiveStreakReminders(user.username, value);
+      setUser({
+        ...user,
+        streakRemindersEnabled: value
+      });
+    } catch (error) {
+      console.error('Failed to update receive streak reminders:', error);
+      alert('Failed to update receive streak reminders');
+    }
   };
 
   const handleToggleVerseOfDay = async (value: boolean) => {
@@ -291,7 +345,7 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleBibleVersionChange = async (version: string) => {
+  const handleBibleVersionChange = async (version: number) => {
     setBibleVersion(version);
     try {
       await updateBibleVersion(user.username, version);
@@ -300,7 +354,7 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('Failed to update Bible version:', error);
       alert('Failed to update Bible version');
-      setBibleVersion(user.bibleVersion || 'KJV');
+      setBibleVersion(user.bibleVersion ?? 0);
     }
   };
 
@@ -415,11 +469,20 @@ export default function SettingsScreen() {
               style={{ marginBottom: 12, backgroundColor: theme.colors.surface }}
               textColor={theme.colors.onSurface}
             />
+            <TouchableOpacity
+              onPress={handleSaveProfile}
+              disabled={updatingProfile}
+              style={styles.button_outlined}
+              activeOpacity={0.1}
+            >
+              <Text style={styles.buttonText_outlined}>Save Profile</Text>
+            </TouchableOpacity>
 
             <Text style={{
               fontSize: 14,
               color: theme.colors.onSurfaceVariant,
               marginBottom: 8,
+              marginTop: 10,
               fontFamily: 'Inter'
             }}>
               Preferred Bible Version
@@ -437,24 +500,16 @@ export default function SettingsScreen() {
                 style={{ color: theme.colors.onSurface }}
                 dropdownIconColor={theme.colors.onSurface}
               >
-                <Picker.Item label="King James Version (KJV)" value="KJV" />
-                <Picker.Item label="New King James Version (NKJV)" value="NKJV" enabled={false} />
-                <Picker.Item label="American Standard Version (ASV)" value="ASV" enabled={false} />
-                <Picker.Item label="New International Version (NIV)" value="NIV" enabled={false} />
-                <Picker.Item label="English Standard Version (ESV)" value="ESV" enabled={false} />
-                <Picker.Item label="New American Standard Bible (NASB)" value="NASB" enabled={false} />
-                <Picker.Item label="Christian Standard Bible (CSB)" value="CSB" enabled={false} />
+                <Picker.Item label="King James Version (KJV)" value={0} />
+                <Picker.Item label="New King James Version (NKJV)" value={1} enabled={false} />
+                <Picker.Item label="American Standard Version (ASV)" value={2} enabled={false} />
+                <Picker.Item label="New International Version (NIV)" value={3} enabled={false} />
+                <Picker.Item label="English Standard Version (ESV)" value={4} enabled={false} />
+                <Picker.Item label="New American Standard Bible (NASB)" value={5} enabled={false} />
+                <Picker.Item label="Christian Standard Bible (CSB)" value={6} enabled={false} />
               </Picker>
             </View>
 
-            <TouchableOpacity
-              onPress={handleSaveProfile}
-              disabled={updatingProfile}
-              style={styles.button_outlined}
-              activeOpacity={0.1}
-            >
-              <Text style={styles.buttonText_outlined}>Save Profile</Text>
-            </TouchableOpacity>
             <View style={{height: 40}} />
 
 
@@ -469,40 +524,28 @@ export default function SettingsScreen() {
             }}>
               Change Info
             </Text>
-            <TouchableOpacity
-              onPress={() => setShowUsernameDialog(true)}
-              style={{...styles.button_outlined, borderRadius: 8}}
-              activeOpacity={0.1}
-            >
-              <Text style={styles.buttonText_outlined}>Change Username</Text>
-            </TouchableOpacity>
-            <View style={{height: 10}} />
-            <TouchableOpacity
-              onPress={() => setShowEmailDialog(true)}
-              style={{...styles.button_outlined, borderRadius: 8}}
-              activeOpacity={0.1}
-            >
-              <Text style={styles.buttonText_outlined}>Change Email</Text>
-            </TouchableOpacity>
-            <View style={{height: 10}} />
-            <TouchableOpacity
-              onPress={() => setShowPasswordDialog(true)}
-              style={{...styles.button_outlined, borderRadius: 8}}
-              activeOpacity={0.1}
-            >
-              <Text style={styles.buttonText_outlined}>Change Password</Text>
-            </TouchableOpacity>
 
-          {/* Notifications Section */}
-          <View style={{ marginBottom: 30, marginTop: 30 }}>
-            <Text style={{
-              fontSize: 18,
-              fontWeight: '600',
-              color: theme.colors.onBackground,
-              marginBottom: 15,
-              fontFamily: 'Inter'
-            }}>
-              Notifications
+
+            <ProfileDrawerLink 
+              icon="pencil"
+              label="Change Username"
+              onPress={() => setShowUsernameDialog(true)}/>
+            <View style={{height: 10}}/>
+            <ProfileDrawerLink
+              icon="pencil"
+              label="Change Email"
+              onPress={() => setShowEmailDialog(true)}/>
+            <View style={{height: 10}}/>
+            <ProfileDrawerLink
+              icon="pencil"
+              label="Change Password"
+              onPress={() => setShowPasswordDialog(true)}/>
+
+
+          {/* Practice Settings */}
+          <View style={{marginBottom: 30, marginTop: 30}}>
+            <Text style={{fontSize: 18, fontWeight: '600', color: theme.colors.onBackground, marginBottom: 15, fontFamily: 'Inter'}}>
+              Practice Settings
             </Text>
 
             <View>
@@ -520,23 +563,58 @@ export default function SettingsScreen() {
                     marginBottom: 4,
                     fontFamily: 'Inter'
                   }}>
-                    Verse of the Day
-                  </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Receive daily verse notifications
+                    Type out reference
                   </Text>
                 </View>
                 <Switch
-                  value={subscribedVerseOfDay}
-                  onValueChange={handleToggleVerseOfDay}
+                  value={typeOutReference}
+                  onValueChange={handleToggleTypeOutReference}
                   trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
                 />
               </View>
               <Divider />
+            </View>
+          </View>
+
+
+          {/* Notifications Section */}
+          <View style={{ marginBottom: 30 }}>
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '600',
+              color: theme.colors.onBackground,
+              marginBottom: 15,
+              fontFamily: 'Inter'
+            }}>
+              Notifications
+            </Text>
+
+              <View>
+                <View style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingVertical: 12
+                }}>
+                  <View style={{ flex: 1, marginRight: 16 }}>
+                    <Text style={{
+                      fontSize: 16,
+                      fontWeight: '500',
+                      color: theme.colors.onBackground,
+                      marginBottom: 4,
+                      fontFamily: 'Inter'
+                    }}>
+                      Receive push notifications
+                    </Text>
+                  </View>
+                  <Switch
+                    value={pushNotificationsEnabled}
+                    onValueChange={handleTogglePushNotifications}
+                    trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                  />
+                </View>
+                <Divider />
+              </View>
             </View>
 
             <View>
@@ -554,25 +632,103 @@ export default function SettingsScreen() {
                     marginBottom: 4,
                     fontFamily: 'Inter'
                   }}>
-                    Push Notifications
-                  </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Receive push notifications on device
+                    Receive verse of day push notifications
                   </Text>
                 </View>
                 <Switch
-                  value={pushNotificationsEnabled}
-                  onValueChange={handleTogglePushNotifications}
+                  value={subscribedVerseOfDay}
+                  onValueChange={handleToggleVerseOfDay}
                   trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
                 />
               </View>
               <Divider />
             </View>
-          </View>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Receive practice reminders
+                  </Text>
+                </View>
+                <Switch
+                  value={practiceRemindersEnabled}
+                  onValueChange={handleTogglePracticeReminders}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
+              </View>
+              <Divider />
+            </View>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Be notified of friend's activity
+                  </Text>
+                </View>
+                <Switch
+                  value={notifyOfFriends}
+                  onValueChange={handleToggleNotifyOfFriends}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
+              </View>
+              <Divider />
+            </View>
+            <View>
+              <View style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                paddingVertical: 12
+              }}>
+                <View style={{ flex: 1, marginRight: 16 }}>
+                  <Text style={{
+                    fontSize: 16,
+                    fontWeight: '500',
+                    color: theme.colors.onBackground,
+                    marginBottom: 4,
+                    fontFamily: 'Inter'
+                  }}>
+                    Receive streak reminders
+                  </Text>
+                </View>
+                <Switch
+                  value={receiveStreakReminders}
+                  onValueChange={handleToggleReceiveStreakReminders}
+                  trackColor={{ false: theme.colors.surface2, true: theme.colors.surface2 }}
+                />
+              </View>
+              <Divider />
+            </View>
+            <TouchableOpacity
+              onPress={handleCustomizeFriendNotifications}
+              disabled={updatingProfile}
+              style={styles.button_outlined}
+            >
+              <Text style={styles.buttonText_outlined}>Customize which friends notify you</Text>
+            </TouchableOpacity>
+
 
           {/* Activity Notifications Section */}
           <View style={{ marginBottom: 30 }}>
@@ -585,6 +741,13 @@ export default function SettingsScreen() {
             }}>
               Activity Notifications
             </Text>
+            <Text style={{
+              fontSize: 12,
+              color: theme.colors.onSurfaceVariant,
+              fontFamily: 'Inter'
+            }}>
+              Activity notifications are notifications sent to your friends whenever you have new activity in the app.
+            </Text>
 
             <View>
               <View style={{
@@ -601,14 +764,7 @@ export default function SettingsScreen() {
                     marginBottom: 4,
                     fontFamily: 'Inter'
                   }}>
-                    Memorized a Verse
-                  </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Notify friends when you memorize a verse
+                    Memorized a passage
                   </Text>
                 </View>
                 <Switch
@@ -637,13 +793,6 @@ export default function SettingsScreen() {
                   }}>
                     Published Collection
                   </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Notify friends when you publish a collection
-                  </Text>
                 </View>
                 <Switch
                   value={notifyPublishedCollection}
@@ -669,14 +818,7 @@ export default function SettingsScreen() {
                     marginBottom: 4,
                     fontFamily: 'Inter'
                   }}>
-                    Collection Saved
-                  </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Get notified when someone saves your published collection
+                    Someone saves your collection
                   </Text>
                 </View>
                 <Switch
@@ -703,14 +845,7 @@ export default function SettingsScreen() {
                     marginBottom: 4,
                     fontFamily: 'Inter'
                   }}>
-                    Note Likes
-                  </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Get notified when someone likes your note
+                    Someone likes your public note
                   </Text>
                 </View>
                 <Switch
@@ -752,13 +887,6 @@ export default function SettingsScreen() {
                   }}>
                     Show Notifications
                   </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Show unread notifications count on app icon
-                  </Text>
                 </View>
                 <Switch
                   value={badgeNotificationsEnabled}
@@ -785,13 +913,6 @@ export default function SettingsScreen() {
                     fontFamily: 'Inter'
                   }}>
                     Show Overdue Verses
-                  </Text>
-                  <Text style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter'
-                  }}>
-                    Show overdue verses count on app icon
                   </Text>
                 </View>
                 <Switch
@@ -881,57 +1002,7 @@ export default function SettingsScreen() {
                 borderColor: theme.colors.outline,
               }}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-                <Ionicons 
-                  name="star" 
-                  size={24} 
-                  color={theme.colors.onBackground}
-                  style={{ marginRight: 12 }}
-                />
-                <Text style={{
-                  fontSize: 18,
-                  fontWeight: '600',
-                  color: theme.colors.onBackground,
-                  fontFamily: 'Inter'
-                }}>
-                  Unlock Pro Features
-                </Text>
-              </View>
-              <Text style={{
-                fontSize: 14,
-                color: theme.colors.onSurfaceVariant,
-                fontFamily: 'Inter',
-                lineHeight: 20,
-                marginBottom: 16,
-              }}>
-                Get access to home screen widgets, AI commentary, unlimited collections, streak calendar, personalization, and priority review for published collections.
-              </Text>
-              <TouchableOpacity
-                style={{
-                  backgroundColor: theme.colors.background,
-                  borderRadius: 12,
-                  paddingVertical: 14,
-                  paddingHorizontal: 24,
-                  borderWidth: 0.5,
-                  borderColor: theme.colors.surface,
-                  alignItems: 'center',
-                  flexDirection: 'row',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-                onPress={() => router.push('/pro')}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="star" size={20} color={theme.colors.onPrimary} />
-                <Text style={{
-                  fontSize: 16,
-                  fontWeight: '600',
-                  color: theme.colors.onPrimary,
-                  fontFamily: 'Inter'
-                }}>
-                  Upgrade to Pro
-                </Text>
-              </TouchableOpacity>
+              
             </View>
           </View>
 
@@ -947,21 +1018,15 @@ export default function SettingsScreen() {
               Help
             </Text>
 
-            <TouchableOpacity
-              style={{ ...styles.button_outlined, marginBottom: 12 }}
-              onPress={() => router.push('/about')}
-            >
-              <Text style={styles.buttonText_outlined}>About VerseMemorization</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.button_outlined}
-              onPress={() => setShowBugReport(true)}
-            >
-              <Text style={styles.buttonText_outlined}>
-                Report Bug/Issue
-              </Text>
-            </TouchableOpacity>
+            <ProfileDrawerLink
+              icon="information"
+              label="about"
+              onPress={() => router.push('/about')}/>
+            <View style={{height: 10}}/>
+            <ProfileDrawerLink
+              icon="alert"
+              label="Report Bug/Issue"
+              onPress={() => setShowBugReport(true)}/>
           </View>
 
           {/* Danger Zone */}

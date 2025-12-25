@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Slider from '@react-native-community/slider';
+import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, Modal, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
-import { ActivityIndicator, Snackbar } from 'react-native-paper';
-import { getUserVerseParts, UserVerseParts } from './db';
+import { Alert, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Portal, Snackbar } from 'react-native-paper';
+import { getCollectionById, getUserVerseParts, MemorizedInfo, memorizePassage, UserVerseMemorizedInfo, UserVerseParts } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -12,12 +12,6 @@ import useAppTheme from './theme';
 const MIN_STAGES = 3;
 const MAX_STAGES = 6;
 const DEFAULT_STAGES = 4;
-
-const getPracticeSettingsKeys = (username: string) => ({
-  RESTART_STAGE_ON_WRONG: `@verseApp:practice:${username}:restartStageOnWrong`,
-  LEARN_VERSE_REFERENCE: `@verseApp:practice:${username}:learnVerseReference`,
-  TOTAL_STAGES: `@verseApp:practice:${username}:totalStages`,
-});
 
 interface Word {
   id: number;
@@ -52,15 +46,32 @@ export default function PracticeSessionScreen() {
   const [book, setBook] = useState('');
   const [chapter, setChapter] = useState('');
   const [versesTypeParts, setVersesTypeParts] = useState<string[]>([]);
+  const [readableReferenceVerses, setReadableReference] = useState('');
   const [passageText, setPassageText] = useState('');
   const [firstStageWords, setFirstStageWords] = useState<Word[]>([]);
-  // Parts of the verse reference user has to type, so if 19-20, it's 19 and 20.
 
-  // Track next upcoming expected word
-  // Main loop:
-  // When button is tapped, complete word, remove isHint, set isCorrect
-  // Move upcoming expected word to next
-  // Need to track current index in passage text?
+  const [stageHiddenIndeces, setStageHiddenIndices] = useState<number[][]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const [accuracyModalVisible, setAccuracyModalVisible] = useState(false);
+  const [accuracy, setAccuracy] = useState(0);
+  const [summaryModalVisible, setSummaryModalVisible] = useState(false);
+  const [nextDue, setNextDue] = useState(new Date());
+  const [timesMemorized, setTimesMemorized] = useState(0);
+
+  const points = useAppStore((state) => state.user?.points || 0);
+  const versesMemorized = useAppStore((state) => state.user?.versesMemorized || 0);
+  const [animatedPoints, setAnimatedPoints] = useState(points);
+  const [animatedVersesMemorized, setAnimatedVersesMemorized] = useState(versesMemorized);
+
+  const [pointsGained, setPointsGained] = useState(0);
+  const [stageAccuracies, setStageAccuracies] = useState<number[]>([]);
+
+  const updateCollection = useAppStore((state) => state.updateCollection);
+
+const showSummary = () => {
+  setSummaryModalVisible(true);
+};
 
   useEffect(() => {
     const getUserVersePracticing = async () => {
@@ -69,6 +80,8 @@ export default function PracticeSessionScreen() {
         router.back();
         return;
       }
+
+      setAccuracyModalVisible(false);
 
       const userVerseParts: UserVerseParts = await getUserVerseParts(selectedUserVerse);
 
@@ -81,46 +94,58 @@ export default function PracticeSessionScreen() {
       setChapter(chapterValue);
       setVersesTypeParts(versePartsValue);
       setPassageText(passageTextValue);
-
-      alert(
-        'Book: ' + bookValue +
-        ' | Chapter: ' + chapterValue +
-        ' | readableReference: ' + selectedUserVerse.readableReference
-      );
+      setReadableReference(selectedUserVerse.readableReference.substring(selectedUserVerse.readableReference.indexOf(':') + 1) || '');
 
       const words: Word[] = [];
       let counter = 0;
 
-      if (reviewReference) {
-        words.push({ id: counter++, isHint: true, word: chapterValue, isCorrect: null });
-        words.push({ id: counter++, isHint: true, word: chapterValue, isCorrect: null });
+      // if (reviewReference) {
+      //   words.push({ id: counter++, isHint: true, word: bookValue + " ", isCorrect: null });
+      //   words.push({ id: counter++, isHint: true, word: chapterValue + " ", isCorrect: null });
 
-        for (let i = 0; i < versePartsValue.length; i++) {
+      //   for (let i = 0; i < versePartsValue.length; i++) {
+      //     if (Number.isFinite(versePartsValue[i]) &&) {
+      //       continue;
+      //     }
+      //     words.push({
+      //       id: counter++,
+      //       isHint: true,
+      //       word: versePartsValue[i] ?? '',
+      //       isCorrect: null,
+      //     });
+      //   }
+      // }
+
+      // Convert all passage text into words to display
+      for (let i = 0; i < passageTextValue.length + 1; i++) {
+        let nextWord: string = '';
+        while (i < passageTextValue.length && passageTextValue[i] !== ' ') {
+          if (passageTextValue[i] !== '\n' && passageTextValue[i] !== '\t' && passageTextValue[i] !== ' ' && passageTextValue[i] !== '') {
+            nextWord += passageTextValue[i];
+            i++;
+          }
+        }
+        
+        if (nextWord.trim() !== '') {
           words.push({
             id: counter++,
             isHint: true,
-            word: versePartsValue[i] ?? '',
+            word: nextWord + ' ',
             isCorrect: null,
           });
         }
       }
 
-      for (let i = 0; i < passageTextValue.length; i++) {
-        words.push({
-          id: counter++,
-          isHint: true,
-          word: passageTextValue[i],
-          isCorrect: null,
-        });
-      }
+      setAllWords(words);
 
       setFirstStageWords(words);
 
-      const totalLength = passageTextValue.length;
+      const totalLength = words.length;
       const stageHiddenIndices: number[][] = [];
 
-      const percentStage1 = 0.10;
-      const percentIncrement = 0.20;
+      // Hide random words for each stage
+      const percentStage1 = 0.00;
+      const percentIncrement = 0.30;
 
       const getRandomUnique = (count: number, max: number): number[] => {
         const set = new Set<number>();
@@ -140,66 +165,137 @@ export default function PracticeSessionScreen() {
       const stage2 = Array.from(new Set([...stage1, ...stage2New]));
       stageHiddenIndices.push(stage2);
 
-      const stage3Count = Math.floor(totalLength * (percentStage1 + percentIncrement * 2));
+      const stage3Count = Math.floor(totalLength * (percentStage1 + percentIncrement * 2.5));
       const stage3NewCount = stage3Count - stage2.length;
       const stage3New = getRandomUnique(stage3NewCount, totalLength);
       const stage3 = Array.from(new Set([...stage2, ...stage3New]));
       stageHiddenIndices.push(stage3);
 
-      const stage4Count = Math.floor(totalLength * (percentStage1 + percentIncrement * 3));
-      const stage4NewCount = stage4Count - stage3.length;
-      const stage4New = getRandomUnique(stage4NewCount, totalLength);
-      const stage4 = Array.from(new Set([...stage3, ...stage4New]));
+      const stage4 = Array.from({ length: totalLength }, (_, i) => i);
       stageHiddenIndices.push(stage4);
 
-      // Save for later stages
+      setStageHiddenIndices(stageHiddenIndices);
       setAllWords(words);
-      // You probably want this stored:
-      // setStageHiddenIndices(stageHiddenIndices);
-
-      // creates:
-      // stageHiddenIndices[0] → Stage 1 hidden IDs
-      // stageHiddenIndices[1] → Stage 2 hidden IDs
-      // stageHiddenIndices[2] → Stage 3 hidden IDs
-      // stageHiddenIndices[3] → Stage 4 hidden IDs
-
+      setActiveIndex(0);
 
       console.log("Hidden indices all 4 stages:", stageHiddenIndices);
-
-      if (!settingsLoaded) {
-        return;
-      }
     };
 
     getUserVersePracticing();
-  }, [selectedUserVerse, learnVerseReference, totalStages, settingsLoaded]);
+  }, [selectedUserVerse, learnVerseReference, totalStages]);
 
-  useEffect(() => { // Runs when stage changes
-    
-  }, [currentStage, allWords]);
 
-  useEffect(() => { // Load practice settings from server
-    const loadPracticeSettings = async () => {
-      if (!user?.username) {
-        setLearnVerseReference(true);
-        setTotalStages(DEFAULT_STAGES);
-        setSettingsLoaded(true);
-        return;
+  // Handle keyboard press
+  const handleKeyboardPress = async (char: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+
+    if (activeIndex >= allWords.length)
+      return;
+
+    const currentWord = allWords[activeIndex];
+    const expectedChar = currentWord.word.trim().charAt(0).toLowerCase();
+
+    if (char !== expectedChar) 
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+
+    const updatedWords = [...allWords];
+    updatedWords[activeIndex] = { ...currentWord, isCorrect: (char === expectedChar) };
+    setAllWords(updatedWords);
+
+    setActiveIndex((previous) => previous + 1);
+    console.log("Active index:", activeIndex + 1);
+    console.log("allWords.length:", allWords.length);
+    console.log("Typed char:", char, "Expected char: " + "\"" + expectedChar + "\"");
+    console.log("Is correct:", char === expectedChar);
+
+    if (activeIndex + 1 == allWords.length) {
+      // Reached end of stage
+      console.log("Reached end of stage");
+
+      let correctWords = 0;
+      let totalWords = updatedWords.length;
+      for (let i = 0; i < updatedWords.length; i++) {
+        updatedWords[i].isCorrect ? correctWords++ : null;
       }
+      let localAccuracy = Math.floor((correctWords / totalWords) * 100);
+      setAccuracy(localAccuracy);
+      setStageAccuracies([...stageAccuracies, localAccuracy]);
+      setAccuracyModalVisible(true);
+    }
+  }
 
+  const retryStage = () => {
+    const hiddenSet = new Set(stageHiddenIndeces[currentStage - 1] ?? []);
+    setAllWords(
+      firstStageWords.map((word, index) => ({
+        ...word,
+        isHint: !hiddenSet.has(index),
+        isCorrect: null,
+      }))
+    );
+    setActiveIndex(0);
+    setAccuracyModalVisible(false);
+  }
+
+  const nextStage = async () => {
+    setCurrentStage(currentStage + 1);
+    setActiveIndex(0);
+    setAccuracyModalVisible(false);
+
+    if (currentStage >= totalStages) {
+      // Reached end of session
       try {
+          let correctWords = 0;
+          let totalWords = allWords.length;
+          for (let i = 0; i < allWords.length; i++) {
+            allWords[i].isCorrect ? correctWords++ : null;
+          }
+          let localAccuracy = Math.floor((correctWords / totalWords) * 100);
+          setStageAccuracies([...stageAccuracies, localAccuracy]);
+          let sessionAccuracy = Math.floor((stageAccuracies.reduce((a, b) => a + b, 0) + localAccuracy) / (stageAccuracies.length + 1));
+          setAccuracy(sessionAccuracy);
 
-      } catch (error) {
-        console.error('Failed to load practice settings:', error);
-        setLearnVerseReference(true);
-        setTotalStages(DEFAULT_STAGES);
-      } finally {
-        setSettingsLoaded(true);
-      }
-    };
+          const info: MemorizedInfo = {
+            userVerseId: selectedUserVerse?.id || 0,
+            accuracy: sessionAccuracy,
+          }
+          const userVerseMemorizedInfo: UserVerseMemorizedInfo = await memorizePassage(info);
+          setPointsGained(userVerseMemorizedInfo.pointsGained);
+          setNextDue(userVerseMemorizedInfo.userVerse.dueDate ? new Date(userVerseMemorizedInfo.userVerse.dueDate) : new Date());
+          setTimesMemorized(userVerseMemorizedInfo.userVerse.timesMemorized || 0);
 
-    loadPracticeSettings();
-  }, [user?.username, user?.isPaid]);
+          const updatedCollection = await getCollectionById(selectedUserVerse?.collectionId || 0);
+          if (updatedCollection) {
+            updateCollection(updatedCollection);
+          }
+
+          showSummary();
+        } catch (error) {
+          console.error('Failed to memorize passage:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Failed to memorize passage';
+          setSnackbarMessage(errorMessage);
+          setSnackbarVisible(true);
+          showSummary();
+        }
+        return;
+    }
+  }
+
+  useEffect(() => {
+    if (!firstStageWords.length || !stageHiddenIndeces.length) return;
+
+    const hiddenSet = new Set(stageHiddenIndeces[currentStage - 1] ?? []);
+
+    setAllWords(
+      firstStageWords.map((word, index) => ({
+        ...word,
+        isHint: !hiddenSet.has(index),
+        isCorrect: null,
+      }))
+    );
+
+    setActiveIndex(0);
+  }, [currentStage, stageHiddenIndeces, firstStageWords]);
 
   const createWord = (id: number, word: string, isNumber: boolean, showSpace: boolean): Word => ({
     id,
@@ -208,92 +304,19 @@ export default function PracticeSessionScreen() {
     isHint: false,
   });
 
-  // Hide words
-  // const hideWordsForStage = (
-  //   words: Word[], 
-  //   stage: number, 
-  //   useStoredIndices: boolean = false
-  // ): { words: Word[]; hiddenIndices?: { referenceIndices: Set<number>; verseIndices: Set<number> } } => {
-  //   if (stage === 1) {
-  //     return { words: words.map(w => ({ ...w, isVisible: true })) };
-  //   }
+  const onModalClose = () => {
 
-  //   let totalHidePercent;
-  //   if (stage === 2) {
-  //     const stage2Increment = 1.0 / (2 * totalStages - 3);
-  //     totalHidePercent = stage2Increment;
-  //   } else {
-  //     const stage2Increment = 1.0 / (2 * totalStages - 3);
-  //     const normalIncrement = 2 * stage2Increment;
-  //     totalHidePercent = stage2Increment + ((stage - 2) * normalIncrement);
-  //   }
-    
-    // const totalWords = words.length;
-    // const totalWordsToHide = Math.floor(totalWords * totalHidePercent);
-    // const availableIndices: Array<{ type: 'reference' | 'verse'; index: number; wordIndex: number }> = []    
-    // const shuffled = [...availableIndices].sort(() => Math.random() - 0.5);
-    // const indicesToHide = shuffled.slice(0, Math.min(totalWordsToHide, availableIndices.length));
-    // const referenceIndicesToHide = new Set<number>();
-    // const verseIndicesToHide = new Set<number>();
-    // DELETED CODE HERE    
-    // return { 
-    //   words: [...updatedReferenceWords, ...updatedVerseWords],
-    //   hiddenIndices: { referenceIndices: referenceIndicesToHide, verseIndices: verseIndicesToHide }
-    // };
-  //};
+  }
 
-  // function ProgressBar({ currentStage, totalStages, progressPercent, highestCompletedStage, theme }: ProgressBarProps) {
-  //   return (
-  //     <View style={{ marginBottom: 20 }}>
-  //       <View style={{ 
-  //         flexDirection: 'row', 
-  //         justifyContent: 'space-between', 
-  //         alignItems: 'center',
-  //         marginBottom: 12 
-  //       }}>
-  //         <Text style={{ 
-  //           fontSize: 16, 
-  //           fontWeight: '600', 
-  //           color: theme.colors.onBackground 
-  //         }}>
-  //           Stage {currentStage} / {totalStages}
-  //         </Text>
-  //       </View>
-        
-  //       <View style={{ 
-  //         flexDirection: 'row', 
-  //         justifyContent: 'space-between',
-  //       }}>
-  //         {Array.from({ length: totalStages }).map((_, index) => {
-  //           const stageNum = index + 1;
-  //           const isCompleted = stageNum <= highestCompletedStage;
-  //           const isCurrent = stageNum === currentStage;
-            
-  //           let backgroundColor = theme.colors.surface;
-  //           if (isCurrent || isCompleted) {
-  //             backgroundColor = theme.colors.primary;
-  //           }
-            
-  //           return (
-  //             <View
-  //               key={stageNum}
-  //               style={{
-  //                 flex: 1,
-  //                 height: isCurrent ? 6 : 4,
-  //                 backgroundColor: backgroundColor,
-  //                 opacity: isCurrent ? 1 : (isCompleted ? 0.5 : 0.3),
-  //                 borderRadius: 2,
-  //                 marginRight: index < totalStages - 1 ? 4 : 0,
-  //                 borderWidth: isCurrent ? 1 : 0,
-  //                 borderColor: theme.colors.primary,
-  //               }}
-  //             />
-  //           );
-  //         })}
-  //       </View>
-  //     </View>
-  //   );
-  // }
+
+  const KeyboardButton = ({ char }: { char: string }) => {
+    const themePreference = useAppStore((state) => state.themePreference);
+    return (
+      <Pressable  onPress={() => {handleKeyboardPress(char)}} style={{width: '8%', height: 50, backgroundColor: theme.colors.verseText, borderRadius: 8, justifyContent: 'center', alignItems: 'center', margin: 3}}>
+        <Text style={{ color: themePreference === 'dark' ? theme.colors.onBackground : theme.colors.background, fontSize: 24 }}>{char}</Text>
+      </Pressable>
+    );
+  }
 
   return (
     <>
@@ -306,11 +329,11 @@ export default function PracticeSessionScreen() {
           headerShadowVisible: false,
           headerRight: () => (
             <TouchableOpacity
-              onPress={() => setShowSettings(true)}
+              onPress={() => retryStage()}
               style={{ marginRight: 16 }}
               activeOpacity={0.7}
             >
-              <Ionicons name="settings-outline" size={24} color={theme.colors.onBackground} />
+              <Ionicons name="refresh" size={24} color={theme.colors.onBackground} />
             </TouchableOpacity>
           ),
         }}
@@ -322,290 +345,255 @@ export default function PracticeSessionScreen() {
         <ScrollView 
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
-        >
-          {/* <ProgressBar 
-            currentStage={currentStage} 
-            totalStages={totalStages}
-            progressPercent={calculateProgress()}
-            highestCompletedStage={highestCompletedStage}
-            theme={theme}
-          /> */}
+        >          
 
-          {/* Stage navigation buttons */}
-          {/* <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
-            <TouchableOpacity
-              onPress={handleGoBack}
-              disabled={currentStage <= 1}
-              style={{
-                paddingVertical: 8,
-                paddingHorizontal: 0,
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={{
-                fontSize: 14,
-                color: currentStage <= 1 ? theme.colors.onSurfaceVariant : theme.colors.primary,
-                opacity: currentStage <= 1 ? 0.5 : 1,
-                marginTop: -20
-              }}>
-                Previous stage
-              </Text>
-            </TouchableOpacity>
-          </View> */}
-          
+        {/* Stage viewer */}
+        <View style={{height: 5, width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20}}>
+          {[...Array(totalStages)].map((_, index) => (
+            <View key={index} style={{width: '24%', height: 5, borderRadius: 1, backgroundColor: index === currentStage - 1 ? theme.colors.primary : theme.colors.surface2}} />
+          ))}
+        </View>
+
+
             {/* Main Text Area */}
 
             <View style={{
-              height: '70%',
               width: '100%',
+              borderStyle: 'solid',
+              borderRadius: 8,
+              marginTop: 20
             }}>
-
+              {learnVerseReference && (
+                user.typeOutReference ? (
+                  <Text style={{fontSize: 18, color: theme.colors.verseHint, lineHeight: 18, marginBottom: 12}}>
+                    {book} {chapter}:{readableReferenceVerses}
+                  </Text>
+                ) : (
+                  <Text style={{fontSize: 18, color: theme.colors.onBackground, lineHeight: 18, marginBottom: 12}}>
+                    {book} {chapter}:{readableReferenceVerses}
+                  </Text>
+                )
+              )}
+                <Text style={{fontSize: 18, color: theme.colors.verseHint, lineHeight: 24}}>
+                  {allWords.map((w, i) => (
+                    w.isCorrect === null ? (
+                      w.isHint ? (
+                        <Text key={w.id} style={{color: theme.colors.verseHint}}>{w.word}</Text>
+                      ) : (
+                        <Text key={w.id} style={{color: theme.colors.background}}>{w.word}</Text>
+                      )
+                    ) : (
+                      w.isCorrect ? (
+                        <Text key={w.id} style={{color: theme.colors.onBackground}}>{w.word}</Text>
+                      ) : (
+                        <Text key={w.id} style={{color: theme.colors.error}}>{w.word}</Text>
+                      )
+                    )
+                  ))}
+                </Text>
             </View>
-            
-            {/* Input overlay */}
-
-          {/* {completed && (
-            <Button 
-              title="Go Back" 
-              onPress={() => {handleBack()}} 
-              variant="text"
-              style={{ marginTop: -10 }}
-            />
-          )} */}
         </ScrollView>
+
+        {/* Keyboard */}
+        <View style={{position: 'absolute', bottom: 0, width: '100%', justifyContent: 'center', alignItems: 'center', paddingBottom: 80}}>
+          <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'row'}}>
+            <KeyboardButton char="q" />
+            <KeyboardButton char="w" />
+            <KeyboardButton char="e" />
+            <KeyboardButton char="r" />
+            <KeyboardButton char="t" />
+            <KeyboardButton char="y" />
+            <KeyboardButton char="u" />
+            <KeyboardButton char="i" />
+            <KeyboardButton char="o" />
+            <KeyboardButton char="p" />
+          </View>
+          <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'row'}}>
+            <KeyboardButton char="a" />
+            <KeyboardButton char="s" />
+            <KeyboardButton char="d" />
+            <KeyboardButton char="f" />
+            <KeyboardButton char="g" />
+            <KeyboardButton char="h" />
+            <KeyboardButton char="j" />
+            <KeyboardButton char="k" />
+            <KeyboardButton char="l" />
+          </View>
+          <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'row'}}>
+            <KeyboardButton char="z" />
+            <KeyboardButton char="x" />
+            <KeyboardButton char="c" />
+            <KeyboardButton char="v" />
+            <KeyboardButton char="b" />
+            <KeyboardButton char="n" />
+            <KeyboardButton char="m" />
+          </View>
+        </View>
         
       </View>
       {loading && (
-        <View style={{
-          position: 'absolute',
-          width: '100%',
-          height: '100%',
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor: theme.colors.surface
-        }}>
-          <Snackbar
-            visible={snackbarVisible}
-            onDismiss={() => setSnackbarVisible(false)}
-            duration={3000}
-            style={{ 
-              backgroundColor: theme.colors.primary,
-              position: 'absolute',
-              top: 0, left: 0, right: 0, margin: 0
-            }}
-            wrapperStyle={{ top: 0 }}
-          >
-            {snackbarMessage}
-          </Snackbar>
+        <View style={{ position: 'absolute', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.surface }}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       )}
-
-      {/* Settings Modal */}
-      <Modal
-        visible={showSettings}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowSettings(false)}
+      <Snackbar 
+        visible={snackbarVisible} 
+        onDismiss={() => setSnackbarVisible(false)} 
+        duration={3000}
+        style={{ backgroundColor: theme.colors.primary }}
       >
-        <TouchableOpacity
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-          activeOpacity={1}
-          onPress={() => setShowSettings(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: theme.colors.surface,
-              borderRadius: 16,
-              padding: 24,
-              width: '85%',
-              maxWidth: 400,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 20,
-                fontWeight: '600',
-                color: theme.colors.onBackground,
-                marginBottom: user.isPaid ? 24 : 8,
-                fontFamily: 'Inter',
-              }}
-            >
-              Practice Settings
-            </Text>
+        {snackbarMessage}
+      </Snackbar>
 
-            {!user.isPaid && (
-              <TouchableOpacity
-                onPress={() => {
-                  setShowSettings(false);
-                  router.push('/pro');
-                }}
-                style={{ marginBottom: 16 }}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: theme.colors.primary,
-                    fontFamily: 'Inter',
-                    textDecorationLine: 'underline',
+          <Modal
+            visible={accuracyModalVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={onModalClose}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+              <View style={{ width: '80%', height: '50%', alignSelf: 'center', alignItems: 'center', backgroundColor: theme.colors.surface, borderRadius: 16, padding: 20, borderWidth: .5, borderColor: theme.colors.onSurfaceVariant }}>
+              <Text style={{...styles.subheading, marginBottom: 10, marginTop: 20}}>Accuracy: {accuracy}%</Text>
+              {accuracy >= 90 ? (
+                currentStage >= totalStages ? (
+                  <Text style={{...styles.text, textAlign: 'center'}}>Good job! Go ahead and finish the session.</Text>
+                ) : (
+                  <Text style={{...styles.text, textAlign: 'center'}}>Good job! Go ahead and continue to the next stage.</Text>
+                )
+              ) : (
+                accuracy >= 75 ? (
+                  <Text style={{...styles.text, textAlign: 'center'}}>Nice job, but you can get a better score. Try again!</Text>
+                ) : (
+                  <Text style={{...styles.text, textAlign: 'center'}}>It's recommended you retry this stage.</Text>
+                )
+              )}
+              <View style={{flexDirection: 'row', marginTop: 20}}>
+                <TouchableOpacity style={{height: 150, width: '48%', borderWidth: 1, borderColor: theme.colors.onSurfaceVariant, borderRadius: 8, justifyContent: 'center', alignItems: 'center', margin: 10}}
+                  onPress={retryStage}>
+                  <Ionicons name="refresh-outline" size={48} color={theme.colors.onSurfaceVariant} />
+                  <Text style={{...styles.text, textAlign: 'center'}}>Retry</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={{height: 150, width: '48%', borderWidth: 1, borderColor: theme.colors.onSurfaceVariant, borderRadius: 8, justifyContent: 'center', alignItems: 'center', margin: 10}}
+                  onPress={nextStage}>
+                  <Ionicons name="arrow-forward-outline" size={48} color={theme.colors.onSurfaceVariant} />
+                  {currentStage >= totalStages ? (
+                    <Text style={{...styles.text, textAlign: 'center'}}>Finish</Text>
+                  ) : (
+                    <Text style={{...styles.text, textAlign: 'center'}}>Next Stage</Text>
+                  )}
+                </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+
+      <Portal>
+          <Modal
+            visible={summaryModalVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={onModalClose}>
+            <TouchableOpacity style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+              activeOpacity={1}
+              onPress={() => { }}>
+              <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}
+                style={{ backgroundColor: theme.colors.surface, borderRadius: 12, width: '90%', maxWidth: 400, maxHeight: Dimensions.get('window').height * 0.8,
+                         padding: 20, justifyContent: 'space-between', borderWidth: .5, borderColor: theme.colors.onSurfaceVariant}}>
+
+                    {/* Success Header */}
+                    <View style={{ alignItems: 'center', marginBottom: 32 }}>
+                      <Text style={{ ...styles.text, textAlign: 'center', fontSize: 16, color: theme.colors.onSurfaceVariant, marginBottom: 0 }}>
+                        You have memorized
+                      </Text>
+                      <Text style={{ ...styles.subheading, textAlign: 'center', fontSize: 20, color: theme.colors.primary, marginTop: 4 }}>
+                        {selectedUserVerse?.readableReference}
+                      </Text>
+                      <Text style={{ ...styles.text, textAlign: 'center', fontSize: 16, color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: -20 }}>
+                         {timesMemorized} {timesMemorized === 1 ? 'time' : 'times'}
+                      </Text>
+                    </View>
+
+                    {/* Stat updates */}
+                    <View style={{ width: '100%', marginBottom: 24 }}>
+
+                      {/* Accuracy */}
+                      <View style={{ paddingVertical: 20, paddingHorizontal: 4}}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 22, fontFamily: 'Inter' }}>
+                              Accuracy
+                            </Text>
+                          </View>
+                          <Text style={{ color: theme.colors.onBackground, fontSize: 24, fontWeight: '600', fontFamily: 'Inter' }}>
+                            {accuracy}%
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={{ paddingVertical: 0, paddingHorizontal: 4}}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+                          <Text style={{ color: theme.colors.onBackground, fontSize: 16, fontWeight: '600', fontFamily: 'Inter' }}>
+                            + {pointsGained} points
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Points */}
+                      <View style={{ paddingVertical: 20, paddingHorizontal: 4}}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                          <Ionicons name="star-outline" size={20} color={theme.colors.primary} style={{ marginRight: 12 }} />
+                          <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 20, fontFamily: 'Inter' }}>
+                            Points
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
+                          <Text style={{ color: theme.colors.onBackground, fontSize: 38, fontWeight: '900', fontFamily: 'Inter' }}>
+                            {points}
+                          </Text>
+                          <Ionicons name="arrow-forward" size={28} color={theme.colors.onSurfaceVariant} style={{ marginHorizontal: 10 }} />
+                          <Text style={{ color: theme.colors.onBackground, fontSize: 38, fontWeight: '900', fontFamily: 'Inter' }}>
+                            {points + pointsGained}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Next Practice Card */}
+                      <View style={{ paddingVertical: 20, paddingHorizontal: 4, }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 22, fontFamily: 'Inter' }}>
+                            Practice again in {(() => {
+                              const today = new Date();
+                              const diffTime = nextDue.getTime() - today.getTime();
+                              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                              return diffDays === 1 ? '1 day' : `${diffDays} days`;
+                            })()}
+                          </Text>
+                        </View>
+                      </View>
+                </View>
+
+                {/* Action Button */}
+                <TouchableOpacity 
+                  style={{...styles.button_filled, marginTop: 16 }} 
+                  onPress={() => {
+                    // Update user points in store
+                    if (pointsGained > 0) {
+                      setUser({
+                        ...user,
+                        points: (user?.points || 0) + pointsGained,
+                      });
+                    }
+                    setSummaryModalVisible(false);
+                    router.replace('/(tabs)');
                   }}
+                  activeOpacity={0.7}
                 >
-                  Upgrade to Pro to access these settings
-                </Text>
+                  <Text style={styles.buttonText_filled}>
+                    Back to Home
+                  </Text>
+                </TouchableOpacity>
               </TouchableOpacity>
-            )}
-
-            {/* Learn Verse Reference Setting */}
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 4,
-                opacity: user.isPaid ? 1 : 0.5,
-              }}
-            >
-              <View style={{ flex: 1, marginRight: 16 }}>
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: '500',
-                    color: theme.colors.onBackground,
-                    fontFamily: 'Inter',
-                    marginBottom: 4,
-                  }}
-                >
-                  Include verse reference
-                </Text>
-              </View>
-              <Switch
-                value={learnVerseReference}
-                disabled={!user.isPaid}
-                trackColor={{
-                  false: theme.colors.surface2,
-                  true: theme.colors.primary,
-                }}
-                thumbColor={theme.colors.background}
-              />
-            </View>
-
-            {/* Number of Stages Setting */}
-            <View
-              style={{
-                marginBottom: 16,
-                opacity: user.isPaid ? 1 : 0.5,
-              }}
-            >
-              <View style={{ marginBottom: 12 }}>
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: '500',
-                    color: theme.colors.onBackground,
-                    fontFamily: 'Inter',
-                    marginBottom: 4,
-                  }}
-                >
-                  Number of stages: {totalStages}
-                </Text>
-              </View>
-              <View
-                style={{
-                  backgroundColor: theme.colors.surface2,
-                  borderRadius: 8,
-                  padding: 12,
-                  marginBottom: 12,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 8,
-                }}
-              >
-                <Ionicons name="warning-outline" size={20} color={theme.colors.onSurfaceVariant} />
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter',
-                    flex: 1,
-                  }}
-                >
-                  Changing this will put you back on the first stage
-                </Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter',
-                    minWidth: 30,
-                  }}
-                >
-                  {MIN_STAGES}
-                </Text>
-                <Slider
-                  style={{ flex: 1, height: 40 }}
-                  minimumValue={MIN_STAGES}
-                  maximumValue={MAX_STAGES}
-                  step={1}
-                  value={totalStages}
-                  disabled={!user.isPaid}
-                  onValueChange={(value: number) => {
-                    const newTotalStages = Math.round(value);
-                    handleSetTotalStages(newTotalStages);
-                  }}
-                  minimumTrackTintColor={theme.colors.primary}
-                  maximumTrackTintColor={theme.colors.surface2}
-                  thumbTintColor={theme.colors.primary}
-                />
-                <Text
-                  style={{
-                    fontSize: 14,
-                    color: theme.colors.onSurfaceVariant,
-                    fontFamily: 'Inter',
-                    minWidth: 30,
-                    textAlign: 'right',
-                  }}
-                >
-                  {MAX_STAGES}
-                </Text>
-              </View>
-            </View>
-
-            {/* Close Button */}
-            <TouchableOpacity
-              onPress={() => setShowSettings(false)}
-              style={{
-                marginTop: 8,
-                paddingVertical: 12,
-                paddingHorizontal: 24,
-                backgroundColor: theme.colors.primary,
-                borderRadius: 8,
-                alignItems: 'center',
-              }}
-            >
-              <Text
-                style={{
-                  color: theme.colors.onPrimary,
-                  fontFamily: 'Inter',
-                  fontSize: 16,
-                  fontWeight: '600',
-                }}
-              >
-                Close
-              </Text>
             </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+            </Modal>
+      </Portal>
     </>
   );
 }

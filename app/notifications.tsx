@@ -775,11 +775,11 @@ export default function NotificationsScreen() {
         onEndReachedThreshold={0.2}
         onEndReached={loadMore}
         ListFooterComponent={ isLoadingMore ? (
-          <View style={{ paddingVertical: 22 }}>
+          <View style={{ paddingVertical: 22, paddingBottom: 22 }}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
           </View>
           ) : (
-          <View style={{ paddingVertical: 22 }}>
+          <View style={{ paddingVertical: 22, paddingBottom: 22 }}>
           </View>
           )}
         ListEmptyComponent={
@@ -823,7 +823,6 @@ export default function NotificationsScreen() {
           {snackbarMessage}
         </Text>
       </Snackbar>
-      <View style={{ height: 60 }} />
     </View>
   );
 }

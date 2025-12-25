@@ -90,8 +90,10 @@ export default function PracticeScreen() {
   const collections = useAppStore((state) => state.collections);
   const shouldReloadPracticeList = useAppStore((state) => state.shouldReloadPracticeList);
   const setShouldReloadPracticeList = useAppStore((state) => state.setShouldReloadPracticeList);
+
+  const selectedUserVerse = useAppStore((state) => state.selectedUserVerse);
+  const setSelectedUserVerse = useAppStore((state) => state.setSelectedUserVerse);
   
-  // Main verse data states
   const [versesInProgress, setVersesInProgress] = useState<UserVerse[]>([]);
   const [versesMemorized, setVersesMemorized] = useState<UserVerse[]>([]);
   const [versesNotStarted, setVersesNotStarted] = useState<UserVerse[]>([]);
@@ -101,7 +103,6 @@ export default function PracticeScreen() {
   // Search and UI states
   const [searchQuery, setSearchQuery] = useState('');
   const [practiceModeModalVisible, setPracticeModeModalVisible] = useState(false);
-  const [selectedUserVerse, setSelectedUserVerse] = useState<UserVerse | null>(null);
 
   // Memoize valid collection IDs to prevent recalculation
   const validCollectionIds = useMemo(() => {
@@ -431,7 +432,6 @@ export default function PracticeScreen() {
         visible={practiceModeModalVisible}
         onClose={() => {
           setPracticeModeModalVisible(false);
-          setSelectedUserVerse(null);
         }}
         onSelectLearn={handleLearnMode}
       />

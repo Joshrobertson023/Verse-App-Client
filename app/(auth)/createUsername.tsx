@@ -21,7 +21,7 @@ export default function CreateUsernameScreen() {
   const [loading, setLoading] = useState(false);
   const theme = useAppTheme();
   const [dialogVisible, setDialogVisible] = useState(false);
-  const [bibleVersion, setBibleVersion] = useState('KJV');
+  const [bibleVersion, setBibleVersion] = useState(0);
 
   
   const hideDialog = () => setDialogVisible(false);
@@ -113,13 +113,13 @@ const nextClick = async () => {
                         style={{ color: theme.colors.onSurface, width: '100%' }}
                         dropdownIconColor={theme.colors.onSurface}
                     >
-                        <Picker.Item label="King James Version (KJV)" value="KJV" />
-                        <Picker.Item label="New King James Version (NKJV)" value="NKJV" enabled={false} />
-                        <Picker.Item label="American Standard Version (ASV)" value="ASV" enabled={false} />
-                        <Picker.Item label="New International Version (NIV)" value="NIV" enabled={false} />
-                        <Picker.Item label="English Standard Version (ESV)" value="ESV" enabled={false} />
-                        <Picker.Item label="New American Standard Bible (NASB)" value="NASB" enabled={false} />
-                        <Picker.Item label="Christian Standard Bible (CSB)" value="CSB" enabled={false} />
+                        <Picker.Item label="King James Version (KJV)" value={0} />
+                        <Picker.Item label="New King James Version (NKJV)" value={1} enabled={false} />
+                        <Picker.Item label="American Standard Version (ASV)" value={2} enabled={false} />
+                        <Picker.Item label="New International Version (NIV)" value={3} enabled={false} />
+                        <Picker.Item label="English Standard Version (ESV)" value={4} enabled={false} />
+                        <Picker.Item label="New American Standard Bible (NASB)" value={5} enabled={false} />
+                        <Picker.Item label="Christian Standard Bible (CSB)" value={6} enabled={false} />
                     </Picker>
                 </View>
                 

@@ -7,6 +7,7 @@ import { getLeaderboard, getUserRank } from '../db';
 import { useAppStore, User } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
+import { formatPoints } from '../utils/numberFormat';
 
 const PAGE_SIZE = 20;
 
@@ -169,7 +170,7 @@ export default function LeaderboardScreen() {
               fontFamily: 'Inter',
             }}
           >
-            {item.points || 0}
+            {formatPoints(item.points || 0)}
           </Text>
           <Text
             style={{
@@ -267,7 +268,7 @@ export default function LeaderboardScreen() {
                     fontFamily: 'Inter',
                   }}
                 >
-                  {user.points || 0} pts
+                  {formatPoints(user.points || 0)} pts
                 </Text>
               </View>
               <Text

@@ -68,6 +68,7 @@ const nextClick = async () => {
             points: 0,
         }
 
+        console.log("checking username available");
         const usernameAvailable = await checkUsernameAvailable(username); 
         if (usernameAvailable) {
             Alert.alert(
@@ -80,6 +81,7 @@ const nextClick = async () => {
             setLoading(false);
             return;
         }
+        console.log("checking password hash");
 
         const hashedPassword = await getUserPasswordHash(username);
         if (hashedPassword !== password.trim()) {
@@ -94,6 +96,7 @@ const nextClick = async () => {
             return;
         }
 
+        console.log("checking if banned");
         // Check if user is banned before logging in
         const isBanned = await checkIfBanned(username);
         if (isBanned) {
@@ -110,27 +113,33 @@ const nextClick = async () => {
             return;
         }
 
+        console.log("logging in user");
         const loggedInUser = await loginUser(newUser);
+        console.log("logged in.");
         // Fetch streakLength from API
         try {
+            console.log("getting streak length");
           loggedInUser.streakLength = await getStreakLength(loggedInUser.username);
         } catch (error) {
           console.error('Failed to fetch streak length:', error);
           loggedInUser.streakLength = 0;
         }
+        console.log('got streak length')
         // versesMemorized, versesOverdue, and numberPublishedCollections come from the database
         setUser(loggedInUser);
+        console.log("getting user collections");
         setCollections(await getUserCollections(loggedInUser.username));
         console.log(loggedInUser);
-        console.log('set user token: ' + loggedInUser.authToken || '');
 
+        console.log('storing user token');
         await SecureStore.setItemAsync('userToken', loggedInUser.authToken || '');
 
+        console.log('stored user token');
         setLoading(false);
         router.push('/');
     } catch (error) {
         console.error(error);
-        alert('An error occurred while checking email availability. Please try again. | ' + error);
+        alert('An error occurred while logging in. Please try again. | ' + error);
         setLoading(false);
         return;
     }

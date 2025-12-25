@@ -382,13 +382,35 @@ export async function getUserVersesInProgress(username: string): Promise<UserVer
 
 export async function getUserVersesNotStarted(username: string): Promise<UserVerse[]> {
     try {
-        const response = await fetch(`${baseUrl}/userverses/notstarted/${username}`);
+        const response = await fetch(`${baseUrl}/collections/get`);
         if (response.ok) {
             const data: UserVerse[] = await response.json();
             return data;
         } else {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to fetch user verses');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function getCollection(collection: Collection): Promise<Collection> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/byId/${collection.id}`);
+        if (response.ok) {
+            const data: Collection = await response.json();
+            return data;
+            //         const response = await fetch(`${baseUrl}/collections/get`, {
+            // method: 'POST',
+            // headers: {
+            //     'Content-Type': 'application/json',
+            // },
+            // body: JSON.stringify(collection)});
+        } else {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to fetch collection');
         }
     } catch (error) {
         console.error(error);
@@ -459,7 +481,6 @@ export async function getUserCollections(username: string): Promise<Collection[]
         const response = await fetch(`${baseUrl}/collections/all/${username}`);
         if (response.ok) {
             const data: Collection[] = await response.json();
-            // Map the data and add the 'favorites' property based on title
             const mappedData = data.map(collection => ({
                 ...collection,
                 favorites: collection.title === 'Favorites',
@@ -1811,7 +1832,64 @@ export async function updateBadgeOverdueEnabled(username: string, enabled: boole
     }
 }
 
-export async function updateBibleVersion(username: string, bibleVersion: string): Promise<void> {
+export async function updatePracticeReminders(username: string, enabled: boolean): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/practice-notifications/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(enabled)
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update practice reminders setting');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateNotifyOfFriends(username: string, enabled: boolean): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/friends-activity-notifications/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(enabled)
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update friends activity notifications setting');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateReceiveStreakReminders(username: string, enabled: boolean): Promise<void> {
+    try {
+        const response = await fetch(`${baseUrl}/users/streak-reminders/${username}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(enabled)
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update streak reminders setting');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateBibleVersion(username: string, bibleVersion: number): Promise<void> {
     try {
         const response = await fetch(`${baseUrl}/users/bibleVersion/${username}`, {
             method: 'PUT',
@@ -2321,6 +2399,24 @@ export async function getCollectionsByCategory(categoryId: number): Promise<Publ
         }
         const responseText = await response.text();
         throw new Error(responseText || 'Failed to fetch collections by category');
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+}
+
+export async function getCategoriesForCollection(collectionId: number): Promise<number[]> {
+    try {
+        const response = await fetch(`${baseUrl}/collections/${collectionId}/categories`);
+        if (response.ok) {
+            const data: number[] = await response.json();
+            return data;
+        }
+        if (response.status === 404) {
+            return [];
+        }
+        const responseText = await response.text();
+        throw new Error(responseText || 'Failed to fetch categories for collection');
     } catch (error) {
         console.error(error);
         return [];
@@ -3223,6 +3319,82 @@ export async function getUserVerseParts(userVerse: UserVerse): Promise<UserVerse
             const responseText = await response.text();
             throw new Error(responseText);
         }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+
+export async function updateThemeDb(preference: number, username: string): Promise<void> {
+    try {
+        const response = await fetch(
+            `${baseUrl}/users/theme/${username}`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(preference),
+            }
+        );
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update theme preference');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateTypeOutReference(typeOut: boolean, username: string): Promise<void> {
+    try {
+        const response = await fetch(
+            `${baseUrl}/users/typeoutreference/${username}`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(typeOut),
+            }
+        );
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update type out reference setting');
+        }
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export interface UserVerseMemorizedInfo {
+    userVerse: UserVerse;
+    pointsGained: number;
+}
+
+export interface MemorizedInfo {
+    userVerseId: number;
+    accuracy: number;
+}
+
+export async function memorizePassage(info: MemorizedInfo): Promise<UserVerseMemorizedInfo> {
+    try {
+        const response = await fetch(`${baseUrl}/userverses/memorize`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(info),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to memorize passage');
+        }
+        const data: UserVerseMemorizedInfo = await response.json();
+        return data;
     } catch (error) {
         console.error(error);
         throw error;

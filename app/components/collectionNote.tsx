@@ -35,7 +35,7 @@ export default function CollectionNoteItem({ note, isOwned, onMenuPress }: Props
 						</TouchableOpacity>
 					)}
 				</View>
-				<Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 16, fontStyle: 'italic'}}>
+				<Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 16}}>
 					{note.text}
 				</Text>
 			</View>

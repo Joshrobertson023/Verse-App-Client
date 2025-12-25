@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Dimensions, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { BackHandler, Dimensions, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Banner, Dialog, Divider, Portal, Snackbar } from 'react-native-paper';
 import Animated, { interpolate, runOnJS, useAnimatedReaction, useAnimatedScrollHandler, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import Button from '../components/Button';
@@ -1348,17 +1348,53 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
           animationType="fade"
           onRequestClose={() => setShowVodCollectionPicker(false)}
         >
-          <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
-            <View style={{ backgroundColor: theme.colors.surface, borderRadius: 16, width: '85%', maxHeight: '70%', padding: 20 }}>
-            <Text style={{ 
-              fontSize: 20,
-              fontWeight: '600',
-              fontFamily: 'Inter',
-              color: theme.colors.onBackground,
-              marginBottom: 20
-            }}>
-              Choose a Collection
-            </Text>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+              activeOpacity={1}
+              onPress={() => {
+                setPickedVodCollection(undefined);
+                setNewVodCollectionTitle('');
+                setShowVodCollectionPicker(false);
+              }}
+            >
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={(e) => e.stopPropagation()}
+                style={{ backgroundColor: theme.colors.surface, borderRadius: 12, width: '90%', maxWidth: 400, maxHeight: '70%', padding: 20 }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={{ 
+                    fontSize: 20,
+                    fontWeight: '600',
+                    fontFamily: 'Inter',
+                    color: theme.colors.onBackground,
+                  }}>
+                    Choose a Collection
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setPickedVodCollection(undefined);
+                      setNewVodCollectionTitle('');
+                      setShowVodCollectionPicker(false);
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: theme.colors.surface2,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
+                  </TouchableOpacity>
+                </View>
 
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
@@ -1384,7 +1420,7 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             <Text style={{ fontSize: 14, color: theme.colors.onBackground, marginBottom: 8, fontFamily: 'Inter', fontWeight: '600' }}>
               Or select existing collection
             </Text>
-            <ScrollView style={{ maxHeight: height * 0.35, marginBottom: 20 }}>
+            <ScrollView style={{ maxHeight: height * 0.35 }}>
               {(() => {
                 // Filter to only show collections owned by the user
                 const userOwnedCollections = collections.filter(col => {
@@ -1472,164 +1508,182 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
               })()}
             </ScrollView>
 
-            <View style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginTop: 20
-            }}>
-              <TouchableOpacity
-                style={{
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  borderRadius: 8
-                }}
-                activeOpacity={0.1}
-                onPress={() => {
-                  setPickedVodCollection(undefined);
-                  setNewVodCollectionTitle('');
-                  setShowVodCollectionPicker(false);
-                }}
-              >
-                <Text style={{
-                  fontSize: 16,
-                  color: theme.colors.onBackground,
-                  fontFamily: 'Inter'
-                }}>
-                  Cancel
-                </Text>
+                {newVodCollectionTitle.trim() ? (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: (!newVodCollectionTitle.trim() || isCreatingNewVodCollection) ? theme.colors.surface2 : theme.colors.primary,
+                      paddingVertical: 14,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginTop: 16,
+                      opacity: (!newVodCollectionTitle.trim() || isCreatingNewVodCollection) ? 0.5 : 1,
+                    }}
+                    activeOpacity={0.7}
+                    onPress={handleCreateNewVodCollection}
+                    disabled={!newVodCollectionTitle.trim() || isCreatingNewVodCollection}
+                  >
+                    {isCreatingNewVodCollection ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={{
+                        fontSize: 16,
+                        color: '#fff',
+                        fontFamily: 'Inter',
+                        fontWeight: '600'
+                      }}>
+                        Create
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={{
+                      backgroundColor: (!pickedVodCollection || isAddingVodToCollection) ? theme.colors.surface2 : theme.colors.primary,
+                      paddingVertical: 14,
+                      borderRadius: 8,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginTop: 16,
+                      opacity: (!pickedVodCollection || isAddingVodToCollection) ? 0.5 : 1,
+                    }}
+                    activeOpacity={0.7}
+                    onPress={handleAddVodToCollection}
+                    disabled={!pickedVodCollection || isAddingVodToCollection}
+                  >
+                    {isAddingVodToCollection ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={{
+                        fontSize: 16,
+                        color: '#fff',
+                        fontFamily: 'Inter',
+                        fontWeight: '600'
+                      }}>
+                        Add
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </TouchableOpacity>
-
-              {newVodCollectionTitle.trim() ? (
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: theme.colors.primary,
-                    paddingVertical: 12,
-                    paddingHorizontal: 24,
-                    borderRadius: 8,
-                    opacity: (!newVodCollectionTitle.trim() || isCreatingNewVodCollection) ? 0.5 : 1
-                  }}
-                  activeOpacity={0.1}
-                  onPress={handleCreateNewVodCollection}
-                  disabled={!newVodCollectionTitle.trim() || isCreatingNewVodCollection}
-                >
-                  {isCreatingNewVodCollection ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={{
-                      fontSize: 16,
-                      color: '#fff',
-                      fontFamily: 'Inter',
-                      fontWeight: '600'
-                    }}>
-                      Create
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: theme.colors.primary,
-                    paddingVertical: 12,
-                    paddingHorizontal: 24,
-                    borderRadius: 8,
-                    opacity: (!pickedVodCollection || isAddingVodToCollection) ? 0.5 : 1
-                  }}
-                  activeOpacity={0.1}
-                  onPress={handleAddVodToCollection}
-                  disabled={!pickedVodCollection || isAddingVodToCollection}
-                >
-                  {isAddingVodToCollection ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={{
-                      fontSize: 16,
-                      color: '#fff',
-                      fontFamily: 'Inter',
-                      fontWeight: '600'
-                    }}>
-                      Add
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-            </View>
-          </View>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
         </Modal>
       </Portal>
 
       {/* Search Dialog */}
-      <Dialog
-        visible={searchDialogVisible}
-        onDismiss={() => {
-          setSearchDialogVisible(false);
-          setSearchQuery('');
-        }}
-        style={{ backgroundColor: theme.colors.surface }}
-      >
-        <Dialog.Title style={{ color: theme.colors.onSurface }}>Search Passages</Dialog.Title>
-        <Dialog.Content>
-          <TextInput
-            placeholder="Search by reference"
-            placeholderTextColor={theme.colors.onSurfaceVariant}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={{
-              backgroundColor: theme.colors.background,
-              borderRadius: 8,
-              padding: 12,
-              color: theme.colors.onSurface,
-              fontSize: 16,
-              borderWidth: 1,
-              borderColor: theme.colors.outline,
-            }}
-            autoFocus
-            onSubmitEditing={() => {
-              if (searchQuery.trim()) {
-                setSearchDialogVisible(false);
-                router.push({
-                  pathname: '../collections/searchPassages',
-                  params: { query: searchQuery.trim() }
-                });
-                setSearchQuery('');
-              }
-            }}
-          />
-        </Dialog.Content>
-        <Dialog.Actions>
-          <TouchableOpacity
-            onPress={() => {
-              setSearchDialogVisible(false);
-              setSearchQuery('');
-            }}
-            style={{ padding: 8 }}
+      <Portal>
+        <Modal
+          visible={searchDialogVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => {
+            setSearchDialogVisible(false);
+            setSearchQuery('');
+          }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
           >
-            <Text style={{ color: theme.colors.primary, fontSize: 16 }}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              if (searchQuery.trim()) {
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+              activeOpacity={1}
+              onPress={() => {
                 setSearchDialogVisible(false);
-                router.push({
-                  pathname: '../collections/searchPassages',
-                  params: { query: searchQuery.trim() }
-                });
                 setSearchQuery('');
-              }
-            }}
-            style={{ padding: 8, marginLeft: 16 }}
-            disabled={!searchQuery.trim()}
-          >
-            <Text style={{ 
-              color: searchQuery.trim() ? theme.colors.primary : theme.colors.onSurfaceVariant, 
-              fontSize: 16,
-              fontWeight: '600'
-            }}>
-              Search
-            </Text>
-          </TouchableOpacity>
-        </Dialog.Actions>
-      </Dialog>
+              }}
+            >
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={(e) => e.stopPropagation()}
+                style={{ backgroundColor: theme.colors.surface, marginHorizontal: 20, borderRadius: 12, padding: 20, width: '90%', maxWidth: 400 }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={{ color: theme.colors.onSurface, fontSize: 20, fontFamily: 'Inter', fontWeight: '600' }}>
+                    Search Passages
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSearchDialogVisible(false);
+                      setSearchQuery('');
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: theme.colors.surface2,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  placeholder="Search by reference"
+                  placeholderTextColor={theme.colors.onSurfaceVariant}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  style={{
+                    backgroundColor: theme.colors.background,
+                    borderRadius: 8,
+                    padding: 12,
+                    color: theme.colors.onSurface,
+                    fontSize: 16,
+                    borderWidth: 1,
+                    borderColor: theme.colors.outline,
+                    marginBottom: 16,
+                  }}
+                  autoFocus
+                  onSubmitEditing={() => {
+                    if (searchQuery.trim()) {
+                      setSearchDialogVisible(false);
+                      router.push({
+                        pathname: '../collections/searchPassages',
+                        params: { query: searchQuery.trim() }
+                      });
+                      setSearchQuery('');
+                    }
+                  }}
+                />
+                <TouchableOpacity
+                  onPress={() => {
+                    if (searchQuery.trim()) {
+                      setSearchDialogVisible(false);
+                      router.push({
+                        pathname: '../collections/searchPassages',
+                        params: { query: searchQuery.trim() }
+                      });
+                      setSearchQuery('');
+                    }
+                  }}
+                  disabled={!searchQuery.trim()}
+                  style={{
+                    backgroundColor: searchQuery.trim() ? theme.colors.primary : theme.colors.surface2,
+                    borderRadius: 8,
+                    padding: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    opacity: searchQuery.trim() ? 1 : 0.5,
+                  }}
+                >
+                  <Text style={{
+                    color: searchQuery.trim() ? theme.colors.onPrimary : theme.colors.onSurfaceVariant,
+                    fontSize: 16,
+                    fontWeight: '600',
+                    fontFamily: 'Inter',
+                  }}>
+                    Search
+                  </Text>
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </Modal>
+      </Portal>
       
       <Snackbar
         visible={snackbarVisible}

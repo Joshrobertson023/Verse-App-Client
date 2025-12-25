@@ -42,6 +42,7 @@ export interface User {
     dateRegistered?: Date;
     lastSeen?: Date;
     description?: string;
+    accountFlagged?: number;
     profileVisibility?: number;
     subscribedVerseOfDay?: boolean;
     pushNotificationsEnabled?: boolean;
@@ -52,6 +53,7 @@ export interface User {
     notifyNoteLiked?: boolean;
     badgeNotificationsEnabled?: boolean;
     badgeOverdueEnabled?: boolean;
+    pushNotificationToken?: string;
     isAdmin?: boolean;
     isPaid?: boolean;
     streak?: Streak[];
@@ -60,14 +62,18 @@ export interface User {
     versesOverdue: number;
     numberPublishedCollections: number;
     points: number;
-    bibleVersion?: string;
+    bibleVersion?: number;
     hasShownBibleHelp?: boolean;
     profilePictureUrl?: string;
     banned?: boolean;
+    themePreference?: number;
+    typeOutReference: boolean;
+    practiceNotificationsEnabled?: boolean;
+    friendsActivityNotificationsEnabled?: boolean;
+    streakRemindersEnabled?: boolean;
 }
 
 export interface UserVerse {
-    nextPracticeDate?: string | null;
     clientId?: string;
     id?: number;
     username: string;
@@ -79,6 +85,7 @@ export interface UserVerse {
     progressPercent?: number;
     timesMemorized?: number;
     verses: Verse[];
+    dueDate?: Date;
 }
 
 export interface Streak {
@@ -109,7 +116,7 @@ export interface loginInfo {
     password: string;
     confirmPassword: string;
     email: string;
-    bibleVersion?: string;
+    bibleVersion?: number;
 }
 
 export interface homePageStats {
@@ -205,7 +212,7 @@ const emptyLoginInfo: loginInfo = {
     email: '',
     password: '',
     confirmPassword: '',
-    bibleVersion: 'KJV',
+    bibleVersion: 0,
 };
 
 const emptyNewCollection: Collection = {
@@ -260,6 +267,7 @@ export const loggedOutUser: User = {
     subscribedVerseOfDay: true,
     pushNotificationsEnabled: true,
     points: 0,
+    typeOutReference: false,
 }
 
 interface AppState {

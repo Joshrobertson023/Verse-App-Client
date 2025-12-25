@@ -64,7 +64,8 @@ const nextClick = async () => {
             versesOverdue: 0,
             collectionsSortBy: 1,
             points: 0,
-            bibleVersion: loginInfo?.bibleVersion || 'KJV',
+            bibleVersion: loginInfo?.bibleVersion ?? 0,
+            typeOutReference: false,
         }
 
         await createUser(newUser);

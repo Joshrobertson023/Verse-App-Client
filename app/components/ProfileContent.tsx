@@ -12,6 +12,7 @@ import { Activity, loggedOutUser, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 import { cacheProfilePicture, clearCachedProfilePicture } from '../utils/profilePictureCache';
+import { formatPoints } from '../utils/numberFormat';
 
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
 
@@ -489,6 +490,14 @@ export default function ProfileContent() {
           >
             <View
               style={{
+                justifyContent: 'center',
+                marginTop: -10,
+              }}
+            >
+              <Ionicons name="star-outline" size={44} color={theme.colors.onBackground} style={{marginTop: -5, marginRight: 8}} />
+            </View>
+            <View
+              style={{
                 flexDirection: 'column',
                 justifyContent: 'center',
               }}
@@ -503,7 +512,7 @@ export default function ProfileContent() {
                   color: theme.colors.onBackground,
                 }}
               >
-                {user.points || 0}
+                {formatPoints(user.points || 0)}
               </Text>
               <Text
                 style={{

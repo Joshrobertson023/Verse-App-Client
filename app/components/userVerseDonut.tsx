@@ -54,8 +54,8 @@ export default function UserVerseDonut({ userVerse, size = 60, nextPracticeDate,
             />
           </Svg>
           <View style={donutStyles.centerText}>
-            <Text style={[styles.tinyText, { fontSize: 10, color: theme.colors.onSurfaceVariant }]}>
-              —
+            <Text style={[styles.tinyText, { fontSize: 9, fontWeight: '600', color: theme.colors.onBackground }]}>
+              0%
             </Text>
           </View>
         </View>
@@ -98,7 +98,7 @@ export default function UserVerseDonut({ userVerse, size = 60, nextPracticeDate,
         
         {/* Center text - show progress percentage or checkmark */}
         <View style={donutStyles.centerText}>
-          <Text style={[styles.tinyText, { fontSize: 9, fontWeight: '600', color: theme.colors.onBackground }]}>
+          <Text style={[{ fontSize: 22, fontWeight: '600', color: theme.colors.onBackground }]}>
             {Math.round(memorizedPercent)}%
           </Text>
         </View>
@@ -143,7 +143,7 @@ const donutStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  centerText: {
+    centerText: {
     position: 'absolute',
     justifyContent: 'center',
     alignItems: 'center',

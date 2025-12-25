@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Portal } from 'react-native-paper';
 import { getFriendNames, shareCollection } from '../db';
 import { Collection, useAppStore, User } from '../store';
@@ -73,25 +73,50 @@ export default function ShareCollectionSheet({ visible, collection, onClose, onS
         animationType="fade"
         onRequestClose={onClose}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ backgroundColor: theme.colors.surface, borderRadius: 16, width: '85%', maxHeight: '70%', padding: 20 }}>
-            <Text style={{
-              fontFamily: 'Noto Serif bold',
-              fontSize: 20,
-              color: theme.colors.onBackground,
-              marginBottom: 20,
-            }}>
-              Share Collection
-            </Text>
-
-            <Text style={{
-              fontSize: 14,
-              color: theme.colors.onSurfaceVariant,
-              marginBottom: 10,
-              fontFamily: 'Inter'
-            }}>
-              Share "{collection.title}" with a friend
-            </Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <TouchableOpacity
+            style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+            activeOpacity={1}
+            onPress={() => {
+              setSelectedFriend(null);
+              onClose();
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+              style={{ backgroundColor: theme.colors.surface, borderRadius: 12, width: '90%', maxWidth: 400, maxHeight: '70%', padding: 20 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <Text style={{
+                  fontFamily: 'Noto Serif bold',
+                  fontSize: 20,
+                  color: theme.colors.onBackground,
+                }}>
+                  Share "{collection.title}"
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setSelectedFriend(null);
+                    onClose();
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 16,
+                    backgroundColor: theme.colors.surface2,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
+                </TouchableOpacity>
+              </View>
 
             <ScrollView>
               {loading ? (
@@ -149,55 +174,36 @@ export default function ShareCollectionSheet({ visible, collection, onClose, onS
               )}
             </ScrollView>
 
-            <View style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              marginTop: 20,
-            }}>
               <TouchableOpacity
                 style={{
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
+                  backgroundColor: (selectedFriend && sharing === null) ? theme.colors.primary : theme.colors.surface2,
+                  paddingVertical: 14,
                   borderRadius: 8,
-                }}
-                onPress={() => {
-                  setSelectedFriend(null);
-                  onClose();
-                }}
-              >
-                <Text style={{
-                  ...styles.tinyText,
-                  color: theme.colors.onBackground,
-                }}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={{
-                  backgroundColor: theme.colors.primary,
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
-                  borderRadius: 8,
-                  opacity: selectedFriend && sharing === null ? 1 : 0.5,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginTop: 16,
+                  opacity: (selectedFriend && sharing === null) ? 1 : 0.5,
                 }}
                 onPress={handleShare}
                 disabled={!selectedFriend || sharing !== null}
+                activeOpacity={0.7}
               >
                 {sharing !== null ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text style={{
-                    ...styles.tinyText,
+                    fontSize: 16,
                     color: '#fff',
+                    fontFamily: 'Inter',
+                    fontWeight: '600'
                   }}>
                     Share
                   </Text>
                 )}
               </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </Portal>
   );

@@ -5,7 +5,7 @@ import React, { useEffect, useLayoutEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getVerseSearchResult, getUserCollections, getUserVersesPopulated } from '../db';
+import { getUserCollections, getUserVersesPopulated, getVerseSearchResult } from '../db';
 import { Collection, SearchData, UserVerse, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -188,12 +188,8 @@ export default function SearchPassagesScreen() {
         </View>
       ) : searchResults.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-          <Ionicons name="search-outline" size={80} color={theme.colors.onSurfaceVariant} />
           <Text style={{ ...styles.text, fontSize: 20, fontWeight: '600', marginTop: 20, textAlign: 'center' }}>
             No passages found
-          </Text>
-          <Text style={{ ...styles.tinyText, marginTop: 8, color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-            Try searching by book (e.g., "Psalms"), chapter (e.g., "Psalms 119"), or reference (e.g., "Psalms 119 2")
           </Text>
         </View>
       ) : (

@@ -42,7 +42,6 @@ export default function VerseCatalogScreen() {
         setLoadingCategories(true);
         const cats = await getAllCategories();
         setCategories(cats);
-        // Don't auto-select a category - show all chips
         setSelectedCategoryId(null);
       } catch (error) {
         console.error('Failed to load categories:', error);
@@ -53,8 +52,6 @@ export default function VerseCatalogScreen() {
     loadCategories();
   }, []);
 
-  // Don't load verses automatically - only when navigating to category page
-
   const handleAddVerse = (verse: Verse) => {
     const userVerse: UserVerse = {
       username: user.username,
@@ -62,14 +59,12 @@ export default function VerseCatalogScreen() {
       verses: [verse],
     };
 
-    // Check if we're editing an existing collection or creating a new one
     if (editingCollection) {
-      // For editing collection, we need to check if it already exists
       const existingVerse = editingCollection.userVerses?.find(
         (uv) => uv.readableReference === userVerse.readableReference
       );
       if (existingVerse) {
-        return; // Already in collection
+        return;
       }
       // Add to editing collection
       const updatedUserVerses = [...(editingCollection.userVerses || []), userVerse];
@@ -85,7 +80,7 @@ export default function VerseCatalogScreen() {
         (r) => r.readableReference === userVerse.readableReference
       );
       if (existingVerse) {
-        return; // Already in collection
+        return;
       }
       addUserVerseToCollection(userVerse);
     }
@@ -108,7 +103,7 @@ export default function VerseCatalogScreen() {
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       {/* Category List */}
       <ScrollView
-        style={{ flex: 1 }}
+        style={{ flex: selectedCategoryId === null ? 1 : 0 }}
         contentContainerStyle={{ padding: 20 }}
       >
         {loadingCategories ? (
@@ -140,10 +135,11 @@ export default function VerseCatalogScreen() {
             </React.Fragment>
           ))
         )}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 200 }} />
       </ScrollView>
 
       {/* Verses List */}
+      {selectedCategoryId !== null && (
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20 }}
@@ -262,6 +258,7 @@ export default function VerseCatalogScreen() {
           })
         )}
       </ScrollView>
+      )}
     </View>
   );
 }

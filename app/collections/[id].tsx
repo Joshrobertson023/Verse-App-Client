@@ -14,7 +14,6 @@ import SaveVerseToCollectionSheet from '../components/saveVerseToCollectionSheet
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
-import UserVerseDonut from '../components/userVerseDonut';
 import { formatISODate, getUTCTimestamp } from '../dateUtils';
 import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, deleteUserVerse, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, insertUserVerse, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
 import { Collection, CollectionNote, useAppStore, UserVerse, Verse } from '../store';
@@ -1089,7 +1088,7 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                           {(userVerse.verses || []).map((verse, verseIndex) => (
                               <View key={verse.verse_reference || `${userVerse.readableReference}-verse-${verseIndex}`} style={{}}>
                                   <View>
-                                      <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 16, color: 'lightgray'}}>{verse.verse_Number}: {verse.text} </Text>
+                                      <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 16, color: theme.colors.verseText}}>{verse.verse_Number}: {verse.text} </Text>
                                   </View>
                               </View>
                           ))}
@@ -1097,15 +1096,15 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                         <View style={{alignItems: 'stretch', justifyContent: 'space-between'}}>
                           <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
                             <View style={{alignItems: 'center', justifyContent: 'center'}}>
-                              <UserVerseDonut 
-                                userVerse={userVerse} 
-                                size={60}
-                                nextPracticeDate={userVerse.nextPracticeDate ? new Date(userVerse.nextPracticeDate) : null}
-                                showDaysUntilDue={true}
-                              />
+
+                            {/* UserVerse Stats Section */}
+                            <View style={{alignItems: 'flex-start', justifyContent: 'center', gap: 12, marginTop: 8, padding: 6, borderRadius: 8, flexDirection: 'row'}}>
+
+                            </View>
+
                             </View>
                             <View style={{}}>
-                              <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4, marginRight: 8, gap: 16}}>
+                              <View style={{alignItems: 'center', marginTop: 4, marginRight: 8, gap: 16}}>
                                 <TouchableOpacity
                                   onPress={() => {
                                     useAppStore.getState().setSelectedUserVerse(userVerse);
@@ -1132,6 +1131,20 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                                     </Text>
                                   </View>
                                 </TouchableOpacity>
+                                <Text>{userVerse.dueDate ? userVerse.dueDate : '0'}</Text>
+                                
+                                {userVerse.lastPracticed && (
+                                  <Text style={{...styles.tinyText, fontSize: 13, color: theme.colors.verseText, marginTop: -12, marginBottom: -10}}>Due {(() => {
+                                        const today = new Date();
+                                        const diffTime = userVerse?.dueDate ? userVerse?.dueDate.getTime() - today.getTime() : 0;
+                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                        if (diffDays > 1) return `in ${diffDays} days`;
+                                        if (diffDays === 1) return 'in 1 day';
+                                        if (diffDays === 0) return 'today';
+                                        if (diffDays === -1) return 'yesterday';
+                                        return `${Math.abs(diffDays)} days ago`;
+                                      })()}</Text>
+                                )}
                               </View>
                             </View>
                           </View>
