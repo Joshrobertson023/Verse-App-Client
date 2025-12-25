@@ -103,7 +103,7 @@ export default function VerseCatalogScreen() {
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       {/* Category List */}
       <ScrollView
-        style={{ flex: selectedCategoryId === null ? 1 : 0 }}
+        style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20 }}
       >
         {loadingCategories ? (
@@ -135,11 +135,10 @@ export default function VerseCatalogScreen() {
             </React.Fragment>
           ))
         )}
-        <View style={{ height: 200 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* Verses List */}
-      {selectedCategoryId !== null && (
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20 }}
@@ -258,7 +257,6 @@ export default function VerseCatalogScreen() {
           })
         )}
       </ScrollView>
-      )}
     </View>
   );
 }
