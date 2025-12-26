@@ -12,9 +12,8 @@ import { formatDate as formatDateUtil } from './dateUtils';
 type VerseOfDayQueueItem = {
   id: number;
   readableReference: string;
-  isSent: boolean;
-  sentDate: string | null;
-  createdDate: string;
+  sequence: number;
+  isCurrent: boolean;
 };
 
 export default function AdminScreen() {
@@ -64,35 +63,6 @@ export default function AdminScreen() {
   const siteBanner = useAppStore((state) => state.siteBanner);
   const setSiteBanner = useAppStore((state) => state.setSiteBanner);
 
-  const latestSentDateMs = verseOfDays.reduce<number | null>((max, item) => {
-    if (!item.sentDate) {
-      return max;
-    }
-
-    const timestamp = new Date(item.sentDate).getTime();
-    if (Number.isNaN(timestamp)) {
-      return max;
-    }
-
-    if (max === null || timestamp > max) {
-      return timestamp;
-    }
-
-    return max;
-  }, null);
-
-  const getQueueStatusLabel = (item: VerseOfDayQueueItem) => {
-    if (item.sentDate) {
-      const timestamp = new Date(item.sentDate).getTime();
-      if (!Number.isNaN(timestamp) && latestSentDateMs !== null && timestamp === latestSentDateMs) {
-        return 'Current';
-      }
-
-      return 'Used';
-    }
-
-    return 'Upcoming';
-  };
 
   const syncCurrentUserAdminFlag = useCallback((adminList: AdminSummary[]) => {
     if (!user?.username) {
@@ -148,23 +118,14 @@ export default function AdminScreen() {
       const data = await getUpcomingVerseOfDay();
       const normalized: VerseOfDayQueueItem[] = Array.isArray(data)
         ? data.map((item: any) => ({
-          id: item.id,
-          readableReference: item.readableReference,
-          isSent: !!item.isSent,
-          sentDate: item.sentDate ?? null,
-          createdDate: item.createdDate
-        }))
+            id: item.id,
+            readableReference: item.readableReference,
+            sequence: item.sequence ?? 0,
+            isCurrent: item.isCurrent ?? false
+          }))
         : [];
 
-      normalized.sort((a, b) => {
-        if (a.isSent === b.isSent) {
-          const aCreated = new Date(a.createdDate).getTime();
-          const bCreated = new Date(b.createdDate).getTime();
-          return aCreated - bCreated;
-        }
-
-        return a.isSent ? 1 : -1;
-      });
+      // Already sorted by sequence from server
       setVerseOfDays(normalized);
     } catch (error) {
       console.error('Failed to load verse of days:', error);
@@ -1130,9 +1091,8 @@ export default function AdminScreen() {
                 <DataTable.Header>
                   <DataTable.Title style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>ID</Text></DataTable.Title>
                   <DataTable.Title style={{ minWidth: 180 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Reference</Text></DataTable.Title>
-                  <DataTable.Title style={{ minWidth: 120 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Status</Text></DataTable.Title>
-                  <DataTable.Title style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Last Sent</Text></DataTable.Title>
-                  <DataTable.Title style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Added</Text></DataTable.Title>
+                  <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Sequence</Text></DataTable.Title>
+                  <DataTable.Title style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Current</Text></DataTable.Title>
                   <DataTable.Title style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>Action</Text></DataTable.Title>
                 </DataTable.Header>
 
@@ -1140,13 +1100,16 @@ export default function AdminScreen() {
                   <DataTable.Row key={vod.id}>
                     <DataTable.Cell style={{ minWidth: 80 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{vod.id}</Text></DataTable.Cell>
                     <DataTable.Cell style={{ minWidth: 180 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{vod.readableReference}</Text></DataTable.Cell>
-                    <DataTable.Cell style={{ minWidth: 120 }}>
-                      <Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>
-                        {getQueueStatusLabel(vod)}
+                    <DataTable.Cell style={{ minWidth: 100 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{vod.sequence}</Text></DataTable.Cell>
+                    <DataTable.Cell style={{ minWidth: 100 }}>
+                      <Text style={{ 
+                        color: vod.isCurrent ? theme.colors.primary : theme.colors.onBackground, 
+                        fontFamily: 'Inter',
+                        fontWeight: vod.isCurrent ? 'bold' : 'normal'
+                      }}>
+                        {vod.isCurrent ? 'Yes' : '—'}
                       </Text>
                     </DataTable.Cell>
-                    <DataTable.Cell style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(vod.sentDate)}</Text></DataTable.Cell>
-                    <DataTable.Cell style={{ minWidth: 160 }}><Text style={{ color: theme.colors.onBackground, fontFamily: 'Inter' }}>{formatDate(vod.createdDate)}</Text></DataTable.Cell>
                     <DataTable.Cell style={{ minWidth: 80 }}>
                       <TouchableOpacity
                         onPress={() => handleDeleteVerseOfDay(vod.id)}

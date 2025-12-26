@@ -5,7 +5,6 @@ import { Text, TouchableOpacity, View } from 'react-native';
 import { Collection, useAppStore } from '../store';
 import getStyles from '../styles';
 import useAppTheme from '../theme';
-import CollectionDonut from './collectionDonut';
 
 interface CollectionItemProps {
   collection: Collection;
@@ -91,18 +90,10 @@ export default function collectionItem({ collection, onMenuPress }: CollectionIt
               <Text style={styles.tinyText}>{visibilityLabel}</Text>
             </View>
           </View>
-          <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'center', flexDirection: 'row', gap: 8}}>
-
-          {/* donut progress */}
-            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-              <CollectionDonut 
-                averageProgressPercent={collection.averageProgressPercent} 
-                size={50} 
-              />
-            </View>
+          <View style={{justifyContent: 'space-between', height: '100%', alignItems: 'flex-start', flexDirection: 'row', gap: 8}}>
             
           {/* menu */}
-            <View style={{ alignItems: 'center', justifyContent: 'flex-start' }}>
+            <View style={{ alignItems: 'flex-start', justifyContent: 'flex-start', marginTop: 5 }}>
               {collection.title === 'Favorites' ? 
               <Ionicons name='star' size={22} color={theme.colors.onBackground} style={{marginTop: 2, marginRight: 2}} />
               : 

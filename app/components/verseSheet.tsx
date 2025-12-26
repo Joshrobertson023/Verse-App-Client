@@ -6,7 +6,7 @@ import { ActivityIndicator, Dimensions, Modal, Text, TextInput, TouchableOpacity
 import { ScrollView } from 'react-native-gesture-handler';
 import { Checkbox, Portal, Snackbar } from 'react-native-paper';
 import { formatDate } from '../dateUtils';
-import { addHighlight, addUserVersesToNewCollection, checkHighlight, createCollectionDB, createNote, getMostRecentCollectionId, getNotesByVerseReference, getPublicNotesByVerseReference, getUserCollections, likeNote, refreshUser, removeHighlight, unlikeNote, updateCollectionDB, updateCollectionsOrder, VerseNote } from '../db';
+import { addHighlight, addUserVersesToNewCollection, checkHighlight, createCollectionDB, createNote, deleteNote, getMostRecentCollectionId, getNotesByVerseReference, getPublicNotesByVerseReference, getUserCollections, likeNote, refreshUser, removeHighlight, unlikeNote, updateCollectionDB, updateCollectionsOrder, updateNote, VerseNote } from '../db';
 import { Collection, useAppStore, UserVerse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -53,6 +53,9 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
     const [noteText, setNoteText] = useState('');
     const [isPublicNote, setIsPublicNote] = useState(false);
     const [isCreatingNote, setIsCreatingNote] = useState(false);
+    const [editingNote, setEditingNote] = useState<VerseNote | null>(null);
+    const [isDeletingNote, setIsDeletingNote] = useState(false);
+    const [isUpdatingNote, setIsUpdatingNote] = useState(false);
 
     // Get verses from userVerse
     const verses = userVerse?.verses ?? [];
@@ -115,10 +118,115 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
     const handleAddNote = () => {
         setNoteText('');
         setIsPublicNote(false);
+        setEditingNote(null);
         setShowAddNoteModal(true);
     };
 
+    const handleEditNote = (note: VerseNote) => {
+        setEditingNote(note);
+        setNoteText(note.text);
+        setIsPublicNote(note.isPublic);
+        setShowAddNoteModal(true);
+    };
+
+    const handleUpdateNote = async () => {
+        if (!editingNote || !noteText.trim() || !user?.username || isUpdatingNote) return;
+
+        setIsUpdatingNote(true);
+        try {
+            const updatedNote = await updateNote(editingNote.id, noteText.trim());
+            
+            if (verses.length > 1) {
+                // Update in verseNotes map
+                setVerseNotes(prev => {
+                    const newMap = new Map(prev);
+                    for (const verse of verses) {
+                        const verseRef = verse.verse_reference;
+                        if (verseRef) {
+                            const existing = newMap.get(verseRef) || { public: [], private: [] };
+                            if (editingNote.isPublic) {
+                                newMap.set(verseRef, {
+                                    public: existing.public.map(n => n.id === editingNote.id ? updatedNote : n),
+                                    private: existing.private
+                                });
+                            } else {
+                                newMap.set(verseRef, {
+                                    public: existing.public,
+                                    private: existing.private.map(n => n.id === editingNote.id ? updatedNote : n)
+                                });
+                            }
+                        }
+                    }
+                    return newMap;
+                });
+            } else {
+                if (editingNote.isPublic) {
+                    setNotes(prev => prev.map(n => n.id === editingNote.id ? updatedNote : n));
+                } else {
+                    setPrivateNotes(prev => prev.map(n => n.id === editingNote.id ? updatedNote : n));
+                }
+            }
+            
+            setShowAddNoteModal(false);
+            setNoteText('');
+            setEditingNote(null);
+            setIsPublicNote(false);
+        } catch (error) {
+            console.error('Error updating note:', error);
+        } finally {
+            setIsUpdatingNote(false);
+        }
+    };
+
+    const handleDeleteNote = async (note: VerseNote) => {
+        if (!user?.username || isDeletingNote) return;
+
+        setIsDeletingNote(true);
+        try {
+            await deleteNote(note.id);
+            
+            if (verses.length > 1) {
+                // Remove from verseNotes map
+                setVerseNotes(prev => {
+                    const newMap = new Map(prev);
+                    for (const verse of verses) {
+                        const verseRef = verse.verse_reference;
+                        if (verseRef) {
+                            const existing = newMap.get(verseRef) || { public: [], private: [] };
+                            if (note.isPublic) {
+                                newMap.set(verseRef, {
+                                    public: existing.public.filter(n => n.id !== note.id),
+                                    private: existing.private
+                                });
+                            } else {
+                                newMap.set(verseRef, {
+                                    public: existing.public,
+                                    private: existing.private.filter(n => n.id !== note.id)
+                                });
+                            }
+                        }
+                    }
+                    return newMap;
+                });
+            } else {
+                if (note.isPublic) {
+                    setNotes(prev => prev.filter(n => n.id !== note.id));
+                } else {
+                    setPrivateNotes(prev => prev.filter(n => n.id !== note.id));
+                }
+            }
+        } catch (error) {
+            console.error('Error deleting note:', error);
+        } finally {
+            setIsDeletingNote(false);
+        }
+    };
+
     const handleCreateNote = async () => {
+        if (editingNote) {
+            await handleUpdateNote();
+            return;
+        }
         if (!noteText.trim() || !user?.username || !readableReference || isCreatingNote) return;
 
         setIsCreatingNote(true);
@@ -902,7 +1010,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                                 const noteIsMultiVerse = isMultiVerseReference(note.verseReference || '');
                                                 return (
                                                 <View key={note.id} style={{ flexDirection: 'row' }}>
-                                                    <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                    <View style={{ width: Dimensions.get('window').width * 0.75, position: 'relative' }}>
                                                         {/* Show verse reference when multiple verses are selected, but hide if note is for multiple verses */}
                                                         {!noteIsMultiVerse && (
                                                             <Text style={{ 
@@ -923,10 +1031,34 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                                         <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
                                                             {note.text}
                                                         </Text>
-                                                        {note.createdDate && (
-                                                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, marginTop: 6 }}>
-                                                                {formatDate(note.createdDate)}
-                                                            </Text>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                                                            {note.createdDate && (
+                                                                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11 }}>
+                                                                    {formatDate(note.createdDate)}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                        {note.username === user?.username && (
+                                                            <View style={{ position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', gap: 8 }}>
+                                                                <TouchableOpacity
+                                                                    onPress={() => handleEditNote(note)}
+                                                                    disabled={isDeletingNote || isUpdatingNote}
+                                                                    style={{ padding: 4 }}
+                                                                >
+                                                                    <Ionicons name="pencil" size={16} color={theme.colors.onBackground} />
+                                                                </TouchableOpacity>
+                                                                <TouchableOpacity
+                                                                    onPress={() => handleDeleteNote(note)}
+                                                                    disabled={isDeletingNote || isUpdatingNote}
+                                                                    style={{ padding: 4 }}
+                                                                >
+                                                                    {isDeletingNote ? (
+                                                                        <ActivityIndicator size="small" color={theme.colors.error} />
+                                                                    ) : (
+                                                                        <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
+                                                                    )}
+                                                                </TouchableOpacity>
+                                                            </View>
                                                         )}
                                                     </View>
                                                     {noteIndex < allPrivateNotes.length - 1 && (
@@ -957,7 +1089,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                         >
                                             {privateNotes.map((note, index) => (
                                                 <View key={note.id} style={{ flexDirection: 'row' }}>
-                                                    <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                    <View style={{ width: Dimensions.get('window').width * 0.75, position: 'relative' }}>
                                                         {note.originalReference && note.originalReference !== note.verseReference && (
                                                             <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12, marginBottom: 4, fontStyle: 'italic' }}>
                                                                 {note.originalReference}
@@ -966,10 +1098,34 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                                         <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
                                                             {note.text}
                                                         </Text>
-                                                        {note.createdDate && (
-                                                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, marginTop: 6 }}>
-                                                                {formatDate(note.createdDate)}
-                                                            </Text>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                                                            {note.createdDate && (
+                                                                <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11 }}>
+                                                                    {formatDate(note.createdDate)}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                        {note.username === user?.username && (
+                                                            <View style={{ position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', gap: 8 }}>
+                                                                <TouchableOpacity
+                                                                    onPress={() => handleEditNote(note)}
+                                                                    disabled={isDeletingNote || isUpdatingNote}
+                                                                    style={{ padding: 4 }}
+                                                                >
+                                                                    <Ionicons name="pencil" size={16} color={theme.colors.onBackground} />
+                                                                </TouchableOpacity>
+                                                                <TouchableOpacity
+                                                                    onPress={() => handleDeleteNote(note)}
+                                                                    disabled={isDeletingNote || isUpdatingNote}
+                                                                    style={{ padding: 4 }}
+                                                                >
+                                                                    {isDeletingNote ? (
+                                                                        <ActivityIndicator size="small" color={theme.colors.error} />
+                                                                    ) : (
+                                                                        <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
+                                                                    )}
+                                                                </TouchableOpacity>
+                                                            </View>
                                                         )}
                                                     </View>
                                                     {index < privateNotes.length - 1 && (
@@ -1071,7 +1227,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
 
                                                 return (
                                                     <View key={note.id} style={{ flexDirection: 'row' }}>
-                                                        <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                        <View style={{ width: Dimensions.get('window').width * 0.75, position: 'relative' }}>
                                                             {/* Show verse reference when multiple verses are selected, but hide if note is for multiple verses */}
                                                             {!noteIsMultiVerse && (
                                                                 <Text style={{ 
@@ -1118,6 +1274,28 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                                             <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
                                                                 {note.text}
                                                             </Text>
+                                                            {note.username === user?.username && (
+                                                                <View style={{ position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', gap: 8 }}>
+                                                                    <TouchableOpacity
+                                                                        onPress={() => handleEditNote(note)}
+                                                                        disabled={isDeletingNote || isUpdatingNote}
+                                                                        style={{ padding: 4 }}
+                                                                    >
+                                                                        <Ionicons name="pencil" size={16} color={theme.colors.onBackground} />
+                                                                    </TouchableOpacity>
+                                                                    <TouchableOpacity
+                                                                        onPress={() => handleDeleteNote(note)}
+                                                                        disabled={isDeletingNote || isUpdatingNote}
+                                                                        style={{ padding: 4 }}
+                                                                    >
+                                                                        {isDeletingNote ? (
+                                                                            <ActivityIndicator size="small" color={theme.colors.error} />
+                                                                        ) : (
+                                                                            <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
+                                                                        )}
+                                                                    </TouchableOpacity>
+                                                                </View>
+                                                            )}
                                                         </View>
                                                         {noteIndex < allPublicNotes.length - 1 && (
                                                             <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
@@ -1168,7 +1346,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
 
                                                 return (
                                                     <View key={note.id} style={{ flexDirection: 'row' }}>
-                                                        <View style={{ width: Dimensions.get('window').width * 0.75 }}>
+                                                        <View style={{ width: Dimensions.get('window').width * 0.75, position: 'relative' }}>
                                                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                                                                 <Text style={{ color: theme.colors.onBackground, fontSize: 12, fontWeight: '600' }}>
                                                                     {note.username}
@@ -1203,6 +1381,28 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                                             <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
                                                                 {note.text}
                                                             </Text>
+                                                            {note.username === user?.username && (
+                                                                <View style={{ position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', gap: 8 }}>
+                                                                    <TouchableOpacity
+                                                                        onPress={() => handleEditNote(note)}
+                                                                        disabled={isDeletingNote || isUpdatingNote}
+                                                                        style={{ padding: 4 }}
+                                                                    >
+                                                                        <Ionicons name="pencil" size={16} color={theme.colors.onBackground} />
+                                                                    </TouchableOpacity>
+                                                                    <TouchableOpacity
+                                                                        onPress={() => handleDeleteNote(note)}
+                                                                        disabled={isDeletingNote || isUpdatingNote}
+                                                                        style={{ padding: 4 }}
+                                                                    >
+                                                                        {isDeletingNote ? (
+                                                                            <ActivityIndicator size="small" color={theme.colors.error} />
+                                                                        ) : (
+                                                                            <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
+                                                                        )}
+                                                                    </TouchableOpacity>
+                                                                </View>
+                                                            )}
                                                         </View>
                                                         {index < notes.length - 1 && (
                                                             <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
@@ -1481,7 +1681,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                             color: theme.colors.onBackground,
                             marginBottom: 20,
                         }}>
-                            Add Note
+                            {editingNote ? 'Edit Note' : 'Add Note'}
                         </Text>
 
                         <TextInput
@@ -1549,6 +1749,7 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                     setShowAddNoteModal(false);
                                     setNoteText('');
                                     setIsPublicNote(false);
+                                    setEditingNote(null);
                                 }}
                             >
                                 <Text style={{
@@ -1567,16 +1768,16 @@ export default function VerseSheet({ userVerse, visible, onClose, bookName, chap
                                     borderRadius: 8,
                                 }}
                                 onPress={handleCreateNote}
-                                disabled={!noteText.trim() || isCreatingNote}
+                                disabled={!noteText.trim() || isCreatingNote || isUpdatingNote}
                             >
-                                {isCreatingNote ? (
+                                {(isCreatingNote || isUpdatingNote) ? (
                                     <ActivityIndicator size="small" color="#fff" />
                                 ) : (
                                     <Text style={{
                                         ...styles.tinyText,
                                         color: '#fff',
                                     }}>
-                                        Create
+                                        {editingNote ? 'Update' : 'Create'}
                                     </Text>
                                 )}
                             </TouchableOpacity>

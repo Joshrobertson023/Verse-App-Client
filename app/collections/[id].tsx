@@ -3,7 +3,7 @@ import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Dimensions, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Dimensions, KeyboardAvoidingView, Modal, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { Dialog, Divider, Portal, Snackbar, Text } from 'react-native-paper';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -15,12 +15,23 @@ import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { CollectionContentSkeleton } from '../components/skeleton';
 import { formatISODate, getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, deleteUserVerse, getCollectionById, getMostRecentCollectionId, getUserCollections, getUserVersesPopulated, insertUserVerse, refreshUser, updateCollectionDB, updateCollectionsOrder } from '../db';
+import { addUserVersesToNewCollection, createCollectionDB, createNote, deleteCollection, deleteNote, deleteUserVerse, getCollectionById, getMostRecentCollectionId, getNotesByVerseReference, getUserCollections, getUserVersesPopulated, insertUserVerse, refreshUser, updateCollectionDB, updateCollectionsOrder, updateNote, VerseNote } from '../db';
 import { Collection, CollectionNote, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
 const { height } = Dimensions.get('window');
+
+// Helper function to convert date strings to Date objects in userVerses
+function convertUserVerseDates(userVerses: UserVerse[]): UserVerse[] {
+  return userVerses.map(uv => ({
+    ...uv,
+    lastPracticed: uv.lastPracticed ? (uv.lastPracticed instanceof Date ? uv.lastPracticed : new Date(uv.lastPracticed)) : undefined,
+    dateMemorized: uv.dateMemorized ? (uv.dateMemorized instanceof Date ? uv.dateMemorized : new Date(uv.dateMemorized)) : undefined,
+    dateAdded: uv.dateAdded ? (uv.dateAdded instanceof Date ? uv.dateAdded : new Date(uv.dateAdded)) : undefined,
+    dueDate: uv.dueDate ? (uv.dueDate instanceof Date ? uv.dueDate : new Date(uv.dueDate)) : undefined,
+  }));
+}
 
 function orderByDateAdded(userVerses: UserVerse[]): UserVerse[] {
   return [...userVerses].sort((a, b) => {
@@ -197,13 +208,11 @@ export default function Index() {
     const [isCreatingCopy, setIsCreatingCopy] = useState(false);
     const [practiceModeModalVisible, setPracticeModeModalVisible] = useState(false);
     
-    // Bottom sheet refs for settings
     const collectionSettingsSheetRef = useRef<BottomSheet>(null);
     const versesSettingsSheetRef = useRef<BottomSheet>(null);
     const userVerseSettingsSheetRef = useRef<BottomSheet>(null);
     const noteSettingsSheetRef = useRef<BottomSheet>(null);
     
-    // Snap points for settings sheets
     const collectionSettingsSnapPoints = useMemo(() => ['50%'], []);
     const versesSettingsSnapPoints = useMemo(() => ['40%'], []);
     const userVerseSettingsSnapPoints = useMemo(() => ['40%'], []);
@@ -227,6 +236,19 @@ export default function Index() {
     const [pickedCollection, setPickedCollection] = useState<Collection | undefined>(undefined);
     const [userVerseActionLoading, setUserVerseActionLoading] = useState(false);
     const [creatingNewCollection, setCreatingNewCollection] = useState(false);
+    
+    const [notesDialogVisible, setNotesDialogVisible] = useState(false);
+    const [addNoteDialogVisible, setAddNoteDialogVisible] = useState(false);
+    const [selectedUserVerseForNotes, setSelectedUserVerseForNotes] = useState<UserVerse | null>(null);
+    const [userVerseNotes, setUserVerseNotes] = useState<VerseNote[]>([]);
+    const [loadingNotes, setLoadingNotes] = useState(false);
+    const [newNoteText, setNewNoteText] = useState('');
+    const [isCreatingNote, setIsCreatingNote] = useState(false);
+    const [isDeletingNote, setIsDeletingNote] = useState(false);
+    const [isUpdatingNote, setIsUpdatingNote] = useState(false);
+    const [editingNote, setEditingNote] = useState<VerseNote | null>(null);
+    const [editNoteText, setEditNoteText] = useState('');
+    const [passagesWithNotes, setPassagesWithNotes] = useState<Set<string>>(new Set());
     
     const collection = useAppStore((state) =>
       state.collections.find((c) => c.collectionId?.toString() === params.id)
@@ -374,7 +396,7 @@ useEffect(() => {
       console.log('🔄 Reloading collection after practice completion');
       const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
       const data = await getUserVersesPopulated(colToSend);
-      setUserVerses(data.userVerses ?? []);
+      setUserVerses(convertUserVerseDates(data.userVerses ?? []));
       updateCollection(data);
       setShouldReloadPracticeList(false);
     } catch (err) {
@@ -394,7 +416,7 @@ useFocusEffect(
     
     if (areVersesPopulated) {
       console.log('✅ Using cached userVerses for collection:', collection.title);
-      setUserVerses(collection.userVerses);
+      setUserVerses(convertUserVerseDates(collection.userVerses));
       return;
     }
     
@@ -409,7 +431,31 @@ useFocusEffect(
         const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
         const data = await getUserVersesPopulated(colToSend);
         console.log('✅ Fetched and cached userVerses for collection:', collection.title);
-        setUserVerses(data.userVerses ?? []);
+        const populatedUserVerses = convertUserVerseDates(data.userVerses ?? []);
+        
+        // Load notes before replacing skeletons
+        if (populatedUserVerses.length > 0 && user?.username) {
+          const notesMap = new Set<string>();
+          const passagesToCheck = populatedUserVerses.slice(0, 20);
+          
+          for (const userVerse of passagesToCheck) {
+            if (!userVerse.readableReference) continue;
+            try {
+              const allNotes = await getNotesByVerseReference(userVerse.readableReference, user.username);
+              const privateNotes = allNotes.filter((note: VerseNote) => !note.isPublic);
+              if (privateNotes.length > 0) {
+                notesMap.add(userVerse.readableReference);
+              }
+            } catch (error) {
+              // Silently fail for individual note checks
+              console.error('Failed to check notes for passage:', userVerse.readableReference);
+            }
+          }
+          
+          setPassagesWithNotes(notesMap);
+        }
+        
+        setUserVerses(populatedUserVerses);
         updateCollection(data);
       } catch (err) {
         console.error(err);
@@ -482,6 +528,35 @@ useEffect(() => {
     setOrderedItems(items);
   }
 }, [userVerses, versesSortBy, collection?.verseOrder, collection?.notes]);
+
+// Check for notes when userVerses are loaded
+useEffect(() => {
+  if (!userVerses || userVerses.length === 0 || !user.username) return;
+  
+  const checkNotesForPassages = async () => {
+    const notesMap = new Set<string>();
+    // Check notes for each passage (limit to avoid too many API calls)
+    const passagesToCheck = userVerses.slice(0, 20); // Check first 20 passages
+    
+    for (const userVerse of passagesToCheck) {
+      if (!userVerse.readableReference) continue;
+      try {
+        const allNotes = await getNotesByVerseReference(userVerse.readableReference, user.username);
+        const privateNotes = allNotes.filter((note: VerseNote) => !note.isPublic);
+        if (privateNotes.length > 0) {
+          notesMap.add(userVerse.readableReference);
+        }
+      } catch (error) {
+        // Silently fail for individual note checks
+        console.error('Failed to check notes for passage:', userVerse.readableReference);
+      }
+    }
+    
+    setPassagesWithNotes(notesMap);
+  };
+  
+  checkNotesForPassages();
+}, [userVerses, user.username]);
 
 useLayoutEffect(() => {
   if (collection) {
@@ -717,6 +792,154 @@ const handleDeleteNote = useCallback(async () => {
   }
 }, [collection, selectedNote, updateCollection]);
 
+// Notes functions for userVerses
+const openNotesDialog = useCallback(async (userVerse: UserVerse) => {
+  setSelectedUserVerseForNotes(userVerse);
+  setNotesDialogVisible(true);
+  setLoadingNotes(true);
+  try {
+    if (userVerse.readableReference && user.username) {
+      const allNotes = await getNotesByVerseReference(userVerse.readableReference, user.username);
+      const privateNotes = allNotes
+        .filter((note: VerseNote) => !note.isPublic)
+        .sort((a, b) => {
+          const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+          const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+          return dateB - dateA; // Most recent first
+        });
+      setUserVerseNotes(privateNotes);
+      // Update passagesWithNotes
+      if (privateNotes.length > 0) {
+        setPassagesWithNotes(prev => new Set(prev).add(userVerse.readableReference));
+      } else {
+        setPassagesWithNotes(prev => {
+          const next = new Set(prev);
+          next.delete(userVerse.readableReference);
+          return next;
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load notes:', error);
+    setSnackbarMessage('Failed to load notes');
+    setSnackbarVisible(true);
+  } finally {
+    setLoadingNotes(false);
+  }
+}, [user.username]);
+
+const closeNotesDialog = useCallback(() => {
+  setNotesDialogVisible(false);
+  setSelectedUserVerseForNotes(null);
+  setUserVerseNotes([]);
+}, []);
+
+const handleCreateNote = useCallback(async () => {
+  if (!selectedUserVerseForNotes?.readableReference || !user.username || !newNoteText.trim()) {
+    return;
+  }
+  
+  setIsCreatingNote(true);
+  try {
+    const createdNote = await createNote(
+      selectedUserVerseForNotes.readableReference,
+      user.username,
+      newNoteText.trim(),
+      false // isPublic = false for private notes
+    );
+    setUserVerseNotes(prev => {
+      const updated = [...prev, createdNote];
+      return updated.sort((a, b) => {
+        const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+        const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+        return dateB - dateA; // Most recent first
+      });
+    });
+    setPassagesWithNotes(prev => new Set(prev).add(selectedUserVerseForNotes.readableReference));
+    setNewNoteText('');
+    setAddNoteDialogVisible(false);
+    setSnackbarMessage('Note created');
+    setSnackbarVisible(true);
+  } catch (error) {
+    console.error('Failed to create note:', error);
+    setSnackbarMessage('Failed to create note');
+    setSnackbarVisible(true);
+  } finally {
+    setIsCreatingNote(false);
+  }
+}, [selectedUserVerseForNotes, user.username, newNoteText]);
+
+const closeAddNoteDialog = useCallback(() => {
+  setAddNoteDialogVisible(false);
+  setNewNoteText('');
+  setEditingNote(null);
+  setEditNoteText('');
+}, []);
+
+const handleEditNote = useCallback((note: VerseNote) => {
+  setEditingNote(note);
+  setEditNoteText(note.text);
+  setAddNoteDialogVisible(true);
+}, []);
+
+const handleUpdateNote = useCallback(async () => {
+  if (!editingNote || !editNoteText.trim()) return;
+  
+  setIsUpdatingNote(true);
+  try {
+    const updatedNote = await updateNote(editingNote.id, editNoteText.trim());
+    setUserVerseNotes(prev => {
+      const updated = prev.map(n => n.id === editingNote.id ? updatedNote : n);
+      return updated.sort((a, b) => {
+        const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+        const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+        return dateB - dateA; // Most recent first
+      });
+    });
+    setEditingNote(null);
+    setEditNoteText('');
+    setAddNoteDialogVisible(false);
+    setSnackbarMessage('Note updated');
+    setSnackbarVisible(true);
+  } catch (error) {
+    console.error('Failed to update note:', error);
+    setSnackbarMessage('Failed to update note');
+    setSnackbarVisible(true);
+  } finally {
+    setIsUpdatingNote(false);
+  }
+}, [editingNote, editNoteText]);
+
+const handleDeleteVerseNote = useCallback(async (noteId: number) => {
+  if (!selectedUserVerseForNotes?.readableReference) return;
+  
+  setIsDeletingNote(true);
+  try {
+    await deleteNote(noteId);
+    const remainingNotes = userVerseNotes.filter(n => n.id !== noteId);
+    setUserVerseNotes(remainingNotes);
+    
+    // Update passagesWithNotes
+    if (remainingNotes.length === 0) {
+      setPassagesWithNotes(prev => {
+        const next = new Set(prev);
+        next.delete(selectedUserVerseForNotes.readableReference);
+        return next;
+      });
+    }
+    
+    setSnackbarMessage('Note deleted');
+    setSnackbarVisible(true);
+  } catch (error) {
+    console.error('Failed to delete note:', error);
+    setSnackbarMessage('Failed to delete note');
+    setSnackbarVisible(true);
+  } finally {
+    setIsDeletingNote(false);
+  }
+}, [selectedUserVerseForNotes, userVerseNotes]);
+
+
 const versesSettingsAnimatedStyle = useAnimatedStyle(() => ({
   transform: [{ translateY: versesSettingsTranslateY.value }],
 }));
@@ -777,7 +1000,7 @@ const reloadCollectionData = useCallback(async () => {
   try {
     const refreshed = await getCollectionById(collection.collectionId);
     if (refreshed) {
-      setUserVerses(refreshed.userVerses ?? []);
+      setUserVerses(convertUserVerseDates(refreshed.userVerses ?? []));
       updateCollection(refreshed);
     }
   } catch (error) {
@@ -996,168 +1219,199 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
 
       return (
         <View style={{ flex: 1 }}>
-              <ScrollView
-                style={styles.scrollContainer}
-                contentContainerStyle={{
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingBottom: 100,
-                  paddingHorizontal: 20,
-                  paddingTop: 20,
-                  width: '100%'
-                }}
-              >
+<ScrollView
+  style={styles.scrollContainer}
+  contentContainerStyle={{
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 100,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    width: '100%'
+  }}
+>
+  {/* Published Collection Metadata */}
+  {collection && collection.authorUsername && 
+   collection.authorUsername.toLowerCase().trim() !== user.username.toLowerCase().trim() && (
+    <View style={{ 
+      width: '100%', 
+      marginBottom: 24, 
+      marginTop: 20,
+      borderRadius: 12 
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+        <Ionicons name="person-outline" size={18} color={theme.colors.onSurfaceVariant} />
+        <Text style={{ 
+          ...styles.tinyText, 
+          marginLeft: 8, 
+          color: theme.colors.onSurfaceVariant,
+          fontSize: 14 
+        }}>
+          Author: {collection.authorUsername}
+        </Text>
+      </View>
+      {collection.dateCreated && (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons name="time-outline" size={18} color={theme.colors.onSurfaceVariant} />
+          <Text style={{ 
+            ...styles.tinyText, 
+            marginLeft: 8, 
+            color: theme.colors.onSurfaceVariant,
+            fontSize: 14 
+          }}>
+            Created: {formatISODate(collection.dateCreated)}
+          </Text>
+        </View>
+      )}
+    </View>
+  )}
 
-
-          {/* Published Collection Metadata */}
-          {collection && collection.authorUsername && collection.authorUsername.toLowerCase().trim() !== user.username.toLowerCase().trim() && (
-            <View style={{ 
-              width: '100%', 
-              marginBottom: 24, 
-              marginTop: 20,
-              borderRadius: 12 
-            }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                <Ionicons name="person-outline" size={18} color={theme.colors.onSurfaceVariant} />
-                <Text style={{ 
-                  ...styles.tinyText, 
-                  marginLeft: 8, 
-                  color: theme.colors.onSurfaceVariant,
-                  fontSize: 14 
-                }}>
-                  Author: {collection.authorUsername}
+  <View style={{ width: '100%' }}>
+    {(versesSortBy === 0 && collection?.verseOrder && collection.verseOrder.trim() 
+      ? orderedItems 
+      : [
+          ...orderedUserVerses.map(uv => ({type: 'verse' as const, data: uv})),
+          ...(collection?.notes || []).map(note => ({type: 'note' as const, data: note}))
+        ]
+    ).map((item, itemIndex) => {
+      if (item.type === 'note') {
+        const note = item.data;
+        return (
+          <CollectionNoteItem
+            key={note.id || `note-${itemIndex}`}
+            note={note}
+            isOwned={isOwnedCollection}
+            onMenuPress={() => openNoteSettingsSheet(note)}
+          />
+        );
+      }
+      
+      const userVerse = item.data;
+      return (
+        <View key={userVerse.readableReference || `userVerse-${itemIndex}`} style={{minWidth: '100%', marginBottom: 20}}>
+          <View style={{minWidth: '100%', borderRadius: 3}}>
+            <View>
+              <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: -5}}>
+                <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>
+                  {userVerse.readableReference || ''}
                 </Text>
+                {isOwnedCollection ? (
+                  <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                    <TouchableOpacity
+                      activeOpacity={0.1}
+                      onPress={() => openNotesDialog(userVerse)}
+                      style={{ padding: 8, marginTop: -20, marginRight: -10 }}
+                    >
+                      <Ionicons name="document-text-outline" size={20} color={theme.colors.onBackground} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.1}
+                      onPress={() => openUserVerseSettingsSheet(userVerse)}
+                      style={{ padding: 8, marginTop: -20 }}
+                    >
+                      <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                        <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.onBackground} />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </View>
-              {collection.dateCreated && (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name="time-outline" size={18} color={theme.colors.onSurfaceVariant} />
-                  <Text style={{ 
-                    ...styles.tinyText, 
-                    marginLeft: 8, 
-                    color: theme.colors.onSurfaceVariant,
-                    fontSize: 14 
-                  }}>
-                    Created: {formatISODate(collection.dateCreated)}
-                  </Text>
+              {(userVerse.verses || []).map((verse, verseIndex) => (
+                <View key={verse.verse_reference || `${userVerse.readableReference}-verse-${verseIndex}`}>
+                  <View>
+                    <Text style={{
+                      ...styles.text, 
+                      fontFamily: 'Noto Serif', 
+                      fontSize: 16, 
+                      color: theme.colors.verseText
+                    }}>
+                      {verse.verse_Number != null ? `${String(verse.verse_Number)}: ` : ''}{verse.text || ''}
+                    </Text>
+                  </View>
                 </View>
-              )}
+              ))}
             </View>
-          )}
+            <View style={{alignItems: 'stretch', justifyContent: 'space-between'}}>
+              <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
+                <View style={{alignItems: 'center', justifyContent: 'center'}}>
 
-          <View>
-            {(versesSortBy === 0 && collection?.verseOrder && collection.verseOrder.trim() 
-              ? orderedItems 
-              : [
-                  ...orderedUserVerses.map(uv => ({type: 'verse' as const, data: uv})),
-                  ...(collection?.notes || []).map(note => ({type: 'note' as const, data: note}))
-                ]
-            ).map((item, itemIndex) => {
-              if (item.type === 'note') {
-                const note = item.data;
-                return (
-                  <CollectionNoteItem
-                    key={note.id || `note-${itemIndex}`}
-                    note={note}
-                    isOwned={isOwnedCollection}
-                    onMenuPress={() => openNoteSettingsSheet(note)}
-                  />
-                );
-              }
-              
-              const userVerse = item.data;
-              return (
-
-                <View key={userVerse.readableReference || `userVerse-${itemIndex}`} style={{minWidth: '100%', marginBottom: 20}}>
-                    <View style={{minWidth: '100%', borderRadius: 3,}}>
-
-                        <View>
-                          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: -5}}>
-                            <Text style={{...styles.text, fontFamily: 'Noto Serif bold', fontWeight: 600}}>{userVerse.readableReference}</Text>
-                            {isOwnedCollection && (
-                              <TouchableOpacity
-                                activeOpacity={0.1}
-                                onPress={() => openUserVerseSettingsSheet(userVerse)}
-                                style={{ padding: 8, marginTop: -20 }}
-                              >
-                                <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                                  <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.onBackground} />
-                                </View>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                          {(userVerse.verses || []).map((verse, verseIndex) => (
-                              <View key={verse.verse_reference || `${userVerse.readableReference}-verse-${verseIndex}`} style={{}}>
-                                  <View>
-                                      <Text style={{...styles.text, fontFamily: 'Noto Serif', fontSize: 16, color: theme.colors.verseText}}>{verse.verse_Number}: {verse.text} </Text>
-                                  </View>
-                              </View>
-                          ))}
-                        </View>
-                        <View style={{alignItems: 'stretch', justifyContent: 'space-between'}}>
-                          <View style={{flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between'}}>
-                            <View style={{alignItems: 'center', justifyContent: 'center'}}>
-
-                            {/* UserVerse Stats Section */}
-                            <View style={{alignItems: 'flex-start', justifyContent: 'center', gap: 12, marginTop: 8, padding: 6, borderRadius: 8, flexDirection: 'row'}}>
-
-                            </View>
-
-                            </View>
-                            <View style={{}}>
-                              <View style={{alignItems: 'center', marginTop: 4, marginRight: 8, gap: 16}}>
-                                <TouchableOpacity
-                                  onPress={() => {
-                                    useAppStore.getState().setSelectedUserVerse(userVerse);
-                                    setSelectedUserVerse(userVerse);
-                                    setPracticeModeModalVisible(true);
-                                  }}
-                                  activeOpacity={0.7}
-                                  style={{
-                                    backgroundColor: theme.colors.surface,
-                                    borderRadius: 12,
-                                    paddingVertical: 14,
-                                    paddingHorizontal: 16,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    borderWidth: 1,
-                                    borderColor: theme.colors.surface2,
-                                  }}
-                                >
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                    <Ionicons name="extension-puzzle-outline" size={20} color={theme.colors.onBackground} />
-                                    <Text style={{ fontFamily: 'Inter', fontSize: 15, color: theme.colors.onBackground }}>
-                                      Practice
-                                    </Text>
-                                  </View>
-                                </TouchableOpacity>
-                                <Text>{userVerse.dueDate ? userVerse.dueDate : '0'}</Text>
-                                
-                                {userVerse.lastPracticed && (
-                                  <Text style={{...styles.tinyText, fontSize: 13, color: theme.colors.verseText, marginTop: -12, marginBottom: -10}}>Due {(() => {
-                                        const today = new Date();
-                                        const diffTime = userVerse?.dueDate ? userVerse?.dueDate.getTime() - today.getTime() : 0;
-                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                        if (diffDays > 1) return `in ${diffDays} days`;
-                                        if (diffDays === 1) return 'in 1 day';
-                                        if (diffDays === 0) return 'today';
-                                        if (diffDays === -1) return 'yesterday';
-                                        return `${Math.abs(diffDays)} days ago`;
-                                      })()}</Text>
-                                )}
-                              </View>
-                            </View>
-                          </View>
-                        </View>
-
-                    </View>
-                    <Divider style={{marginHorizontal: -50, marginTop: 20}} />
+                {/* UserVerse Stats Section */}
+                  <View style={{alignItems: 'flex-start', justifyContent: 'flex-start', marginTop: 0, padding: 0, borderRadius: 8, marginLeft: -5, flexDirection: 'row'}}>
+                    {isOwnedCollection && passagesWithNotes.has(userVerse.readableReference) && (
+                      <View style={{ marginTop: 4, marginLeft: 4 }}>
+                        <Ionicons 
+                          name="document-text-outline" 
+                          size={14} 
+                          color={theme.colors.onSurfaceVariant} 
+                          style={{ opacity: 0.7 }}
+                        />
+                      </View>
+                    )}
+                  </View>
                 </View>
-              );
-            })}
+                <View>
+                  <View style={{alignItems: 'center', marginTop: 4, marginRight: 8, gap: 16}}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        useAppStore.getState().setSelectedUserVerse(userVerse);
+                        setSelectedUserVerse(userVerse);
+                        setPracticeModeModalVisible(true);
+                      }}
+                      activeOpacity={0.7}
+                      style={{
+                        backgroundColor: theme.colors.surface,
+                        borderRadius: 12,
+                        paddingVertical: 14,
+                        paddingHorizontal: 16,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderWidth: 1,
+                        borderColor: theme.colors.surface2,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Ionicons name="extension-puzzle-outline" size={20} color={theme.colors.onBackground} />
+                        <Text style={{ fontFamily: 'Inter', fontSize: 15, color: theme.colors.onBackground }}>
+                          Practice
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    
+                    {userVerse.collectionId && userVerse.dueDate ? (
+                      <Text style={{
+                        ...styles.tinyText, 
+                        fontSize: 13, 
+                        color: theme.colors.verseText, 
+                        marginTop: -12, 
+                        marginBottom: -10
+                      }}>
+                        Due {(() => {
+                          if (!userVerse.dueDate) return '';
+                          const dueDate = userVerse.dueDate instanceof Date ? userVerse.dueDate : new Date(userVerse.dueDate);
+                          const today = new Date();
+                          const diffTime = dueDate.getTime() - today.getTime();
+                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                          if (diffDays > 1) return `in ${diffDays} days`;
+                          if (diffDays === 1) return 'in 1 day';
+                          if (diffDays === 0) return 'today';
+                          if (diffDays === -1) return 'yesterday';
+                          return `${Math.abs(diffDays)} days ago`;
+                        })()}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            </View>
           </View>
-          <View style={{height: 0}}></View>
-        </ScrollView>
+          <Divider style={{marginHorizontal: -50, marginTop: 20}} />
+        </View>
+      );
+    })}
+  </View>
+  <View style={{height: 0}} />
+</ScrollView>
 
         <Portal>
             {/* Collection Settings Bottom Sheet */}
@@ -1399,7 +1653,7 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
               >
                 <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
-                  {selectedNote && (
+                  {selectedNote ? (
                     <>
                       <TouchableOpacity
                         style={{ height: 50, justifyContent: 'center', alignItems: 'center' }}
@@ -1416,7 +1670,7 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                       </TouchableOpacity>
                       <Divider />
                     </>
-                  )}
+                  ) : null}
                 </BottomSheetView>
               </BottomSheet>
             </Portal>
@@ -1437,7 +1691,7 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 handleIndicatorStyle={{ backgroundColor: theme.colors.onBackground }}
               >
               <BottomSheetView style={{ flex: 1, paddingHorizontal: 20, paddingBottom: 40 }}>
-                {selectedUserVerse && (
+                {selectedUserVerse ? (
                   <>
                     <TouchableOpacity
                       style={sheetItemStyle.settingsItem}
@@ -1519,13 +1773,13 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                     </TouchableOpacity>
                     <Divider />
                   </>
-                )}
+                ) : null}
               </BottomSheetView>
             </BottomSheet>
             </Portal>
 
             {/* Save Verse to Collection Sheet */}
-            {selectedUserVerse && selectedUserVerse.verses && selectedUserVerse.verses.length > 0 && (
+            {selectedUserVerse && selectedUserVerse.verses && selectedUserVerse.verses.length > 0 ? (
               <SaveVerseToCollectionSheet
                 visible={showSaveToCollectionSheet}
                 verse={selectedUserVerse.verses[0] as Verse}
@@ -1546,10 +1800,10 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 onCreateNewCollection={handleCreateNewCollectionFromVerse}
                 creatingNewCollection={creatingNewCollection}
               />
-            )}
+            ) : null}
 
             {/* Share Verse Sheet */}
-            {selectedUserVerse && (
+            {selectedUserVerse ? (
               <ShareVerseSheet
                 visible={showShareVerseSheet}
                 userVerses={[selectedUserVerse]}
@@ -1569,7 +1823,7 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                   setSnackbarVisible(true);
                 }}
               />
-            )}
+            ) : null}
 
           {/* Share Collection Sheet */}
           <ShareCollectionSheet
@@ -1631,6 +1885,266 @@ const handleCreateNewCollectionFromVerse = useCallback(async (title: string) => 
                 </View>
               </Dialog.Actions>
             </Dialog>
+          </Portal>
+
+          {/* Notes Modal */}
+          <Portal>
+            <Modal
+              visible={notesDialogVisible}
+              transparent={true}
+              animationType="fade"
+              onRequestClose={closeNotesDialog}
+            >
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+              >
+                <View
+                  style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+                >
+                  <View
+                    style={{ 
+                      backgroundColor: theme.colors.surface, 
+                      borderRadius: 12, 
+                      width: '90%', 
+                      maxWidth: 400, 
+                      maxHeight: '70%', 
+                      padding: 20,
+                      flexDirection: 'column'
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                      <Text style={{ 
+                        fontSize: 20,
+                        fontWeight: '600',
+                        fontFamily: 'Inter',
+                        color: theme.colors.onBackground,
+                      }}>
+                        {selectedUserVerseForNotes?.readableReference}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={closeNotesDialog}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 16,
+                          backgroundColor: theme.colors.surface2,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={{ 
+                      fontSize: 20, 
+                      color: theme.colors.onSurfaceVariant, 
+                      marginBottom: 16,
+                      marginTop: -15,
+                      fontFamily: 'Inter'
+                    }}>
+                      Private Notes
+                    </Text>
+
+                    {loadingNotes ? (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                      </View>
+                    ) : userVerseNotes.length === 0 ? (
+                      <Text style={{ 
+                        color: theme.colors.onSurfaceVariant, 
+                        fontSize: 14, 
+                        fontStyle: 'italic', 
+                        textAlign: 'center', 
+                        padding: 20
+                      }}>
+                        No private notes
+                      </Text>
+                    ) : (
+                      <ScrollView 
+                        contentContainerStyle={{ paddingBottom: 10 }}
+                        showsVerticalScrollIndicator={true}
+                        nestedScrollEnabled={true}
+                      >
+                        {userVerseNotes.map((note, index) => (
+                          <View key={note.id} style={{ marginBottom: index < userVerseNotes.length - 1 ? 16 : 0 }}>
+                            <View style={{
+                              borderRadius: 8,
+                            }}>
+                              <Text style={{ 
+                                color: theme.colors.onBackground, 
+                                fontSize: 14, 
+                                lineHeight: 20
+                              }}>
+                                {note.text}
+                              </Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                                {note.createdDate && (
+                                  <Text style={{ 
+                                    color: theme.colors.onSurfaceVariant, 
+                                    fontSize: 11
+                                  }}>
+                                    {formatISODate(new Date(note.createdDate))}
+                                  </Text>
+                                )}
+                                <View style={{ flexDirection: 'row', gap: 12 }}>
+                                  <TouchableOpacity
+                                    onPress={() => handleEditNote(note)}
+                                    disabled={isDeletingNote || isUpdatingNote}
+                                    style={{
+                                      padding: 4,
+                                    }}
+                                  >
+                                    <Ionicons name="pencil" size={15} color={theme.colors.onBackground} style={{marginTop: 1}} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={() => handleDeleteVerseNote(note.id)}
+                                    disabled={isDeletingNote || isUpdatingNote}
+                                    style={{
+                                      padding: 4,
+                                    }}
+                                  >
+                                    {isDeletingNote ? (
+                                      <ActivityIndicator size="small" color={theme.colors.error} />
+                                    ) : (
+                                      <Ionicons name="trash-outline" size={16} color={theme.colors.onBackground} />
+                                    )}
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            </View>
+                            {index < userVerseNotes.length - 1 && (
+                              <Divider style={{ marginTop: 12 }} />
+                            )}
+                          </View>
+                        ))}
+                      </ScrollView>
+                    )}
+
+                    <TouchableOpacity
+                      style={{...styles.button_outlined, marginTop: 20}}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setNewNoteText('');
+                        setEditingNote(null);
+                        setEditNoteText('');
+                        setAddNoteDialogVisible(true);
+                      }}
+                    >
+                      <Ionicons name="add" size={26} color={theme.colors.onBackground} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </KeyboardAvoidingView>
+            </Modal>
+          </Portal>
+
+          {/* Add/Edit Note Dialog */}
+          <Portal>
+            <Modal
+              visible={addNoteDialogVisible}
+              transparent={true}
+              animationType="fade"
+              onRequestClose={closeAddNoteDialog}
+            >
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+              >
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+                  activeOpacity={1}
+                  onPress={closeAddNoteDialog}
+                >
+                  <TouchableOpacity
+                    activeOpacity={1}
+                    onPress={(e) => e.stopPropagation()}
+                    style={{ 
+                      backgroundColor: theme.colors.surface, 
+                      borderRadius: 12, 
+                      width: '90%', 
+                      maxWidth: 400, 
+                      padding: 20 
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                      <Text style={{ 
+                        fontSize: 20,
+                        fontWeight: '600',
+                        fontFamily: 'Inter',
+                        color: theme.colors.onBackground,
+                      }}>
+                        {editingNote ? 'Edit Note' : 'Add Note'}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={closeAddNoteDialog}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 16,
+                          backgroundColor: theme.colors.surface2,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginBottom: 20}}>
+                      <Ionicons name="lock-closed" size={16} color={theme.colors.verseText} style={{marginTop: 2, marginRight: 6}} />
+                      <Text style={{...styles.tinyText, fontSize: 13, color: theme.colors.verseText}}>
+                        Notes are encrypted before they are stored.
+                      </Text>
+                    </View>
+
+                    <TextInput
+                      value={editingNote ? editNoteText : newNoteText}
+                      onChangeText={editingNote ? setEditNoteText : setNewNoteText}
+                      placeholder="Enter your note..."
+                      placeholderTextColor={theme.colors.onSurfaceVariant}
+                      multiline
+                      numberOfLines={6}
+                      style={{
+                        color: theme.colors.onBackground,
+                        fontSize: 14,
+                        fontFamily: 'Inter',
+                        backgroundColor: 'transparent',
+                        borderRadius: 8,
+                        padding: 12,
+                        minHeight: 120,
+                        textAlignVertical: 'top',
+                        borderWidth: 2,
+                        borderColor: theme.colors.gray,
+                        marginBottom: 16,
+                      }}
+                    />
+
+                    <TouchableOpacity
+                      style={{...styles.button_outlined, marginTop: 20}}
+                      activeOpacity={0.7}
+                      onPress={editingNote ? handleUpdateNote : handleCreateNote}
+                      disabled={(editingNote ? !editNoteText.trim() : !newNoteText.trim()) || isCreatingNote || isUpdatingNote}
+                    >
+                      {(isCreatingNote || isUpdatingNote) ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        editingNote ? (
+                          <Ionicons name="checkmark" size={26} color={theme.colors.onBackground} />
+                        ) : (
+                          <Ionicons name="checkmark" size={26} color={theme.colors.onBackground} />
+                        )
+                      )}
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              </KeyboardAvoidingView>
+            </Modal>
           </Portal>
           
           {/* Snackbar */}

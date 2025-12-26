@@ -1,10 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Haptics from 'expo-haptics';
 import { router, Stack } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { JSX, useEffect, useState } from 'react';
 import { Alert, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Portal, Snackbar } from 'react-native-paper';
-import { getCollectionById, getUserVerseParts, MemorizedInfo, memorizePassage, UserVerseMemorizedInfo, UserVerseParts } from './db';
+import { getUserVerseParts, getUserVersesPopulated, MemorizedInfo, memorizePassage, UserVerseMemorizedInfo, UserVerseParts } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -27,6 +27,7 @@ export default function PracticeSessionScreen() {
   const user = useAppStore((state) => state.user);
   const setUser = useAppStore((state) => state.setUser);
   const [allWords, setAllWords] = useState<Word[]>([]);
+  const [referenceWords, setReferenceWords] = useState<Word[]>([]);
   const [displayWords, setDisplayWords] = useState<Word[]>([]);
   const [currentStage, setCurrentStage] = useState(1);
   const [highestCompletedStage, setHighestCompletedStage] = useState(1);
@@ -52,6 +53,10 @@ export default function PracticeSessionScreen() {
 
   const [stageHiddenIndeces, setStageHiddenIndices] = useState<number[][]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [activeReferenceIndex, setActiveReferenceIndex] = useState(0);
+  const [bookWords, setBookWords] = useState<Word[]>([]);
+  const [activeBookIndex, setActiveBookIndex] = useState(0);
+  const [learnedBook, setLearnedBook] = useState(false);
 
   const [accuracyModalVisible, setAccuracyModalVisible] = useState(false);
   const [accuracy, setAccuracy] = useState(0);
@@ -66,6 +71,8 @@ export default function PracticeSessionScreen() {
 
   const [pointsGained, setPointsGained] = useState(0);
   const [stageAccuracies, setStageAccuracies] = useState<number[]>([]);
+
+  const [learnedVerseReference, setLeanredVerseReference] = useState(false);
 
   const updateCollection = useAppStore((state) => state.updateCollection);
 
@@ -97,7 +104,28 @@ const showSummary = () => {
       setReadableReference(selectedUserVerse.readableReference.substring(selectedUserVerse.readableReference.indexOf(':') + 1) || '');
 
       const words: Word[] = [];
+      const referenceWords: Word[] = [];
+      const bookWordsArray: Word[] = [];
+      let referenceIndex = 0;
       let counter = 0;
+
+      // Extract first letter of each word in book name
+      if (user.typeOutReference && bookValue) {
+        const bookWordsSplit = bookValue.trim().split(/\s+/);
+        bookWordsSplit.forEach((word) => {
+          if (word.length > 0) {
+            bookWordsArray.push({
+              id: counter++,
+              word: word.charAt(0),
+              isHint: true,
+              isCorrect: null,
+            });
+          }
+        });
+        setBookWords(bookWordsArray);
+        setActiveBookIndex(0);
+        setLearnedBook(false);
+      }
 
       // if (reviewReference) {
       //   words.push({ id: counter++, isHint: true, word: bookValue + " ", isCorrect: null });
@@ -134,6 +162,37 @@ const showSummary = () => {
             isCorrect: null,
           });
         }
+
+      }
+      
+      if (user.typeOutReference) {
+        const refParts: string[] = [];
+
+        console.log("Chapter parts:")
+        for (let j = 0; j < chapterValue.length; j++) {
+          console.log(chapterValue[j]);
+          if (chapterValue[j] !== undefined && chapterValue[j] !== null)
+            refParts.push(chapterValue[j].toString());
+        }
+        if (versePartsValue && versePartsValue.length) {
+          versePartsValue.forEach((vp) => {
+            for (let k = 0; k < vp.length; k++) {
+              if (vp[k] !== undefined && vp[k] !== null)
+                refParts.push(vp[k].toString());
+            }
+          });
+        }
+
+        refParts.forEach((part) => {
+          referenceWords.push({
+            id: counter++,
+            word: part,
+            isHint: true,
+            isCorrect: null,
+          });
+        });
+
+        setReferenceWords(referenceWords);
       }
 
       setAllWords(words);
@@ -184,45 +243,226 @@ const showSummary = () => {
     getUserVersePracticing();
   }, [selectedUserVerse, learnVerseReference, totalStages]);
 
+const renderReference = () => {
+  const display: JSX.Element[] = [];
+  let refIndex = 0;
+  let bookIndex = 0;
 
+  const fullRef = selectedUserVerse?.readableReference ?? '';
+
+  // Use the book state variable which contains the full book name
+  const bookPart = book;
+  // Construct restPart from chapter and verses (e.g., " 1:1-3" or " 1:1")
+  const restPart = ` ${chapter}:${readableReferenceVerses}`;
+
+  // --- Render book char-by-char (first letter of each word) ---
+  const bookWordsSplit = bookPart.trim().split(/\s+/);
+  for (let i = 0; i < bookWordsSplit.length; i++) {
+    const word = bookWordsSplit[i];
+    if (word.length > 0) {
+      // First letter of each word
+      const bookWord = bookWords[bookIndex];
+      const isCorrect = bookWord?.isCorrect ?? null;
+      const isHint = bookWord?.isHint ?? true; // Default to true if undefined
+
+      let color = theme.colors.verseHint; // Default to hint color
+
+      if (isCorrect === true) {
+        color = theme.colors.onBackground;
+      } else if (isCorrect === false) {
+        color = theme.colors.error;
+      } else if (isHint) {
+        color = theme.colors.verseHint;
+      } else {
+        color = 'transparent'; // Only transparent if explicitly not a hint
+      }
+
+      display.push(
+        <Text key={`book-char-${i}`} style={{ color }}>
+          {word.charAt(0)}
+        </Text>
+      );
+
+      // Rest of the word - only show if first letter has been typed (isCorrect !== null)
+      if (word.length > 1 && isCorrect !== null) {
+        display.push(
+          <Text key={`book-rest-${i}`} style={{ color: theme.colors.onBackground }}>
+            {word.slice(1)}
+          </Text>
+        );
+      }
+
+      bookIndex++;
+
+      // Add space between words (only if current word has been typed and not last word)
+      if (i < bookWordsSplit.length - 1 && isCorrect !== null) {
+        display.push(
+          <Text key={`book-space-${i}`} style={{ color: theme.colors.onBackground }}>
+            {' '}
+          </Text>
+        );
+      }
+    }
+  }
+
+  // --- Render chapter + verses char-by-char (only after book is learned) ---
+  if (learnedBook) {
+    for (let i = 0; i < restPart.length; i++) {
+      const ch = restPart[i];
+
+      // Digits → tied to referenceWords
+      if (/\d/.test(ch)) {
+        const refWord = referenceWords[refIndex];
+        const isCorrect = refWord?.isCorrect ?? null;
+        const isHint = refWord?.isHint ?? false;
+
+        let color = 'transparent';
+
+        if (isCorrect === true) {
+          color = theme.colors.onBackground;
+        } else if (isCorrect === false) {
+          color = theme.colors.error;
+        } else if (isHint) {
+          color = theme.colors.verseHint;
+        }
+
+        display.push(
+          <Text key={`digit-${i}`} style={{ color }}>
+            {ch}
+          </Text>
+        );
+
+        refIndex++;
+      }
+      // Punctuation / spaces → visual only
+      else {
+        display.push(
+          <Text key={`punct-${i}`} style={{ color: theme.colors.onBackground }}>
+            {ch}
+          </Text>
+        );
+      }
+    }
+  }
+
+  return display;
+};
+
+
+  const resetReferenceForStage = (stage: number) => {
+    if (!user.typeOutReference) return;
+
+    const hideReference = stage >= 3;
+
+    setReferenceWords(prev =>
+      prev.map(rw => ({
+        ...rw,
+        isCorrect: null,
+        isHint: !hideReference,
+      }))
+    );
+
+    setBookWords(prev =>
+      prev.map(bw => ({
+        ...bw,
+        isCorrect: null,
+        isHint: !hideReference,
+      }))
+    );
+
+    setActiveReferenceIndex(0);
+    setActiveBookIndex(0);
+    setLeanredVerseReference(false);
+    setLearnedBook(false);
+  };
+
+  // *********************
   // Handle keyboard press
+  // *********************
   const handleKeyboardPress = async (char: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
 
-    if (activeIndex >= allWords.length)
+    // Phase 1: Type book (first letter of each word)
+    if (user.typeOutReference && activeBookIndex < bookWords.length && !learnedBook) {
+      const currentBookWord = bookWords[activeBookIndex];
+      const expectedChar = currentBookWord.word.trim().charAt(0).toLowerCase();
+
+      if (char.toLowerCase() !== expectedChar) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
+      const updatedBookWords = [...bookWords];
+      updatedBookWords[activeBookIndex] = {
+        ...currentBookWord,
+        isCorrect: char.toLowerCase() === expectedChar,
+      };
+      setBookWords(updatedBookWords);
+
+      setActiveBookIndex(activeBookIndex + 1);
+
+      if (activeBookIndex + 1 >= bookWords.length) {
+        setActiveBookIndex(0);
+        setLearnedBook(true);
+        setActiveReferenceIndex(0);
+      }
+
+      return;
+    }
+
+    // Phase 2: Type reference (chapter and verses)
+    if (user.typeOutReference && activeReferenceIndex < referenceWords.length && !learnedVerseReference && learnedBook) {
+      const currentRefWord = referenceWords[activeReferenceIndex];
+      const expectedChar = currentRefWord.word.trim().charAt(0).toLowerCase();
+
+      if (char.toLowerCase() !== expectedChar) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+
+      const updatedReferenceWords = [...referenceWords];
+      updatedReferenceWords[activeReferenceIndex] = {
+        ...currentRefWord,
+        isCorrect: char.toLowerCase() === expectedChar,
+      };
+      setReferenceWords(updatedReferenceWords);
+
+      setActiveReferenceIndex(activeReferenceIndex + 1);
+
+      if (activeReferenceIndex + 1 >= referenceWords.length) {
+        setActiveReferenceIndex(0);
+        setLeanredVerseReference(true);
+        setActiveIndex(0);
+      }
+
+      return;
+    }
+
+    // Phase 3: Type verse text
+    if (activeIndex >= allWords.length) 
       return;
 
     const currentWord = allWords[activeIndex];
     const expectedChar = currentWord.word.trim().charAt(0).toLowerCase();
 
-    if (char !== expectedChar) 
+    if (char.toLowerCase() !== expectedChar) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
 
     const updatedWords = [...allWords];
-    updatedWords[activeIndex] = { ...currentWord, isCorrect: (char === expectedChar) };
+    updatedWords[activeIndex] = { ...currentWord, isCorrect: char.toLowerCase() === expectedChar };
     setAllWords(updatedWords);
 
-    setActiveIndex((previous) => previous + 1);
-    console.log("Active index:", activeIndex + 1);
-    console.log("allWords.length:", allWords.length);
-    console.log("Typed char:", char, "Expected char: " + "\"" + expectedChar + "\"");
-    console.log("Is correct:", char === expectedChar);
+    setActiveIndex(activeIndex + 1);
 
-    if (activeIndex + 1 == allWords.length) {
-      // Reached end of stage
-      console.log("Reached end of stage");
+    if (activeIndex + 1 >= allWords.length) {
+        const currentAccuracy = computeStageAccuracy(updatedWords, referenceWords, bookWords);
+        setAccuracy(currentAccuracy);
+        const newStageAccuracies = [...stageAccuracies, currentAccuracy];
+        setStageAccuracies(newStageAccuracies);
 
-      let correctWords = 0;
-      let totalWords = updatedWords.length;
-      for (let i = 0; i < updatedWords.length; i++) {
-        updatedWords[i].isCorrect ? correctWords++ : null;
-      }
-      let localAccuracy = Math.floor((correctWords / totalWords) * 100);
-      setAccuracy(localAccuracy);
-      setStageAccuracies([...stageAccuracies, localAccuracy]);
-      setAccuracyModalVisible(true);
+        setAccuracyModalVisible(true);
     }
-  }
+  };
+
 
   const retryStage = () => {
     const hiddenSet = new Set(stageHiddenIndeces[currentStage - 1] ?? []);
@@ -233,53 +473,94 @@ const showSummary = () => {
         isCorrect: null,
       }))
     );
+    resetReferenceForStage(currentStage);
     setActiveIndex(0);
     setAccuracyModalVisible(false);
   }
 
-  const nextStage = async () => {
-    setCurrentStage(currentStage + 1);
-    setActiveIndex(0);
-    setAccuracyModalVisible(false);
-
-    if (currentStage >= totalStages) {
-      // Reached end of session
-      try {
-          let correctWords = 0;
-          let totalWords = allWords.length;
-          for (let i = 0; i < allWords.length; i++) {
-            allWords[i].isCorrect ? correctWords++ : null;
-          }
-          let localAccuracy = Math.floor((correctWords / totalWords) * 100);
-          setStageAccuracies([...stageAccuracies, localAccuracy]);
-          let sessionAccuracy = Math.floor((stageAccuracies.reduce((a, b) => a + b, 0) + localAccuracy) / (stageAccuracies.length + 1));
-          setAccuracy(sessionAccuracy);
-
-          const info: MemorizedInfo = {
-            userVerseId: selectedUserVerse?.id || 0,
-            accuracy: sessionAccuracy,
-          }
-          const userVerseMemorizedInfo: UserVerseMemorizedInfo = await memorizePassage(info);
-          setPointsGained(userVerseMemorizedInfo.pointsGained);
-          setNextDue(userVerseMemorizedInfo.userVerse.dueDate ? new Date(userVerseMemorizedInfo.userVerse.dueDate) : new Date());
-          setTimesMemorized(userVerseMemorizedInfo.userVerse.timesMemorized || 0);
-
-          const updatedCollection = await getCollectionById(selectedUserVerse?.collectionId || 0);
-          if (updatedCollection) {
-            updateCollection(updatedCollection);
-          }
-
-          showSummary();
-        } catch (error) {
-          console.error('Failed to memorize passage:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Failed to memorize passage';
-          setSnackbarMessage(errorMessage);
-          setSnackbarVisible(true);
-          showSummary();
-        }
-        return;
+const computeStageAccuracy = (words: Word[], refWords: Word[], bookWordsArray: Word[]) => {
+  let allWordsToCheck = [...words];
+  
+  if (user.typeOutReference) {
+    if (learnedBook) {
+      allWordsToCheck = [...bookWordsArray, ...allWordsToCheck];
+    }
+    if (learnedVerseReference) {
+      allWordsToCheck = [...refWords, ...allWordsToCheck];
     }
   }
+  
+  const total = allWordsToCheck.length;
+  const correct = allWordsToCheck.filter(w => w.isCorrect === true).length;
+  
+  return total > 0 ? Math.floor((correct / total) * 100) : 0;
+};
+
+const nextStage = async () => {
+  setCurrentStage(prev => {
+    const next = prev + 1;
+    resetReferenceForStage(next);
+    return next;
+  });
+
+  setActiveIndex(0);
+  setAccuracyModalVisible(false);
+
+  if (currentStage >= totalStages) {
+    try { // Reached end of session
+      let allWordsToCheck = [...allWords];
+      
+      if (user.typeOutReference) {
+        if (learnedBook) {
+          allWordsToCheck = [...bookWords, ...allWordsToCheck];
+        }
+        if (learnedVerseReference) {
+          allWordsToCheck = [...referenceWords, ...allWordsToCheck];
+        }
+      }
+      
+      const correctWords = allWordsToCheck.filter(w => w.isCorrect === true).length;
+      const totalWords = allWordsToCheck.length;
+      const localAccuracy = totalWords > 0 ? Math.floor((correctWords / totalWords) * 100) : 0;
+      
+      const finalStageAccuracies = [...stageAccuracies, localAccuracy];
+      setStageAccuracies(finalStageAccuracies);
+      
+      const sessionAccuracy = Math.floor(
+        finalStageAccuracies.reduce((a, b) => a + b, 0) / finalStageAccuracies.length
+      );
+      setAccuracy(sessionAccuracy);
+
+      const info: MemorizedInfo = {
+        userVerseId: selectedUserVerse?.id || 0,
+        accuracy: sessionAccuracy,
+      };
+      
+      const userVerseMemorizedInfo: UserVerseMemorizedInfo = await memorizePassage(info);
+      setPointsGained(userVerseMemorizedInfo.pointsGained);
+      setNextDue(userVerseMemorizedInfo.userVerse.dueDate ? new Date(userVerseMemorizedInfo.userVerse.dueDate) : new Date());
+      setTimesMemorized(userVerseMemorizedInfo.userVerse.timesMemorized || 0);
+
+      // Update collection with populated userVerses to reflect memorized info changes
+      const collection = useAppStore.getState().collections.find(c => c.collectionId === selectedUserVerse?.collectionId);
+      if (collection) {
+        const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
+        const updatedCollection = await getUserVersesPopulated(colToSend);
+        updateCollection(updatedCollection);
+        setShouldReloadPracticeList(true);
+      }
+
+      showSummary();
+    } catch (error) {
+      console.error('Failed to memorize passage:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to memorize passage';
+      setSnackbarMessage(errorMessage);
+      setSnackbarVisible(true);
+      showSummary();
+    }
+    return;
+  }
+};
 
   useEffect(() => {
     if (!firstStageWords.length || !stageHiddenIndeces.length) return;
@@ -313,6 +594,15 @@ const showSummary = () => {
     const themePreference = useAppStore((state) => state.themePreference);
     return (
       <Pressable  onPress={() => {handleKeyboardPress(char)}} style={{width: '8%', height: 50, backgroundColor: theme.colors.verseText, borderRadius: 8, justifyContent: 'center', alignItems: 'center', margin: 3}}>
+        <Text style={{ color: themePreference === 'dark' ? theme.colors.onBackground : theme.colors.background, fontSize: 24 }}>{char}</Text>
+      </Pressable>
+    );
+  }
+
+  const KeyboardNumberButton = ({ char }: { char: string }) => {
+    const themePreference = useAppStore((state) => state.themePreference);
+    return (
+      <Pressable  onPress={() => {handleKeyboardPress(char)}} style={{width: '8%', height: 40, backgroundColor: theme.colors.verseText, borderRadius: 8, justifyContent: 'center', alignItems: 'center', margin: 3}}>
         <Text style={{ color: themePreference === 'dark' ? theme.colors.onBackground : theme.colors.background, fontSize: 24 }}>{char}</Text>
       </Pressable>
     );
@@ -363,17 +653,16 @@ const showSummary = () => {
               borderRadius: 8,
               marginTop: 20
             }}>
-              {learnVerseReference && (
-                user.typeOutReference ? (
-                  <Text style={{fontSize: 18, color: theme.colors.verseHint, lineHeight: 18, marginBottom: 12}}>
-                    {book} {chapter}:{readableReferenceVerses}
+              {learnVerseReference && user.typeOutReference ? (
+                  <Text style={{ fontSize: 18, lineHeight: 18, marginBottom: 12, color: 'transparent' }}>
+                    {renderReference()}
                   </Text>
                 ) : (
-                  <Text style={{fontSize: 18, color: theme.colors.onBackground, lineHeight: 18, marginBottom: 12}}>
+                  <Text style={{ fontSize: 18, lineHeight: 18, marginBottom: 12, color: theme.colors.onBackground }}>
                     {book} {chapter}:{readableReferenceVerses}
                   </Text>
-                )
-              )}
+                )}
+
                 <Text style={{fontSize: 18, color: theme.colors.verseHint, lineHeight: 24}}>
                   {allWords.map((w, i) => (
                     w.isCorrect === null ? (
@@ -396,6 +685,18 @@ const showSummary = () => {
 
         {/* Keyboard */}
         <View style={{position: 'absolute', bottom: 0, width: '100%', justifyContent: 'center', alignItems: 'center', paddingBottom: 80}}>
+          <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'row'}}>
+            <KeyboardNumberButton char="1" />
+            <KeyboardNumberButton char="2" />
+            <KeyboardNumberButton char="3" />
+            <KeyboardNumberButton char="4" />
+            <KeyboardNumberButton char="5" />
+            <KeyboardNumberButton char="6" />
+            <KeyboardNumberButton char="7" />
+            <KeyboardNumberButton char="8" />
+            <KeyboardNumberButton char="9" />
+            <KeyboardNumberButton char="0" />
+          </View>
           <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'row'}}>
             <KeyboardButton char="q" />
             <KeyboardButton char="w" />
@@ -463,7 +764,7 @@ const showSummary = () => {
                 accuracy >= 75 ? (
                   <Text style={{...styles.text, textAlign: 'center'}}>Nice job, but you can get a better score. Try again!</Text>
                 ) : (
-                  <Text style={{...styles.text, textAlign: 'center'}}>It's recommended you retry this stage.</Text>
+                  <Text style={{...styles.text, textAlign: 'center'}}>It's recommended that you retry this stage.</Text>
                 )
               )}
               <View style={{flexDirection: 'row', marginTop: 20}}>
@@ -582,6 +883,7 @@ const showSummary = () => {
                       });
                     }
                     setSummaryModalVisible(false);
+                    // Collection is already updated above, and shouldReloadPracticeList is set
                     router.replace('/(tabs)');
                   }}
                   activeOpacity={0.7}

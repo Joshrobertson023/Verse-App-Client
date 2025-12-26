@@ -14,7 +14,7 @@ import { Image, Platform, TouchableOpacity, type TouchableOpacityProps, View } f
 import 'react-native-gesture-handler'; // MUST be at the very top - before any other imports
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider, Portal } from 'react-native-paper';
-import { checkIfBanned, getActiveBan, getAdminUsernames, getPopularSearches, getStreakLength, getUserCollections, loginUserWithToken, updateLastSeen } from './db';
+import { checkIfBanned, getActiveBan, getAdminUsernames, getCurrentVerseOfDayAsUserVerse, getPopularSearches, getStreakLength, getUserCollections, loginUserWithToken, updateLastSeen } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -91,6 +91,7 @@ export default function RootLayout() {
   const [errorLogginIn, setErrorLoggingIn] = useState(false);
   const setCollections = useAppStore((state) => state.setCollections);
   const setPopularSearches = useAppStore((state) => state.setPopularSearches);
+  const setVerseOfDay = useAppStore((state) => state.setVerseOfDay);
   const [startupVerse, setStartupVerse] = useState(0);
   const { openSettingsSheet } = useAppStore((state) => state.collectionsSheetControls);
   const notificationListener = useRef<Notifications.Subscription | null>(null);
@@ -354,6 +355,14 @@ export default function RootLayout() {
                   }
                 }
               }
+              // Load verse of day before hiding splash screen
+              try {
+                const verseOfDay = await getCurrentVerseOfDayAsUserVerse();
+                setVerseOfDay(verseOfDay);
+              } catch (error) {
+                console.error('Failed to load verse of day:', error);
+              }
+              
               setAppIsReady(true);
               getHomePageStats(user);
               

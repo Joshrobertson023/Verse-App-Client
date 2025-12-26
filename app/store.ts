@@ -168,6 +168,7 @@ const cloneUserVerse = (userVerse: UserVerse): UserVerse => ({
     lastPracticed: userVerse.lastPracticed ? new Date(userVerse.lastPracticed) : undefined,
     dateMemorized: userVerse.dateMemorized ? new Date(userVerse.dateMemorized) : undefined,
     dateAdded: userVerse.dateAdded ? new Date(userVerse.dateAdded) : undefined,
+    dueDate: userVerse.dueDate ? new Date(userVerse.dueDate) : undefined,
     verses: (userVerse.verses ?? []).map(cloneVerse),
 });
 
@@ -294,6 +295,7 @@ interface AppState {
   siteBanner: SiteBannerState;
   collectionReviewMessage: string | null;
   reviewReference: boolean;
+  verseOfDay: UserVerse | null;
 
   getHomePageStats: (user: User) => void;
   setUser: (user: User) => void;
@@ -324,6 +326,7 @@ interface AppState {
   resetVerseSaveAdjustment: (reference?: string) => void;
   setSiteBanner: (banner: SiteBannerState) => void;
   setCollectionReviewMessage: (message: string | null) => void;
+  setVerseOfDay: (verseOfDay: UserVerse | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -350,6 +353,7 @@ export const useAppStore = create<AppState>((set) => ({
     siteBanner: defaultSiteBanner,
     collectionReviewMessage: null,
     reviewReference: true,
+    verseOfDay: null,
 
     getHomePageStats: async (user: User) => {
         // Get from API verses memorized, overdue, and published
@@ -445,4 +449,5 @@ export const useAppStore = create<AppState>((set) => ({
     setSiteBanner: (banner: SiteBannerState) => set({ siteBanner: banner }),
     setCollectionReviewMessage: (message: string | null) => set({ collectionReviewMessage: message }),
     setReviewReference: (shouldReview: boolean) => set({reviewReference: shouldReview}),
+    setVerseOfDay: (verseOfDay: UserVerse | null) => set({ verseOfDay }),
 }))

@@ -1526,6 +1526,25 @@ export async function getCurrentVerseOfDay() {
     }
 }
 
+export async function getCurrentVerseOfDayAsUserVerse(): Promise<UserVerse | null> {
+    try {
+        const response = await fetch(`${baseUrl}/verseofday/current/userverse`);
+        if (response.status === 204) {
+            return null;
+        }
+
+        if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || 'Failed to load current verse of the day');
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
 export async function checkIfAdmin(username: string): Promise<boolean> {
     try {
         const response = await fetch(`${baseUrl}/admin/users/${username}/check`);
@@ -2945,6 +2964,27 @@ export async function createNote(verseReference: string, username: string, text:
         if (!response.ok) {
             const responseText = await response.text();
             throw new Error(responseText || 'Failed to create note');
+        }
+        const data: VerseNote = await response.json();
+        return data;
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function updateNote(id: number, text: string): Promise<VerseNote> {
+    try {
+        const response = await fetch(`${baseUrl}/notes/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text }),
+        });
+        if (!response.ok) {
+            const responseText = await response.text();
+            throw new Error(responseText || 'Failed to update note');
         }
         const data: VerseNote = await response.json();
         return data;

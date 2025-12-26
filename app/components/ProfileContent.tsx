@@ -11,8 +11,8 @@ import { deleteProfilePicture, getAllUserVerses, getUserActivity, refreshUser, s
 import { Activity, loggedOutUser, useAppStore } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
-import { cacheProfilePicture, clearCachedProfilePicture } from '../utils/profilePictureCache';
 import { formatPoints } from '../utils/numberFormat';
+import { cacheProfilePicture, clearCachedProfilePicture } from '../utils/profilePictureCache';
 
 const RECENT_SEARCHES_KEY = '@verseApp:recentSearches';
 
@@ -636,7 +636,6 @@ export default function ProfileContent() {
               </View>
               {myActivity.length > 0 ? (
                 myActivity.map((activity) => (
-                  <>
                   <View
                     key={activity.id}
                     style={{
@@ -678,7 +677,6 @@ export default function ProfileContent() {
                       {activity.timeAgo}
                     </Text>
                   </View>
-                  </>
                 ))
               ) : (
                 <View style={{ paddingVertical: 12 }}>

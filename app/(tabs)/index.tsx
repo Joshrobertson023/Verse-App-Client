@@ -11,8 +11,8 @@ import PracticeModeModal from '../components/practiceModeModal';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
 import { getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getCurrentVerseOfDay, getMostRecentCollectionId, getSiteBanner, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
-import { Collection, SearchData, useAppStore, UserVerse, Verse, VerseOfDay as VodType } from '../store';
+import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getSiteBanner, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
+import { Collection, SearchData, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
 
@@ -89,8 +89,6 @@ function orderCustom(array: Collection[], idString: string | undefined): Collect
   return [...reorderedArray, ...remainingCollections];
 }
 
-const queuedVodLoads = new Set<string>();
-
 export default function Index() {
   const styles = useStyles();
   const theme = useAppTheme();
@@ -162,17 +160,10 @@ export default function Index() {
   const [visible, setVisible] = React.useState(false);
   const [isProfileDrawerOpen, setIsProfileDrawerOpen] = useState(false);
 
-  // Verse of the Day state
-  const [currentVod, setCurrentVod] = useState<VodType | null>(null);
-  const [vodTexts, setVodTexts] = useState<Record<string, Verse[]>>({});
-  const vodTextsRef = useRef<Record<string, Verse[]>>({});
+  // Verse of the Day from store
+  const verseOfDay = useAppStore((state) => state.verseOfDay);
   const screenWidth = Dimensions.get('window').width;
   const cardWidth = useMemo(() => Math.min(screenWidth - 50, 580), [screenWidth]);
-  
-  // Keep ref in sync with state
-  useEffect(() => {
-    vodTextsRef.current = vodTexts;
-  }, [vodTexts]);
 
   // Collection picker state for Verse of the Day Save functionality
   const [showVodCollectionPicker, setShowVodCollectionPicker] = useState(false);
@@ -189,21 +180,16 @@ export default function Index() {
     return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
   };
 
-  const currentVodVerses = currentVod ? vodTexts[currentVod.readableReference] : undefined;
-  const currentVodDate = currentVod
-    ? new Date(currentVod.sentDate ?? currentVod.createdDate)
-    : null;
-  const currentVodIsToday = currentVodDate ? isSameUTCDate(currentVodDate, new Date()) : false;
-  const currentVodText = currentVodVerses && currentVodVerses.length > 0
-    ? currentVodVerses.map(v => v.text).join(' ')
+  const currentVodText = verseOfDay && verseOfDay.verses && verseOfDay.verses.length > 0
+    ? verseOfDay.verses.map(v => v.text).join(' ')
     : '';
-  const currentVodSavedCount = currentVodVerses && currentVodVerses.length > 0
-    ? currentVodVerses[0].users_Saved_Verse ?? 0
+  const currentVodSavedCount = verseOfDay && verseOfDay.verses && verseOfDay.verses.length > 0
+    ? verseOfDay.verses[0].users_Saved_Verse ?? 0
     : 0;
-  const currentVodMemorizedCount = currentVodVerses && currentVodVerses.length > 0
-    ? currentVodVerses[0].users_Memorized ?? 0
+  const currentVodMemorizedCount = verseOfDay && verseOfDay.verses && verseOfDay.verses.length > 0
+    ? verseOfDay.verses[0].users_Memorized ?? 0
     : 0;
-  const displayedVodSavedCount = currentVodSavedCount + (currentVod?.readableReference ? (verseSaveAdjustments[currentVod.readableReference] ?? 0) : 0);
+  const displayedVodSavedCount = currentVodSavedCount + (verseOfDay?.readableReference ? (verseSaveAdjustments[verseOfDay.readableReference] ?? 0) : 0);
 
   useEffect(() => {
     let isMounted = true;
@@ -235,95 +221,15 @@ export default function Index() {
     setBannerDismissed(false);
   }, [siteBanner.message]);
 
-  const loadTextForReference = React.useCallback(async (readableReference: string | undefined | null) => {
-    if (!readableReference) return;
-
-    // Check if already loading
-    if (queuedVodLoads.has(readableReference)) {
-      return; // Already loading
-    }
-
-    // Check if already loaded using ref (synchronous check)
-    if (vodTextsRef.current[readableReference] && vodTextsRef.current[readableReference]!.length > 0) {
-      return; // Already loaded
-    }
-
-    // Mark as loading
-    queuedVodLoads.add(readableReference);
-
-    try {
-      const data: SearchData = await getVerseSearchResult(readableReference);
-      
-      // Update state if not already loaded (race condition protection)
-      setVodTexts(prev => {
-        // Check again in case another request completed first
-        if (prev[readableReference] && prev[readableReference]!.length > 0) {
-          queuedVodLoads.delete(readableReference);
-          return prev;
-        }
-        queuedVodLoads.delete(readableReference);
-        return { ...prev, [readableReference]: data.verses || [] };
-      });
-    } catch (e) {
-      console.error('Failed to fetch verse text', e);
-      // Set empty array on error to prevent infinite retries
-      setVodTexts(prev => {
-        // Only set empty if not already loaded
-        if (prev[readableReference] && prev[readableReference]!.length > 0) {
-          queuedVodLoads.delete(readableReference);
-          return prev;
-        }
-        queuedVodLoads.delete(readableReference);
-        return { ...prev, [readableReference]: [] };
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    (async () => {
-      try {
-        const data: VodType | null = await getCurrentVerseOfDay();
-        if (!isMounted) {
-          return;
-        }
-
-        const targetVod = data ?? null;
-        setCurrentVod(targetVod);
-
-        if (targetVod?.readableReference) {
-          loadTextForReference(targetVod.readableReference);
-        }
-      } catch (e) {
-        console.error('Failed to load current verse of the day', e);
-        if (isMounted) {
-          setCurrentVod(null);
-        }
-      }
-    })();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [loadTextForReference]);
-
-  // Reload text when currentVod changes
-  useEffect(() => {
-    if (currentVod?.readableReference) {
-      loadTextForReference(currentVod.readableReference);
-    }
-  }, [currentVod?.readableReference, loadTextForReference]);
 
   const handleSaveVodVerse = (readableReference: string) => {
-    const verses = vodTexts[readableReference];
-    if (!verses || verses.length === 0) {
+    if (!verseOfDay || !verseOfDay.verses || verseOfDay.verses.length === 0) {
       setSnackbarMessage('Verse not loaded yet. Please wait...');
       setSnackbarVisible(true);
       return;
     }
-    // Use the first verse from the search results
-    const verse = verses[0];
+    // Use the first verse from the verse of day
+    const verse = verseOfDay.verses[0];
     // Ensure verse_reference is set
     const formattedVerse: Verse = {
       ...verse,
@@ -513,9 +419,8 @@ export default function Index() {
       // Use the saved UserVerse
       setVersesToShare([savedUserVerse]);
     } else {
-      // Create a UserVerse from the verse of day data even if not saved
-      const verses = vodTexts[readableReference];
-      if (!verses || verses.length === 0) {
+      // Use the verse of day UserVerse from store
+      if (!verseOfDay || !verseOfDay.verses || verseOfDay.verses.length === 0) {
         setSnackbarMessage('Verse not loaded yet. Please wait...');
         setSnackbarVisible(true);
         return;
@@ -524,7 +429,7 @@ export default function Index() {
       const userVerse: UserVerse = {
         username: user.username,
         readableReference: readableReference,
-        verses: verses
+        verses: verseOfDay.verses
       };
       
       setVersesToShare([userVerse]);
@@ -532,21 +437,19 @@ export default function Index() {
   };
 
   const handlePracticeVodVerse = (readableReference: string) => {
-    const verses = vodTexts[readableReference];
-    if (!verses || verses.length === 0) {
+    if (!verseOfDay || !verseOfDay.verses || verseOfDay.verses.length === 0) {
       setSnackbarMessage('Verse not loaded yet. Please wait...');
       setSnackbarVisible(true);
       return;
     }
     
-    // Create a UserVerse object for practice session
-    const userVerse: UserVerse = {
+    const vodUserVerse: UserVerse = {
       username: user.username,
       readableReference: readableReference,
-      verses: verses
+      verses: verseOfDay.verses
     };
     
-    setSelectedVodUserVerse(userVerse);
+    setSelectedVodUserVerse(vodUserVerse);
     setPracticeModeModalVisible(true);
   };
 
@@ -953,12 +856,12 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
             <Text style={{ ...styles.tinyText, margin: 0, marginLeft: 15, fontSize: 13, opacity: 0.8 }}>Verse Of The Day</Text>
             </View>
           <View style={{ alignItems: 'center', width: '100%' }}>
-            {currentVod ? (
+            {verseOfDay && verseOfDay.readableReference ? (
                 <View style={{ width: '100%' }}>
                 <View style={{ backgroundColor: theme.colors.surface, alignItems: 'stretch', justifyContent: 'space-between', borderRadius: 16, padding: 16, shadowColor: '#000', shadowOpacity: .15, shadowRadius: 6 }}>
                     <View>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <Text style={{ fontFamily: 'Noto Serif bold', fontSize: 22, color: theme.colors.onBackground }}>{currentVod.readableReference}</Text>
+                      <Text style={{ fontFamily: 'Noto Serif bold', fontSize: 22, color: theme.colors.onBackground }}>{verseOfDay.readableReference}</Text>
                       </View>
                       <Text style={{ fontFamily: 'Noto Serif', fontSize: 16, lineHeight: 24, color: theme.colors.onBackground, marginBottom: 12 }} numberOfLines={5}>
                       {currentVodText || 'Loading verse...'}
@@ -979,19 +882,19 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                       </View>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 18 }}>
-                    <TouchableOpacity activeOpacity={0.1} onPress={() => handleSaveVodVerse(currentVod.readableReference)}>
+                    <TouchableOpacity activeOpacity={0.1} onPress={() => handleSaveVodVerse(verseOfDay.readableReference)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <Ionicons name="bookmark-outline" size={18} color={theme.colors.onBackground} />
                           <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Save</Text>
                         </View>
                       </TouchableOpacity>
-                    <TouchableOpacity activeOpacity={0.1} onPress={() => handlePracticeVodVerse(currentVod.readableReference)}>
+                    <TouchableOpacity activeOpacity={0.1} onPress={() => handlePracticeVodVerse(verseOfDay.readableReference)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.onBackground} />
                           <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Practice</Text>
                         </View>
                       </TouchableOpacity>
-                    <TouchableOpacity activeOpacity={0.1} onPress={() => handleShareVodVerse(currentVod.readableReference)}>
+                    <TouchableOpacity activeOpacity={0.1} onPress={() => handleShareVodVerse(verseOfDay.readableReference)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                           <Ionicons name="share-social-outline" size={18} color={theme.colors.onBackground} />
                           <Text style={{ marginLeft: 6, color: theme.colors.onBackground }}>Share</Text>
