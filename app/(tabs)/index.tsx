@@ -10,8 +10,8 @@ import CollectionItem from '../components/collectionItem';
 import PracticeModeModal from '../components/practiceModeModal';
 import ShareCollectionSheet from '../components/shareCollectionSheet';
 import ShareVerseSheet from '../components/shareVerseSheet';
-import { getUTCTimestamp } from '../dateUtils';
-import { addUserVersesToNewCollection, createCollectionDB, deleteCollection, getMostRecentCollectionId, getSiteBanner, getUserCollections, getVerseSearchResult, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy } from '../db';
+import { formatISODate, getUTCTimestamp } from '../dateUtils';
+import { addUserVersesToNewCollection, createCollectionDB, createNote, deleteCollection, deleteNote, getMostRecentCollectionId, getNotesByVerseReference, getPublicNotesByVerseReference, getSiteBanner, getUserCollections, getVerseSearchResult, likeNote, refreshUser, updateCollectionDB, updateCollectionsOrder as updateCollectionsOrderDB, updateCollectionsSortBy, unlikeNote, updateNote, VerseNote } from '../db';
 import { Collection, SearchData, useAppStore, UserVerse, Verse } from '../store';
 import useStyles from '../styles';
 import useAppTheme from '../theme';
@@ -130,6 +130,24 @@ export default function Index() {
   const [searchQuery, setSearchQuery] = useState('');
   const [practiceModeModalVisible, setPracticeModeModalVisible] = useState(false);
   const [selectedVodUserVerse, setSelectedVodUserVerse] = useState<UserVerse | null>(null);
+  
+  // Notes state for verse of the day
+  const [vodPublicNotesCount, setVodPublicNotesCount] = useState(0);
+  const [vodPublicNotes, setVodPublicNotes] = useState<VerseNote[]>([]);
+  const [vodPrivateNotes, setVodPrivateNotes] = useState<VerseNote[]>([]);
+  const [loadingVodNotes, setLoadingVodNotes] = useState(false);
+  const [loadingVodPublicNotes, setLoadingVodPublicNotes] = useState(false);
+  const [notesDialogVisible, setNotesDialogVisible] = useState(false);
+  const [addNoteDialogVisible, setAddNoteDialogVisible] = useState(false);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [isPublicNote, setIsPublicNote] = useState(false);
+  const [isCreatingNote, setIsCreatingNote] = useState(false);
+  const [isDeletingNote, setIsDeletingNote] = useState(false);
+  const [isUpdatingNote, setIsUpdatingNote] = useState(false);
+  const [editingNote, setEditingNote] = useState<VerseNote | null>(null);
+  const [editNoteText, setEditNoteText] = useState('');
+  
+  const noteCardWidth = useMemo(() => Dimensions.get('window').width * 0.75, []);
 
   const computeOwnership = (collection?: Collection) => {
     if (!collection) return false;
@@ -183,13 +201,60 @@ export default function Index() {
   const currentVodText = verseOfDay && verseOfDay.verses && verseOfDay.verses.length > 0
     ? verseOfDay.verses.map(v => v.text).join(' ')
     : '';
+  // Get max saved and memorized counts across all verses in the verse of day
   const currentVodSavedCount = verseOfDay && verseOfDay.verses && verseOfDay.verses.length > 0
-    ? verseOfDay.verses[0].users_Saved_Verse ?? 0
+    ? Math.max(...verseOfDay.verses.map(v => v.users_Saved_Verse ?? 0))
     : 0;
   const currentVodMemorizedCount = verseOfDay && verseOfDay.verses && verseOfDay.verses.length > 0
-    ? verseOfDay.verses[0].users_Memorized ?? 0
+    ? Math.max(...verseOfDay.verses.map(v => v.users_Memorized ?? 0))
     : 0;
   const displayedVodSavedCount = currentVodSavedCount + (verseOfDay?.readableReference ? (verseSaveAdjustments[verseOfDay.readableReference] ?? 0) : 0);
+
+  // Fetch notes when verse of day is loaded
+  useEffect(() => {
+    const fetchVodNotes = async () => {
+      if (!verseOfDay?.readableReference || !user.username) {
+        setVodPublicNotesCount(0);
+        setVodPublicNotes([]);
+        setVodPrivateNotes([]);
+        return;
+      }
+
+      try {
+        // Use the verse reference from the first verse, as that's what notes are stored with
+        // This ensures we match the exact format stored in the database
+        const verseReference = verseOfDay.verses && verseOfDay.verses.length > 0 
+          ? verseOfDay.verses[0].verse_reference 
+          : verseOfDay.readableReference;
+        
+        // Fetch public notes to get count (and we'll use this data when dialog opens)
+        const publicNotes = await getPublicNotesByVerseReference(verseReference, user.username);
+        setVodPublicNotesCount(publicNotes.length);
+        // Sort public notes by most recent (they'll be re-sorted by likes when dialog opens)
+        setVodPublicNotes(publicNotes.sort((a, b) => {
+          const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+          const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+          return dateB - dateA; // Most recent first
+        }));
+        
+        // Fetch private notes
+        const allNotes = await getNotesByVerseReference(verseReference, user.username);
+        const privateNotes = allNotes.filter(note => !note.isPublic);
+        setVodPrivateNotes(privateNotes.sort((a, b) => {
+          const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+          const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+          return dateB - dateA; // Most recent first
+        }));
+      } catch (error) {
+        console.error('Failed to fetch verse of day notes:', error);
+        setVodPublicNotesCount(0);
+        setVodPublicNotes([]);
+        setVodPrivateNotes([]);
+      }
+    };
+
+    fetchVodNotes();
+  }, [verseOfDay?.readableReference, verseOfDay?.verses, user.username]);
 
   useEffect(() => {
     let isMounted = true;
@@ -450,16 +515,220 @@ export default function Index() {
     };
     
     setSelectedVodUserVerse(vodUserVerse);
+    // Set selectedUserVerse in store so practice session can use it
+    const setSelectedUserVerse = useAppStore.getState().setSelectedUserVerse;
+    setSelectedUserVerse(vodUserVerse);
     setPracticeModeModalVisible(true);
   };
 
   const handleLearnMode = useCallback(() => {
     if (!selectedVodUserVerse) return;
     
-    const setEditingUserVerse = useAppStore.getState().setEditingUserVerse;
-    setEditingUserVerse(selectedVodUserVerse);
     router.push('/practiceSession');
   }, [selectedVodUserVerse]);
+
+  // Notes handlers for verse of the day
+  const openNotesDialog = useCallback(async () => {
+    if (!verseOfDay?.readableReference || !user.username) return;
+    
+    setNotesDialogVisible(true);
+    setLoadingVodPublicNotes(true);
+    setLoadingVodNotes(true);
+    try {
+      // Use the verse reference from the first verse, as that's what notes are stored with
+      // This ensures we match the exact format stored in the database
+      const verseReference = verseOfDay.verses && verseOfDay.verses.length > 0 
+        ? verseOfDay.verses[0].verse_reference 
+        : verseOfDay.readableReference;
+      
+      // Refresh both public and private notes when opening dialog
+      const [publicNotes, allNotes] = await Promise.all([
+        getPublicNotesByVerseReference(verseReference, user.username),
+        getNotesByVerseReference(verseReference, user.username)
+      ]);
+      
+      // Sort public notes by most recent (they should already be sorted by likes on backend, but we want most recent here)
+      const sortedPublicNotes = publicNotes.sort((a, b) => {
+        const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+        const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+        return dateB - dateA; // Most recent first
+      });
+      setVodPublicNotes(sortedPublicNotes);
+      // Update count from actual fetched notes
+      setVodPublicNotesCount(sortedPublicNotes.length);
+      
+      const privateNotes = allNotes
+        .filter((note: VerseNote) => !note.isPublic)
+        .sort((a, b) => {
+          const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+          const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+          return dateB - dateA; // Most recent first
+        });
+      setVodPrivateNotes(privateNotes);
+    } catch (error) {
+      console.error('Failed to load notes:', error);
+      setSnackbarMessage('Failed to load notes');
+      setSnackbarVisible(true);
+    } finally {
+      setLoadingVodPublicNotes(false);
+      setLoadingVodNotes(false);
+    }
+  }, [verseOfDay?.readableReference, user.username]);
+
+  const closeNotesDialog = useCallback(() => {
+    setNotesDialogVisible(false);
+  }, []);
+
+  const handleCreateNote = useCallback(async () => {
+    if (!verseOfDay?.readableReference || !user.username || !newNoteText.trim()) {
+      return;
+    }
+    
+    setIsCreatingNote(true);
+    try {
+      // Use the verse reference from the first verse, as that's what notes are stored with
+      const verseReference = verseOfDay.verses && verseOfDay.verses.length > 0 
+        ? verseOfDay.verses[0].verse_reference 
+        : verseOfDay.readableReference;
+      
+      const createdNote = await createNote(
+        verseReference,
+        user.username,
+        newNoteText.trim(),
+        isPublicNote // Use isPublicNote state
+      );
+      
+      if (isPublicNote) {
+        setVodPublicNotes(prev => {
+          const updated = [...prev, createdNote];
+          const sorted = updated.sort((a, b) => {
+            const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+            const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+            return dateB - dateA; // Most recent first
+          });
+          // Update count from actual notes array
+          setVodPublicNotesCount(sorted.length);
+          return sorted;
+        });
+      } else {
+        setVodPrivateNotes(prev => {
+          const updated = [...prev, createdNote];
+          return updated.sort((a, b) => {
+            const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+            const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+            return dateB - dateA; // Most recent first
+          });
+        });
+      }
+      
+      setNewNoteText('');
+      setIsPublicNote(false);
+      setAddNoteDialogVisible(false);
+      setSnackbarMessage('Note created');
+      setSnackbarVisible(true);
+    } catch (error) {
+      console.error('Failed to create note:', error);
+      setSnackbarMessage('Failed to create note');
+      setSnackbarVisible(true);
+    } finally {
+      setIsCreatingNote(false);
+    }
+  }, [verseOfDay?.readableReference, user.username, newNoteText, isPublicNote]);
+
+  const closeAddNoteDialog = useCallback(() => {
+    setAddNoteDialogVisible(false);
+    setNewNoteText('');
+    setEditingNote(null);
+    setEditNoteText('');
+    setIsPublicNote(false);
+  }, []);
+
+  const handleEditNote = useCallback((note: VerseNote) => {
+    setEditingNote(note);
+    setEditNoteText(note.text);
+    setIsPublicNote(note.isPublic);
+    setAddNoteDialogVisible(true);
+  }, []);
+
+  const handleUpdateNote = useCallback(async () => {
+    if (!editingNote || !editNoteText.trim()) return;
+    
+    setIsUpdatingNote(true);
+    try {
+      const updatedNote = await updateNote(editingNote.id, editNoteText.trim());
+      const wasPublic = editingNote.isPublic;
+      
+      if (wasPublic) {
+        setVodPublicNotes(prev => {
+          const updated = prev.map(n => n.id === editingNote.id ? updatedNote : n);
+          return updated.sort((a, b) => {
+            const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+            const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+            return dateB - dateA; // Most recent first
+          });
+        });
+      } else {
+        setVodPrivateNotes(prev => {
+          const updated = prev.map(n => n.id === editingNote.id ? updatedNote : n);
+          return updated.sort((a, b) => {
+            const dateA = a.createdDate ? new Date(a.createdDate).getTime() : 0;
+            const dateB = b.createdDate ? new Date(b.createdDate).getTime() : 0;
+            return dateB - dateA; // Most recent first
+          });
+        });
+      }
+      
+      setEditingNote(null);
+      setEditNoteText('');
+      setIsPublicNote(false);
+      setAddNoteDialogVisible(false);
+      setSnackbarMessage('Note updated');
+      setSnackbarVisible(true);
+    } catch (error) {
+      console.error('Failed to update note:', error);
+      setSnackbarMessage('Failed to update note');
+      setSnackbarVisible(true);
+    } finally {
+      setIsUpdatingNote(false);
+    }
+  }, [editingNote, editNoteText]);
+
+  const handleDeleteVerseNote = useCallback(async (noteId: number) => {
+    if (!verseOfDay?.readableReference || !user.username) return;
+    
+    // Use the verse reference from the first verse for consistency
+    const verseReference = verseOfDay.verses && verseOfDay.verses.length > 0 
+      ? verseOfDay.verses[0].verse_reference 
+      : verseOfDay.readableReference;
+    
+    const noteToDelete = [...vodPublicNotes, ...vodPrivateNotes].find(n => n.id === noteId);
+    const wasPublic = noteToDelete?.isPublic;
+    
+    setIsDeletingNote(true);
+    try {
+      await deleteNote(noteId);
+      
+      if (wasPublic) {
+        setVodPublicNotes(prev => {
+          const filtered = prev.filter(n => n.id !== noteId);
+          // Update count from actual notes array
+          setVodPublicNotesCount(filtered.length);
+          return filtered;
+        });
+      } else {
+        setVodPrivateNotes(prev => prev.filter(n => n.id !== noteId));
+      }
+      
+      setSnackbarMessage('Note deleted');
+      setSnackbarVisible(true);
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+      setSnackbarMessage('Failed to delete note');
+      setSnackbarVisible(true);
+    } finally {
+      setIsDeletingNote(false);
+    }
+  }, [verseOfDay?.readableReference, verseOfDay?.verses, user.username, vodPublicNotes, vodPrivateNotes]);
 
 
   const hideDialog = () => setVisible(false);
@@ -862,6 +1131,14 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
                     <View>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                       <Text style={{ fontFamily: 'Noto Serif bold', fontSize: 22, color: theme.colors.onBackground }}>{verseOfDay.readableReference}</Text>
+                      <TouchableOpacity activeOpacity={0.7} onPress={openNotesDialog} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="document-text-outline" size={20} color={theme.colors.onBackground} />
+                        {vodPublicNotesCount > 0 && (
+                          <Text style={{ fontSize: 14, color: theme.colors.onBackground, fontFamily: 'Inter', fontWeight: '500' }}>
+                            {vodPublicNotesCount}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
                       </View>
                       <Text style={{ fontFamily: 'Noto Serif', fontSize: 16, lineHeight: 24, color: theme.colors.onBackground, marginBottom: 12 }} numberOfLines={5}>
                       {currentVodText || 'Loading verse...'}
@@ -1607,6 +1884,430 @@ useEffect(() => { // Apparently this runs even if the user is not logged in
         }}
         onSelectLearn={handleLearnMode}
       />
+
+      {/* Notes Modal for Verse of the Day */}
+      <Portal>
+        <Modal
+          visible={notesDialogVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closeNotesDialog}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <View
+              style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+            >
+              <View
+                style={{ 
+                  backgroundColor: theme.colors.surface, 
+                  borderRadius: 12, 
+                  width: '90%', 
+                  maxWidth: 400, 
+                  maxHeight: '70%', 
+                  padding: 20,
+                  flexDirection: 'column'
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={{ 
+                    fontSize: 20,
+                    fontWeight: '600',
+                    fontFamily: 'Inter',
+                    color: theme.colors.onBackground,
+                  }}>
+                    {verseOfDay?.readableReference}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={closeNotesDialog}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: theme.colors.surface2,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView 
+                  contentContainerStyle={{ paddingBottom: 10 }}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
+                  {/* Public Notes Section */}
+                  {user?.username && (
+                    <View style={{ marginBottom: 20 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <Text
+                          style={{
+                            fontFamily: 'Noto Serif bold',
+                            fontSize: 20,
+                            color: theme.colors.onBackground,
+                          }}
+                        >
+                          Public Notes
+                        </Text>
+                      </View>
+                      {loadingVodPublicNotes ? (
+                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                      ) : vodPublicNotes.length === 0 ? (
+                        <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, fontStyle: 'italic' }}>
+                          No public notes
+                        </Text>
+                      ) : (
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={{ paddingRight: 20 }}
+                          snapToInterval={noteCardWidth + 13}
+                          snapToAlignment="start"
+                          decelerationRate="fast"
+                          pagingEnabled={false}
+                        >
+                          {vodPublicNotes.map((note, noteIndex) => {
+                            const handleLikeToggle = async () => {
+                              if (!user?.username) return;
+                              try {
+                                const result = note.userLiked
+                                  ? await unlikeNote(note.id, user.username)
+                                  : await likeNote(note.id, user.username);
+                                
+                                setVodPublicNotes(prev => 
+                                  prev.map(n => 
+                                    n.id === note.id 
+                                      ? { ...n, likeCount: result.likeCount, userLiked: result.liked }
+                                      : n
+                                  )
+                                );
+                              } catch (error) {
+                                console.error('Error toggling like:', error);
+                              }
+                            };
+
+                            return (
+                              <View key={note.id} style={{ flexDirection: 'row' }}>
+                                <View style={{ width: noteCardWidth, position: 'relative' }}>
+                                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                    <Text style={{ color: theme.colors.onBackground, fontSize: 12, fontWeight: '600' }}>
+                                      {note.username}
+                                    </Text>
+                                    <TouchableOpacity
+                                      onPress={handleLikeToggle}
+                                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                      disabled={!user?.username}
+                                    >
+                                      <Ionicons 
+                                        name={note.userLiked ? "heart" : "heart-outline"} 
+                                        size={18} 
+                                        color={note.userLiked ? theme.colors.error : theme.colors.onSurfaceVariant} 
+                                      />
+                                      {note.likeCount !== undefined && note.likeCount > 0 && (
+                                        <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}>
+                                          {note.likeCount}
+                                        </Text>
+                                      )}
+                                    </TouchableOpacity>
+                                  </View>
+                                  {note.createdDate && (
+                                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11, marginBottom: 4 }}>
+                                      {formatISODate(new Date(note.createdDate))}
+                                    </Text>
+                                  )}
+                                  <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
+                                    {note.text}
+                                  </Text>
+                                  {note.username === user?.username && (
+                                    <View style={{ position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', gap: 8 }}>
+                                      <TouchableOpacity
+                                        onPress={() => handleEditNote(note)}
+                                        disabled={isDeletingNote || isUpdatingNote}
+                                        style={{ padding: 4 }}
+                                      >
+                                        <Ionicons name="pencil" size={16} color={theme.colors.onBackground} />
+                                      </TouchableOpacity>
+                                      <TouchableOpacity
+                                        onPress={() => handleDeleteVerseNote(note.id)}
+                                        disabled={isDeletingNote || isUpdatingNote}
+                                        style={{ padding: 4 }}
+                                      >
+                                        {isDeletingNote ? (
+                                          <ActivityIndicator size="small" color={theme.colors.error} />
+                                        ) : (
+                                          <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
+                                        )}
+                                      </TouchableOpacity>
+                                    </View>
+                                  )}
+                                </View>
+                                {noteIndex < vodPublicNotes.length - 1 && (
+                                  <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
+                                )}
+                              </View>
+                            );
+                          })}
+                        </ScrollView>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Private Notes Section */}
+                  {user?.username && (
+                    <View style={{ marginTop: 20, marginBottom: 20 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <Text
+                          style={{
+                            fontFamily: 'Noto Serif bold',
+                            fontSize: 20,
+                            color: theme.colors.onBackground,
+                          }}
+                        >
+                          Private Notes
+                        </Text>
+                      </View>
+                      {loadingVodNotes ? (
+                        <ActivityIndicator size="small" color={theme.colors.onBackground} />
+                      ) : vodPrivateNotes.length === 0 ? (
+                        <Text style={{ color: theme.colors.onBackground, fontSize: 14, fontStyle: 'italic' }}>
+                          No private notes
+                        </Text>
+                      ) : (
+                        <ScrollView 
+                          horizontal 
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={{ paddingRight: 20 }}
+                          snapToInterval={noteCardWidth + 13}
+                          snapToAlignment="start"
+                          decelerationRate="fast"
+                          pagingEnabled={false}
+                        >
+                          {vodPrivateNotes.map((note, index) => (
+                            <View key={note.id} style={{ flexDirection: 'row' }}>
+                              <View style={{ width: noteCardWidth, position: 'relative' }}>
+                                <Text style={{ color: theme.colors.onBackground, fontSize: 14, lineHeight: 20 }}>
+                                  {note.text}
+                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                                  {note.createdDate && (
+                                    <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 11 }}>
+                                      {formatISODate(new Date(note.createdDate))}
+                                    </Text>
+                                  )}
+                                </View>
+                                {note.username === user?.username && (
+                                  <View style={{ position: 'absolute', bottom: 8, right: 8, flexDirection: 'row', gap: 8 }}>
+                                    <TouchableOpacity
+                                      onPress={() => handleEditNote(note)}
+                                      disabled={isDeletingNote || isUpdatingNote}
+                                      style={{ padding: 4 }}
+                                    >
+                                      <Ionicons name="pencil" size={16} color={theme.colors.onBackground} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      onPress={() => handleDeleteVerseNote(note.id)}
+                                      disabled={isDeletingNote || isUpdatingNote}
+                                      style={{ padding: 4 }}
+                                    >
+                                      {isDeletingNote ? (
+                                        <ActivityIndicator size="small" color={theme.colors.error} />
+                                      ) : (
+                                        <Ionicons name="trash-outline" size={16} color={theme.colors.error} />
+                                      )}
+                                    </TouchableOpacity>
+                                  </View>
+                                )}
+                              </View>
+                              {index < vodPrivateNotes.length - 1 && (
+                                <View style={{ width: 1, backgroundColor: theme.colors.outline, marginHorizontal: 6 }} />
+                              )}
+                            </View>
+                          ))}
+                        </ScrollView>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Add Note Button */}
+                  {user?.username && (
+                    <TouchableOpacity
+                      style={{...styles.button_outlined, marginTop: 20, alignSelf: 'center'}}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setNewNoteText('');
+                        setEditingNote(null);
+                        setEditNoteText('');
+                        setIsPublicNote(false);
+                        setAddNoteDialogVisible(true);
+                      }}
+                    >
+                      <Ionicons name="add" size={26} color={theme.colors.onBackground} />
+                    </TouchableOpacity>
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      </Portal>
+
+      {/* Add/Edit Note Dialog for Verse of the Day */}
+      <Portal>
+        <Modal
+          visible={addNoteDialogVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closeAddNoteDialog}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          >
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}
+              activeOpacity={1}
+              onPress={closeAddNoteDialog}
+            >
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={(e) => e.stopPropagation()}
+                style={{ 
+                  backgroundColor: theme.colors.surface, 
+                  borderRadius: 12, 
+                  width: '90%', 
+                  maxWidth: 400, 
+                  padding: 20 
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <Text style={{ 
+                    fontSize: 20,
+                    fontWeight: '600',
+                    fontFamily: 'Inter',
+                    color: theme.colors.onBackground,
+                  }}>
+                    {editingNote ? 'Edit Note' : 'Add Note'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={closeAddNoteDialog}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: theme.colors.surface2,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Ionicons name="close" size={20} color={theme.colors.onSurfaceVariant} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginBottom: 20}}>
+                  <Ionicons name="lock-closed" size={16} color={theme.colors.verseText} style={{marginTop: 2, marginRight: 6}} />
+                  <Text style={{...styles.tinyText, fontSize: 13, color: theme.colors.verseText}}>
+                    Notes are encrypted before they are stored.
+                  </Text>
+                </View>
+
+                {!editingNote && (
+                  <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16}}>
+                    <TouchableOpacity
+                      onPress={() => setIsPublicNote(false)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        paddingHorizontal: 16,
+                        borderRadius: 8,
+                        borderWidth: 2,
+                        borderColor: !isPublicNote ? theme.colors.primary : theme.colors.outline,
+                        backgroundColor: !isPublicNote ? theme.colors.primary : 'transparent',
+                        marginRight: 8,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{
+                        color: !isPublicNote ? '#fff' : theme.colors.onBackground,
+                        fontSize: 14,
+                        fontWeight: '600',
+                        fontFamily: 'Inter'
+                      }}>
+                        Private
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setIsPublicNote(true)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        paddingHorizontal: 16,
+                        borderRadius: 8,
+                        borderWidth: 2,
+                        borderColor: isPublicNote ? theme.colors.primary : theme.colors.outline,
+                        backgroundColor: isPublicNote ? theme.colors.primary : 'transparent',
+                        marginLeft: 8,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{
+                        color: isPublicNote ? '#fff' : theme.colors.onBackground,
+                        fontSize: 14,
+                        fontWeight: '600',
+                        fontFamily: 'Inter'
+                      }}>
+                        Public
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                <TextInput
+                  value={editingNote ? editNoteText : newNoteText}
+                  onChangeText={editingNote ? setEditNoteText : setNewNoteText}
+                  placeholder="Enter your note..."
+                  placeholderTextColor={theme.colors.onSurfaceVariant}
+                  multiline
+                  numberOfLines={6}
+                  style={{
+                    color: theme.colors.onBackground,
+                    fontSize: 14,
+                    fontFamily: 'Inter',
+                    backgroundColor: 'transparent',
+                    borderRadius: 8,
+                    padding: 12,
+                    minHeight: 120,
+                    textAlignVertical: 'top',
+                    borderWidth: 2,
+                    borderColor: theme.colors.gray,
+                    marginBottom: 16,
+                  }}
+                />
+
+                <TouchableOpacity
+                  style={{...styles.button_outlined, marginTop: 20}}
+                  activeOpacity={0.7}
+                  onPress={editingNote ? handleUpdateNote : handleCreateNote}
+                  disabled={(editingNote ? !editNoteText.trim() : !newNoteText.trim()) || isCreatingNote || isUpdatingNote}
+                >
+                  {(isCreatingNote || isUpdatingNote) ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="checkmark" size={26} color={theme.colors.onBackground} />
+                  )}
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </Modal>
+      </Portal>
 
     </View>
     </>

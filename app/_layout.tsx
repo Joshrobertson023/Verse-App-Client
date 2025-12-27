@@ -545,6 +545,20 @@ export default function RootLayout() {
             headerShadowVisible: false,
               }}
             />
+            <Stack.Screen
+            name="push-notifications-tutorial"
+            options={{
+            title: 'push-notifications-tutorial',
+            headerStyle: {
+              backgroundColor: theme.colors.background,
+            },
+            headerTitleStyle: {
+              color: theme.colors.onBackground,
+            },
+            headerTintColor: theme.colors.onBackground,
+            headerShadowVisible: false,
+              }}
+            />
             <Stack.Screen 
               name="collections/[id]"
               options={{

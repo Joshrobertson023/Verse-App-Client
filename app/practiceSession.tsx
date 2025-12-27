@@ -4,7 +4,7 @@ import { router, Stack } from 'expo-router';
 import React, { JSX, useEffect, useState } from 'react';
 import { Alert, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ActivityIndicator, Portal, Snackbar } from 'react-native-paper';
-import { getUserVerseParts, getUserVersesPopulated, MemorizedInfo, memorizePassage, UserVerseMemorizedInfo, UserVerseParts } from './db';
+import { getUserVerseParts, getUserVersesPopulated, MemorizedInfo, memorizePassage, memorizeVerseOfDay, UserVerseMemorizedInfo, UserVerseParts } from './db';
 import { useAppStore } from './store';
 import useStyles from './styles';
 import useAppTheme from './theme';
@@ -531,23 +531,35 @@ const nextStage = async () => {
       );
       setAccuracy(sessionAccuracy);
 
-      const info: MemorizedInfo = {
-        userVerseId: selectedUserVerse?.id || 0,
-        accuracy: sessionAccuracy,
-      };
+      // Check if this is a verse of day (no id or no collectionId)
+      const isVerseOfDay = !selectedUserVerse?.id || !selectedUserVerse?.collectionId;
       
-      const userVerseMemorizedInfo: UserVerseMemorizedInfo = await memorizePassage(info);
-      setPointsGained(userVerseMemorizedInfo.pointsGained);
-      setNextDue(userVerseMemorizedInfo.userVerse.dueDate ? new Date(userVerseMemorizedInfo.userVerse.dueDate) : new Date());
-      setTimesMemorized(userVerseMemorizedInfo.userVerse.timesMemorized || 0);
+      if (isVerseOfDay && selectedUserVerse?.readableReference && user.username) {
+        // Handle verse of day memorization
+        await memorizeVerseOfDay(user.username, selectedUserVerse.readableReference);
+        setPointsGained(25); // Verse of day gives 25 points (as per backend)
+        setTimesMemorized(1); // Simple default for verse of day
+        setNextDue(new Date()); // No specific due date for verse of day
+      } else {
+        // Handle regular UserVerse memorization
+        const info: MemorizedInfo = {
+          userVerseId: selectedUserVerse?.id || 0,
+          accuracy: sessionAccuracy,
+        };
+        
+        const userVerseMemorizedInfo: UserVerseMemorizedInfo = await memorizePassage(info);
+        setPointsGained(userVerseMemorizedInfo.pointsGained);
+        setNextDue(userVerseMemorizedInfo.userVerse.dueDate ? new Date(userVerseMemorizedInfo.userVerse.dueDate) : new Date());
+        setTimesMemorized(userVerseMemorizedInfo.userVerse.timesMemorized || 0);
 
-      // Update collection with populated userVerses to reflect memorized info changes
-      const collection = useAppStore.getState().collections.find(c => c.collectionId === selectedUserVerse?.collectionId);
-      if (collection) {
-        const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
-        const updatedCollection = await getUserVersesPopulated(colToSend);
-        updateCollection(updatedCollection);
-        setShouldReloadPracticeList(true);
+        // Update collection with populated userVerses to reflect memorized info changes
+        const collection = useAppStore.getState().collections.find(c => c.collectionId === selectedUserVerse?.collectionId);
+        if (collection) {
+          const colToSend = { ...collection, UserVerses: collection.userVerses ?? [] };
+          const updatedCollection = await getUserVersesPopulated(colToSend);
+          updateCollection(updatedCollection);
+          setShouldReloadPracticeList(true);
+        }
       }
 
       showSummary();
@@ -802,15 +814,30 @@ const nextStage = async () => {
 
                     {/* Success Header */}
                     <View style={{ alignItems: 'center', marginBottom: 32 }}>
-                      <Text style={{ ...styles.text, textAlign: 'center', fontSize: 16, color: theme.colors.onSurfaceVariant, marginBottom: 0 }}>
-                        You have memorized
-                      </Text>
-                      <Text style={{ ...styles.subheading, textAlign: 'center', fontSize: 20, color: theme.colors.primary, marginTop: 4 }}>
-                        {selectedUserVerse?.readableReference}
-                      </Text>
-                      <Text style={{ ...styles.text, textAlign: 'center', fontSize: 16, color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: -20 }}>
-                         {timesMemorized} {timesMemorized === 1 ? 'time' : 'times'}
-                      </Text>
+                      {!selectedUserVerse?.collectionId ? (
+                        // Verse of day - simple congrats message
+                        <>
+                          <Text style={{ ...styles.subheading, textAlign: 'center', fontSize: 24, color: theme.colors.primary, marginTop: 4 }}>
+                            Congratulations!
+                          </Text>
+                          <Text style={{ ...styles.text, textAlign: 'center', fontSize: 16, color: theme.colors.onSurfaceVariant, marginTop: 8 }}>
+                            You've completed practicing the verse of the day.
+                          </Text>
+                        </>
+                      ) : (
+                        // Regular collection verse
+                        <>
+                          <Text style={{ ...styles.text, textAlign: 'center', fontSize: 16, color: theme.colors.onSurfaceVariant, marginBottom: 0 }}>
+                            You have memorized
+                          </Text>
+                          <Text style={{ ...styles.subheading, textAlign: 'center', fontSize: 20, color: theme.colors.primary, marginTop: 4 }}>
+                            {selectedUserVerse?.readableReference}
+                          </Text>
+                          <Text style={{ ...styles.text, textAlign: 'center', fontSize: 16, color: theme.colors.onSurfaceVariant, marginTop: 4, marginBottom: -20 }}>
+                             {timesMemorized} {timesMemorized === 1 ? 'time' : 'times'}
+                          </Text>
+                        </>
+                      )}
                     </View>
 
                     {/* Stat updates */}
@@ -856,19 +883,21 @@ const nextStage = async () => {
                         </View>
                       </View>
 
-                      {/* Next Practice Card */}
-                      <View style={{ paddingVertical: 20, paddingHorizontal: 4, }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                          <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 22, fontFamily: 'Inter' }}>
-                            Practice again in {(() => {
-                              const today = new Date();
-                              const diffTime = nextDue.getTime() - today.getTime();
-                              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                              return diffDays === 1 ? '1 day' : `${diffDays} days`;
-                            })()}
-                          </Text>
+                      {/* Next Practice Card - only show for collection verses */}
+                      {selectedUserVerse?.collectionId && (
+                        <View style={{ paddingVertical: 20, paddingHorizontal: 4, }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 22, fontFamily: 'Inter' }}>
+                              Practice again in {(() => {
+                                const today = new Date();
+                                const diffTime = nextDue.getTime() - today.getTime();
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                return diffDays === 1 ? '1 day' : `${diffDays} days`;
+                              })()}
+                            </Text>
+                          </View>
                         </View>
-                      </View>
+                      )}
                 </View>
 
                 {/* Action Button */}
@@ -883,7 +912,8 @@ const nextStage = async () => {
                       });
                     }
                     setSummaryModalVisible(false);
-                    // Collection is already updated above, and shouldReloadPracticeList is set
+                    // Collection is already updated above for regular verses, and shouldReloadPracticeList is set
+                    // For verse of day, no collection to update
                     router.replace('/(tabs)');
                   }}
                   activeOpacity={0.7}

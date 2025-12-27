@@ -6,7 +6,7 @@ import React, { useState } from 'react';
 import { Modal, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { Divider, TextInput } from 'react-native-paper';
 import { ProfileDrawerLink } from './components/ProfileContent';
-import { deleteUser, refreshUser, submitBugReport, updateActivityNotifications, updateBadgeNotificationsEnabled, updateBadgeOverdueEnabled, updateBibleVersion, updateEmail, updateNotifyCollectionSaved, updateNotifyMemorizedVerse, updateNotifyNoteLiked, updateNotifyPublishedCollection, updatePassword, updatePushNotifications, updateSubscribedVerseOfDay, updateThemeDb, updateTypeOutReference, updateUsername, updateUserProfile, updatePracticeReminders, updateNotifyOfFriends, updateReceiveStreakReminders } from './db';
+import { deleteUser, refreshUser, submitBugReport, updateActivityNotifications, updateBadgeNotificationsEnabled, updateBadgeOverdueEnabled, updateBibleVersion, updateEmail, updateNotifyCollectionSaved, updateNotifyMemorizedVerse, updateNotifyNoteLiked, updateNotifyOfFriends, updateNotifyPublishedCollection, updatePassword, updatePracticeReminders, updatePushNotifications, updateReceiveStreakReminders, updateSubscribedVerseOfDay, updateThemeDb, updateTypeOutReference, updateUsername, updateUserProfile } from './db';
 import { ensurePushTokenRegistered, unregisterStoredPushToken } from './pushTokenManager';
 import { ThemePreference, useAppStore } from './store';
 import useStyles from './styles';
@@ -440,6 +440,10 @@ export default function SettingsScreen() {
             }}>
               Profile Settings
             </Text>
+
+            <TouchableOpacity style={{height: 100, width: '100%'}} onPress={() => router.push("/push-notifications-tutorial")}>
+              <Text style={{...styles.tinyText}}>Push Notifications</Text>
+            </TouchableOpacity>
 
             <TextInput
               label="First Name"

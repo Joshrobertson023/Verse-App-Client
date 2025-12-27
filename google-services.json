@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "998600803196",
+    "project_id": "verseapp-13c19",
+    "storage_bucket": "verseapp-13c19.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:998600803196:android:0c87379c34cad3961e9af9",
+        "android_client_info": {
+          "package_name": "com.anonymous.VerseApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDG4A4TCsNi5gFkemivvVsiuZr8LXVl-w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
